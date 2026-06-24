@@ -1,6 +1,6 @@
 /* Family Planner custom cards - meal-grid-card + family-calendar-card (same-origin local file) */
 
-/* ===== meal-grid-card v4 ===== */
+/* ===== meal-grid-card v5 (week auto-fill) ===== */
 (() => {
 const CP = cp => String.fromCodePoint(cp);
 class MealGridCard extends HTMLElement {
@@ -153,6 +153,39 @@ class MealGridCard extends HTMLElement {
     btn.disabled = false; btn.innerHTML = prev;
   }
 
+  async _fillWeek(btn) {
+    if (this.config.mode === "compact") return;
+    const prev = btn.innerHTML; btn.disabled = true; btn.innerHTML = CP(0x2728) + " ...";
+    try {
+      const existing = [];
+      this._cells.forEach(r => r.forEach(c => c.forEach(o => { if (o.summary) existing.push(o.summary); })));
+      for (let mi = 0; mi < this._meals.length; mi++) {
+        const meal = this._meals[mi];
+        const emptyDays = [];
+        for (let ci = 0; ci < this._cols.length; ci++) {
+          const cell = this._cells[mi][ci];
+          if (!(cell && cell.length && cell[0].summary)) emptyDays.push(ci);
+        }
+        if (!emptyDays.length) continue;
+        const prompt = `Schlage ${emptyDays.length} verschiedene, einfache, alltagstaugliche Gerichte fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Auf Deutsch. Antworte als reine Liste, ein Gericht pro Zeile, ohne Nummerierung und ohne Aufzaehlungszeichen.` + (existing.length ? ` Vermeide diese Gerichte: ${existing.join(", ")}.` : "");
+        const data = { task_name: "Wochenessensplan", instructions: prompt };
+        if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+        const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
+        let txt = r && r.response && r.response.data;
+        if (txt && typeof txt === "object") txt = txt.text || JSON.stringify(txt);
+        const dishes = String(txt || "").split("\n").map(x => x.replace(/^[\s\d.)\-*]+/, "").trim()).filter(Boolean);
+        for (let k = 0; k < emptyDays.length; k++) {
+          const dish = dishes[k];
+          if (!dish) continue;
+          existing.push(dish);
+          await this._createEvent(meal, this._cols[emptyDays[k]], dish);
+        }
+      }
+      await this._maybeFetch(true);
+    } catch (e) {}
+    btn.disabled = false; btn.innerHTML = prev;
+  }
+
   _openEditor(mi, ci) {
     const meal = this._meals[mi], date = this._cols[ci];
     const ev = (this._cells[mi][ci] && this._cells[mi][ci][0]) || null;
@@ -219,7 +252,7 @@ class MealGridCard extends HTMLElement {
       head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
     }
 
-    let html = `<ha-card class="mg-card">${head}<div class="mg-wrap"><table class="mg"><thead><tr><th class="mg-corner"></th>`;
+    let html = `<ha-card class="mg-card">${head}${(!compact && this.config.ai_suggest) ? `<div class="mg-fillrow"><button class="mg-fill">${CP(0x2728)} Ganze Woche f&uuml;llen</button></div>` : ""}<div class="mg-wrap"><table class="mg"><thead><tr><th class="mg-corner"></th>`;
     cols.forEach((d, i) => {
       html += `<th class="${isToday(d) ? "mg-today" : ""}"><div class="mg-day">${colLabel(d, i)}</div><div class="mg-date">${d.getDate()}.${d.getMonth() + 1}.</div></th>`;
     });
@@ -271,6 +304,9 @@ class MealGridCard extends HTMLElement {
       .mg-input{width:100%;box-sizing:border-box;padding:11px 12px;font-size:1rem;border:1px solid var(--divider-color,#ccc);border-radius:12px;background:var(--secondary-background-color,#f3f3f3);color:var(--primary-text-color);}
       .mg-suggest-row{margin-top:10px;}
       .mg-suggest{width:100%;background:rgba(79,195,247,.18);color:#0277bd;font-weight:600;}
+      .mg-fillrow{padding:0 14px 10px;}
+      .mg-fill{width:100%;border:none;border-radius:10px;padding:10px;background:rgba(79,195,247,.20);color:#0277bd;font-weight:700;cursor:pointer;}
+      .mg-fill:hover{background:rgba(79,195,247,.32);}
       .mg-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
       .mg-btn{border:none;border-radius:10px;padding:9px 14px;font-size:.9rem;cursor:pointer;}
       .mg-cancel{background:var(--secondary-background-color,#eee);color:var(--primary-text-color);}
@@ -279,6 +315,8 @@ class MealGridCard extends HTMLElement {
       ${bgImg}
     `;
     this.innerHTML = `<style>${css}</style>${html}`;
+    const fb = this.querySelector(".mg-fill");
+    if (fb) fb.addEventListener("click", () => this._fillWeek(fb));
     this.querySelectorAll(".mg-nav,.mg-today-btn").forEach(b => {
       b.addEventListener("click", e => {
         e.stopPropagation();
@@ -300,7 +338,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v1.1 ===== */
+/* ===== family-calendar-card v1.2 (adaptive text color) ===== */
 (() => {
 const CP = c => String.fromCodePoint(c);
 class FamilyCalendarCard extends HTMLElement {
@@ -362,6 +400,7 @@ class FamilyCalendarCard extends HTMLElement {
   _esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
   _pad(n) { return String(n).padStart(2, "0"); }
 
+  _textOn(bg) { let h = String(bg).replace("#", ""); if (h.length === 3) h = h.split("").map(x => x + x).join(""); const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16); if (isNaN(r) || isNaN(g) || isNaN(b)) return "#fff"; return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#222" : "#fff"; }
   _matchPrefix(title, prefix) { const re = new RegExp("^" + prefix + "[ :._-]"); return re.test(title); }
   _stripPrefix(title, prefix) { return title.replace(new RegExp("^" + prefix + "[ :._-]\\s*"), ""); }
 
@@ -441,7 +480,7 @@ class FamilyCalendarCard extends HTMLElement {
     cols.forEach(d => {
       let cell = '<div class="fcc-ad-cell">';
       items.filter(it => it.allDay && d >= new Date(it.start.getFullYear(), it.start.getMonth(), it.start.getDate()) && d < it.end).forEach(it => {
-        cell += `<div class="fcc-ad-ev" style="background:${it.person.color}" data-uid="${this._esc(it.uid || "")}" data-ent="${it.entity}">${this._esc(it.display)}</div>`;
+        cell += `<div class="fcc-ad-ev" style="background:${it.person.color};color:${this._textOn(it.person.color)}" data-uid="${this._esc(it.uid || "")}" data-ent="${it.entity}">${this._esc(it.display)}</div>`;
       });
       cell += "</div>"; allRow += cell;
     });
@@ -465,7 +504,7 @@ class FamilyCalendarCard extends HTMLElement {
         const ed = Math.min(h1, Math.max(sd + 0.25, e.end.getHours() + e.end.getMinutes() / 60 || h1));
         const top = (sd - h0) * HH, hgt = Math.max(16, (ed - sd) * HH);
         const w = 100 / (e._n || 1), left = (e._c || 0) * w;
-        col += `<div class="fcc-ev" data-uid="${this._esc(e.uid || "")}" data-ent="${e.entity}" style="top:${top}px;height:${hgt}px;left:${left}%;width:${w}%;background:${e.person.color}"><span class="fcc-ev-t">${this._esc(e.display)}</span><span class="fcc-ev-h">${this._pad(e.start.getHours())}:${this._pad(e.start.getMinutes())}</span></div>`;
+        col += `<div class="fcc-ev" data-uid="${this._esc(e.uid || "")}" data-ent="${e.entity}" style="top:${top}px;height:${hgt}px;left:${left}%;width:${w}%;background:${e.person.color};color:${this._textOn(e.person.color)}"><span class="fcc-ev-t">${this._esc(e.display)}</span><span class="fcc-ev-h">${this._pad(e.start.getHours())}:${this._pad(e.start.getMinutes())}</span></div>`;
       });
       col += "</div>"; body += col;
     });
