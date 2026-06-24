@@ -362,7 +362,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v1.4 (adaptive text + create/edit/delete events) ===== */
+/* ===== family-calendar-card v1.5 (adaptive text + create/edit/delete + all-day fix) ===== */
 (() => {
 const CP = c => String.fromCodePoint(c);
 class FamilyCalendarCard extends HTMLElement {
@@ -442,8 +442,14 @@ class FamilyCalendarCard extends HTMLElement {
   _parse(ev) {
     const s = ev.start || {}, e = ev.end || {};
     const allDay = !!(s.date && !s.dateTime);
-    const start = new Date(s.dateTime || s.date);
-    const end = new Date(e.dateTime || e.date || s.dateTime || s.date);
+    let start, end;
+    if (allDay) {
+      const a = String(s.date).split("-"); start = new Date(+a[0], +a[1] - 1, +a[2]);
+      const b = String(e.date || s.date).split("-"); end = new Date(+b[0], +b[1] - 1, +b[2]);
+    } else {
+      start = new Date(s.dateTime || s.date);
+      end = new Date(e.dateTime || e.date || s.dateTime || s.date);
+    }
     return { allDay, start, end };
   }
 
