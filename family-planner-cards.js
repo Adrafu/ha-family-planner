@@ -1,6 +1,6 @@
 /* Family Planner custom cards - meal-grid-card + family-calendar-card (same-origin local file) */
 
-/* ===== meal-grid-card v5 (week auto-fill) ===== */
+/* ===== meal-grid-card v8 (week auto-fill + clear + recipe link + AT german) ===== */
 (() => {
 const CP = cp => String.fromCodePoint(cp);
 class MealGridCard extends HTMLElement {
@@ -8,7 +8,7 @@ class MealGridCard extends HTMLElement {
     this.config = Object.assign({
       title: "Wochenplan", mode: "week", week_offset: 0,
       show_emojis: true, meal_icons: true, background: "",
-      ai_suggest: true, ai_entity: "",
+      ai_suggest: true, ai_entity: "", recipe_url: "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html",
       meals: [
         { label: "Fruehstueck", start: 0, end: 11 },
         { label: "Mittag", start: 11, end: 15 },
@@ -137,7 +137,7 @@ class MealGridCard extends HTMLElement {
     try {
       const existing = [];
       this._cells.forEach(r => r.forEach(c => c.forEach(o => { if (o.summary) existing.push(o.summary); })));
-      const prompt = `Schlage genau EIN Gericht fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Kurz, alltagstauglich, auf Deutsch. Antworte NUR mit dem Gerichtnamen, ohne Erklaerung, ohne Anfuehrungszeichen, ohne Satzzeichen am Ende.` + (existing.length ? ` Vermeide diese bereits geplanten Gerichte: ${existing.join(", ")}.` : "");
+      const prompt = `Schlage genau EIN Gericht fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Kurz, alltagstauglich, auf oesterreichischem Deutsch (z. B. Topfen statt Quark, Erdaepfel statt Kartoffeln, Paradeiser statt Tomaten, Faschiertes statt Hackfleisch, Obers statt Sahne, Marillen statt Aprikosen). Antworte NUR mit dem Gerichtnamen, ohne Erklaerung, ohne Anfuehrungszeichen, ohne Satzzeichen am Ende.` + (existing.length ? ` Vermeide diese bereits geplanten Gerichte: ${existing.join(", ")}.` : "");
       const data = { task_name: "Essensvorschlag", instructions: prompt };
       if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
       const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
@@ -167,7 +167,7 @@ class MealGridCard extends HTMLElement {
           if (!(cell && cell.length && cell[0].summary)) emptyDays.push(ci);
         }
         if (!emptyDays.length) continue;
-        const prompt = `Schlage ${emptyDays.length} verschiedene, einfache, alltagstaugliche Gerichte fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Auf Deutsch. Antworte als reine Liste, ein Gericht pro Zeile, ohne Nummerierung und ohne Aufzaehlungszeichen.` + (existing.length ? ` Vermeide diese Gerichte: ${existing.join(", ")}.` : "");
+        const prompt = `Schlage ${emptyDays.length} verschiedene, einfache, alltagstaugliche Gerichte fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Auf oesterreichischem Deutsch (z. B. Topfen statt Quark, Erdaepfel statt Kartoffeln, Paradeiser statt Tomaten, Faschiertes statt Hackfleisch, Obers statt Sahne, Marillen statt Aprikosen). Antworte als reine Liste, ein Gericht pro Zeile, ohne Nummerierung und ohne Aufzaehlungszeichen.` + (existing.length ? ` Vermeide diese Gerichte: ${existing.join(", ")}.` : "");
         const data = { task_name: "Wochenessensplan", instructions: prompt };
         if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
         const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
@@ -186,6 +186,19 @@ class MealGridCard extends HTMLElement {
     btn.disabled = false; btn.innerHTML = prev;
   }
 
+  async _clearWeek(btn) {
+    if (this.config.mode === "compact") return;
+    if (!window.confirm("Wirklich alle Gerichte dieser Woche loeschen?")) return;
+    const prev = btn.innerHTML; btn.disabled = true; btn.innerHTML = CP(0x1F5D1) + " ...";
+    try {
+      const evs = [];
+      this._cells.forEach(r => r.forEach(c => c.forEach(o => { if (o.uid) evs.push(o); })));
+      for (const o of evs) { await this._delEvent(o, true); }
+      await this._maybeFetch(true);
+    } catch (e) {}
+    btn.disabled = false; btn.innerHTML = prev;
+  }
+
   _openEditor(mi, ci) {
     const meal = this._meals[mi], date = this._cols[ci];
     const ev = (this._cells[mi][ci] && this._cells[mi][ci][0]) || null;
@@ -194,7 +207,7 @@ class MealGridCard extends HTMLElement {
     const ov = document.createElement("div"); ov.className = "mg-ov";
     const box = document.createElement("div"); box.className = "mg-modal";
     const suggestBtn = this.config.ai_suggest ? `<div class="mg-suggest-row"><button class="mg-btn mg-suggest">${CP(0x2728)} Vorschlag holen</button></div>` : "";
-    box.innerHTML = `<div class="mg-modal-t"></div><input class="mg-input" type="text" placeholder="Gericht eingeben...">${suggestBtn}<div class="mg-modal-btns"><button class="mg-btn mg-cancel">Abbrechen</button><button class="mg-btn mg-del">Loeschen</button><button class="mg-btn mg-save">Speichern</button></div>`;
+    box.innerHTML = `<div class="mg-modal-t"></div><input class="mg-input" type="text" placeholder="Gericht eingeben..."><div class="mg-recipe-row"><button class="mg-btn mg-recipe">${CP(0x1F517)} Zum Rezept</button></div>${suggestBtn}<div class="mg-modal-btns"><button class="mg-btn mg-cancel">Abbrechen</button><button class="mg-btn mg-del">Loeschen</button><button class="mg-btn mg-save">Speichern</button></div>`;
     box.querySelector(".mg-modal-t").textContent = title;
     const input = box.querySelector(".mg-input");
     input.value = ev ? (ev.summary || "") : "";
@@ -210,6 +223,11 @@ class MealGridCard extends HTMLElement {
     box.querySelector(".mg-save").addEventListener("click", save);
     const sb = box.querySelector(".mg-suggest");
     if (sb) sb.addEventListener("click", () => this._suggest(meal, input, sb));
+    const rb = box.querySelector(".mg-recipe");
+    if (rb) {
+      if (!ev) { const rr = rb.closest(".mg-recipe-row"); if (rr) rr.style.display = "none"; }
+      rb.addEventListener("click", () => { const q = input.value.trim(); if (!q) return; const u = (this.config.recipe_url || "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html").replace("{q}", encodeURIComponent(q)); window.open(u, "_blank", "noopener"); });
+    }
     input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); save(); } else if (e.key === "Escape") { close(); } });
   }
 
@@ -252,7 +270,7 @@ class MealGridCard extends HTMLElement {
       head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
     }
 
-    let html = `<ha-card class="mg-card">${head}${(!compact && this.config.ai_suggest) ? `<div class="mg-fillrow"><button class="mg-fill">${CP(0x2728)} Ganze Woche f&uuml;llen</button></div>` : ""}<div class="mg-wrap"><table class="mg"><thead><tr><th class="mg-corner"></th>`;
+    let html = `<ha-card class="mg-card">${head}${(!compact && this.config.ai_suggest) ? `<div class="mg-fillrow"><button class="mg-fill">${CP(0x2728)} Woche f&uuml;llen</button><button class="mg-clear">${CP(0x1F5D1)} Woche leeren</button></div>` : ""}<div class="mg-wrap"><table class="mg"><thead><tr><th class="mg-corner"></th>`;
     cols.forEach((d, i) => {
       html += `<th class="${isToday(d) ? "mg-today" : ""}"><div class="mg-day">${colLabel(d, i)}</div><div class="mg-date">${d.getDate()}.${d.getMonth() + 1}.</div></th>`;
     });
@@ -303,10 +321,14 @@ class MealGridCard extends HTMLElement {
       .mg-modal-t{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
       .mg-input{width:100%;box-sizing:border-box;padding:11px 12px;font-size:1rem;border:1px solid var(--divider-color,#ccc);border-radius:12px;background:var(--secondary-background-color,#f3f3f3);color:var(--primary-text-color);}
       .mg-suggest-row{margin-top:10px;}
+      .mg-recipe-row{margin-top:10px;}
+      .mg-recipe{width:100%;background:rgba(255,167,38,.18);color:#e65100;font-weight:600;}
       .mg-suggest{width:100%;background:rgba(79,195,247,.18);color:#0277bd;font-weight:600;}
-      .mg-fillrow{padding:0 14px 10px;}
-      .mg-fill{width:100%;border:none;border-radius:10px;padding:10px;background:rgba(79,195,247,.20);color:#0277bd;font-weight:700;cursor:pointer;}
+      .mg-fillrow{display:flex;gap:8px;padding:0 14px 10px;}
+      .mg-fill{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(79,195,247,.20);color:#0277bd;font-weight:700;cursor:pointer;}
       .mg-fill:hover{background:rgba(79,195,247,.32);}
+      .mg-clear{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(229,57,53,.15);color:#c62828;font-weight:700;cursor:pointer;}
+      .mg-clear:hover{background:rgba(229,57,53,.28);}
       .mg-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
       .mg-btn{border:none;border-radius:10px;padding:9px 14px;font-size:.9rem;cursor:pointer;}
       .mg-cancel{background:var(--secondary-background-color,#eee);color:var(--primary-text-color);}
@@ -317,6 +339,8 @@ class MealGridCard extends HTMLElement {
     this.innerHTML = `<style>${css}</style>${html}`;
     const fb = this.querySelector(".mg-fill");
     if (fb) fb.addEventListener("click", () => this._fillWeek(fb));
+    const cb = this.querySelector(".mg-clear");
+    if (cb) cb.addEventListener("click", () => this._clearWeek(cb));
     this.querySelectorAll(".mg-nav,.mg-today-btn").forEach(b => {
       b.addEventListener("click", e => {
         e.stopPropagation();
@@ -338,7 +362,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v1.2 (adaptive text color) ===== */
+/* ===== family-calendar-card v1.4 (adaptive text + create/edit/delete events) ===== */
 (() => {
 const CP = c => String.fromCodePoint(c);
 class FamilyCalendarCard extends HTMLElement {
@@ -424,12 +448,14 @@ class FamilyCalendarCard extends HTMLElement {
   }
 
   _items() {
-    const out = [];
+    const out = []; this._evMap = {};
     (this._events || []).forEach(ev => {
       const cl = this._classify(ev); if (!cl) return;
       if (this._hidden.has(cl.person.name)) return;
       const t = this._parse(ev);
-      out.push({ person: cl.person, display: cl.display, allDay: t.allDay, start: t.start, end: t.end, uid: ev.uid, entity: ev._entity });
+      const item = { person: cl.person, display: cl.display, allDay: t.allDay, start: t.start, end: t.end, uid: ev.uid, entity: ev._entity };
+      out.push(item);
+      if (ev.uid) this._evMap[ev.uid] = item;
     });
     return out;
   }
@@ -498,7 +524,7 @@ class FamilyCalendarCard extends HTMLElement {
       dayItems.forEach(e => { if (curEnd !== null && e.start >= curEnd) { clusters.push(cur); cur = []; curEnd = null; } cur.push(e); curEnd = curEnd === null ? e.end : new Date(Math.max(curEnd, e.end)); });
       if (cur.length) clusters.push(cur);
       clusters.forEach(cl => { const colsEnd = []; cl.forEach(e => { let placed = false; for (let i = 0; i < colsEnd.length; i++) { if (colsEnd[i] <= e.start) { e._c = i; colsEnd[i] = e.end; placed = true; break; } } if (!placed) { e._c = colsEnd.length; colsEnd.push(e.end); } }); cl.forEach(e => e._n = colsEnd.length); });
-      let col = `<div class="fcc-col${this._isToday(d) ? " fcc-today-col" : ""}" style="height:${gridH}px;background-size:100% ${HH}px">`;
+      let col = `<div class="fcc-col${this._isToday(d) ? " fcc-today-col" : ""}" data-date="${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())}" style="height:${gridH}px;background-size:100% ${HH}px">`;
       dayItems.forEach(e => {
         const sd = Math.max(h0, e.start.getHours() + e.start.getMinutes() / 60);
         const ed = Math.min(h1, Math.max(sd + 0.25, e.end.getHours() + e.end.getMinutes() / 60 || h1));
@@ -525,13 +551,75 @@ class FamilyCalendarCard extends HTMLElement {
       const inMonth = c.getMonth() === r.start.getMonth();
       const dayEv = items.filter(it => { const s = new Date(it.start.getFullYear(), it.start.getMonth(), it.start.getDate()); const e = it.allDay ? it.end : new Date(it.end.getFullYear(), it.end.getMonth(), it.end.getDate() + 1); return c >= s && c < e; });
       dayEv.sort((a, b) => (a.allDay === b.allDay) ? a.start - b.start : (a.allDay ? -1 : 1));
-      let cell = `<div class="fcc-m-cell${inMonth ? "" : " fcc-dim"}${this._isToday(c) ? " fcc-today" : ""}"><div class="fcc-m-num">${c.getDate()}</div>`;
+      let cell = `<div class="fcc-m-cell${inMonth ? "" : " fcc-dim"}${this._isToday(c) ? " fcc-today" : ""}" data-date="${c.getFullYear()}-${this._pad(c.getMonth() + 1)}-${this._pad(c.getDate())}"><div class="fcc-m-num">${c.getDate()}</div>`;
       dayEv.slice(0, 4).forEach(it => { const tm = it.allDay ? "" : `${this._pad(it.start.getHours())}:${this._pad(it.start.getMinutes())} `; cell += `<div class="fcc-m-ev" data-uid="${this._esc(it.uid || "")}" data-ent="${it.entity}" style="border-left-color:${it.person.color}"><span class="fcc-m-t">${this._esc(tm)}${this._esc(it.display)}</span></div>`; });
       if (dayEv.length > 4) cell += `<div class="fcc-m-more">+${dayEv.length - 4}</div>`;
       cell += "</div>"; grid += cell;
     });
     grid += "</div>";
     return { label: mlabel, html: `<div class="fcc-m">${head}${grid}</div>` };
+  }
+
+  _openEvent(opts) {
+    opts = opts || {};
+    const persons = this.config.persons.filter(p => p.calendar && !p.no_create);
+    if (!persons.length || !this._hass) return;
+    const pad = n => String(n).padStart(2, "0");
+    const it = opts.item || null;
+    const edit = !!it;
+    let dateIso, von, bis, allDay = false, title = "", personIdx = 0;
+    if (edit) {
+      const s = it.start, e = it.end;
+      dateIso = `${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())}`;
+      allDay = !!it.allDay;
+      von = pad(s.getHours()) + ":" + pad(s.getMinutes());
+      bis = pad(e.getHours()) + ":" + pad(e.getMinutes());
+      title = it.display || "";
+      const pi = persons.findIndex(p => it.person && p.name === it.person.name);
+      personIdx = pi >= 0 ? pi : 0;
+    } else {
+      dateIso = opts.dateIso;
+      von = pad(opts.hour) + ":00";
+      bis = pad(Math.min(opts.hour + 1, 23)) + ":00";
+    }
+    const ov = document.createElement("div"); ov.className = "fcc-ov";
+    const box = document.createElement("div"); box.className = "fcc-modal";
+    const optsHtml = persons.map((p, i) => `<option value="${i}"${i === personIdx ? " selected" : ""}>${this._esc(p.name)}</option>`).join("");
+    box.innerHTML = `<div class="fcc-modal-t">${edit ? "Termin bearbeiten" : "Neuer Termin"}</div>
+      <input class="fcc-in fcc-title" type="text" placeholder="Titel" value="${this._esc(title)}">
+      <label class="fcc-lab">Wer</label><select class="fcc-in fcc-person">${optsHtml}</select>
+      <label class="fcc-lab">Datum</label><input class="fcc-in fcc-date" type="date" value="${dateIso}">
+      <label class="fcc-check"><input type="checkbox" class="fcc-allday"${allDay ? " checked" : ""}> Ganztags</label>
+      <div class="fcc-row2 fcc-times"><div><label class="fcc-lab">Von</label><input class="fcc-in fcc-von" type="time" value="${von}"></div><div><label class="fcc-lab">Bis</label><input class="fcc-in fcc-bis" type="time" value="${bis}"></div></div>
+      <div class="fcc-modal-btns"><button class="fcc-btn2 fcc-cancel">Abbrechen</button>${edit ? '<button class="fcc-btn2 fcc-del">Loeschen</button>' : ''}<button class="fcc-btn2 fcc-save">Speichern</button></div>`;
+    ov.appendChild(box); this.appendChild(ov);
+    const ti = box.querySelector(".fcc-title");
+    const adCb = box.querySelector(".fcc-allday");
+    const timesEl = box.querySelector(".fcc-times");
+    const syncTimes = () => { timesEl.style.display = adCb.checked ? "none" : "flex"; };
+    syncTimes(); adCb.addEventListener("change", syncTimes);
+    setTimeout(() => { ti.focus(); }, 30);
+    const close = () => { if (ov.parentNode) ov.parentNode.removeChild(ov); };
+    ov.addEventListener("click", e => { if (e.target === ov) close(); });
+    box.querySelector(".fcc-cancel").addEventListener("click", close);
+    const delBtn = box.querySelector(".fcc-del");
+    if (delBtn) delBtn.addEventListener("click", () => { close(); if (it && it.uid) this._hass.callWS({ type: "calendar/event/delete", entity_id: it.entity, uid: it.uid }).then(() => this._maybeFetch(true)).catch(() => {}); });
+    box.querySelector(".fcc-save").addEventListener("click", () => {
+      const t = ti.value.trim(); if (!t) { ti.focus(); return; }
+      const p = persons[+box.querySelector(".fcc-person").value];
+      const d = box.querySelector(".fcc-date").value;
+      const ad = adCb.checked;
+      const summary = (p.prefix ? p.prefix + " " : "") + t;
+      close();
+      const doCreate = () => {
+        const data = { entity_id: p.calendar, summary: summary };
+        if (ad) { const nd = new Date(d + "T00:00:00"); nd.setDate(nd.getDate() + 1); data.start_date = d; data.end_date = `${nd.getFullYear()}-${pad(nd.getMonth() + 1)}-${pad(nd.getDate())}`; }
+        else { let v = box.querySelector(".fcc-von").value || "09:00"; let b = box.querySelector(".fcc-bis").value || v; if (b <= v) b = pad(Math.min(parseInt(v.split(":")[0], 10) + 1, 23)) + ":" + (v.split(":")[1] || "00"); data.start_date_time = d + " " + v + ":00"; data.end_date_time = d + " " + b + ":00"; }
+        this._hass.callService("calendar", "create_event", data).then(() => this._maybeFetch(true)).catch(() => {});
+      };
+      if (edit && it && it.uid) this._hass.callWS({ type: "calendar/event/delete", entity_id: it.entity, uid: it.uid }).then(doCreate).catch(doCreate);
+      else doCreate();
+    });
   }
 
   _render() {
@@ -542,7 +630,15 @@ class FamilyCalendarCard extends HTMLElement {
     this.querySelectorAll(".fcc-nav-b,.fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._maybeFetch(true); }));
     this.querySelectorAll(".fcc-vw").forEach(b => b.addEventListener("click", () => { const v = b.dataset.v; if (v !== this._view) { this._view = v; this._offset = 0; this._maybeFetch(true); } }));
     this.querySelectorAll(".fcc-chip").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; if (this._hidden.has(n)) this._hidden.delete(n); else this._hidden.add(n); this._saveHidden(); this._render(); }));
-    this.querySelectorAll(".fcc-ev,.fcc-ad-ev,.fcc-m-ev").forEach(el => el.addEventListener("click", e => { e.stopPropagation(); const ent = el.dataset.ent; if (ent) this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: ent }, bubbles: true, composed: true })); }));
+    this.querySelectorAll(".fcc-ev,.fcc-ad-ev,.fcc-m-ev").forEach(el => el.addEventListener("click", e => {
+      e.stopPropagation();
+      const uid = el.dataset.uid;
+      const item = uid && this._evMap ? this._evMap[uid] : null;
+      if (item && !(item.person && item.person.no_create)) { this._openEvent({ item: item }); return; }
+      const ent = el.dataset.ent; if (ent) this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: ent }, bubbles: true, composed: true }));
+    }));
+    this.querySelectorAll(".fcc-col").forEach(col => col.addEventListener("click", e => { const ds = col.dataset.date; if (!ds) return; const h = Math.min(this.config.day_end - 1, Math.max(this.config.day_start, this.config.day_start + Math.floor(e.offsetY / 46))); this._openEvent({ dateIso: ds, hour: h }); }));
+    this.querySelectorAll(".fcc-m-cell").forEach(c => c.addEventListener("click", () => { const ds = c.dataset.date; if (ds) this._openEvent({ dateIso: ds, hour: 9 }); }));
     if (this._view === "week") { const sc = this.querySelector(".fcc-scroll"); if (sc) sc.scrollTop = Math.max(0, (8 - this.config.day_start) * 46); }
   }
 
@@ -590,6 +686,21 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-m-ev{border-left:3px solid #888;background:var(--card-background-color);border-radius:4px;margin:2px 0;padding:1px 4px;overflow:hidden;cursor:pointer;}
     .fcc-m-t{font-size:.66rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:var(--primary-text-color);}
     .fcc-m-more{font-size:.62rem;color:var(--secondary-text-color);padding-left:4px;}
+    .fcc-col{cursor:pointer;}
+    .fcc-m-cell{cursor:pointer;}
+    .fcc-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
+    .fcc-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);text-shadow:none;width:min(92vw,360px);border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
+    .fcc-modal-t{font-size:1.1rem;font-weight:700;margin-bottom:10px;}
+    .fcc-lab{display:block;font-size:.72rem;color:var(--secondary-text-color);margin:8px 0 2px;}
+    .fcc-in{width:100%;box-sizing:border-box;padding:9px 10px;font-size:1rem;border:1px solid var(--divider-color,#ccc);border-radius:10px;background:var(--secondary-background-color,#f3f3f3);color:var(--primary-text-color);}
+    .fcc-row2{display:flex;gap:10px;}
+    .fcc-row2>div{flex:1;}
+    .fcc-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
+    .fcc-btn2{border:none;border-radius:10px;padding:9px 14px;font-size:.9rem;cursor:pointer;}
+    .fcc-cancel{background:var(--secondary-background-color,#eee);color:var(--primary-text-color);}
+    .fcc-save{background:#039be5;color:#fff;font-weight:700;}
+    .fcc-del{background:rgba(229,57,53,.15);color:#c62828;}
+    .fcc-check{display:flex;align-items:center;gap:8px;font-size:.85rem;margin:10px 0 2px;color:var(--primary-text-color);}
     `;
   }
   getCardSize() { return 10; }
@@ -598,5 +709,107 @@ if (!customElements.get("family-calendar-card")) {
   customElements.define("family-calendar-card", FamilyCalendarCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "family-calendar-card", name: "Family Calendar Card", description: "Wochen-Stunden-Raster + Monat mit Praefix-Personen" });
+}
+})();
+
+/* ===== kids-routine-card v4 (integer star display) ===== */
+(() => {
+const CPR = cp => String.fromCodePoint(cp);
+class KidsRoutineCard extends HTMLElement {
+  setConfig(config) {
+    this.config = Object.assign({ title: "Routinen", points_entity: "", reward_button: "", penalty_button: "", routines: [] }, config || {});
+    this._prev = {}; this._inited = false; this._built = false; this._sig = "";
+  }
+  set hass(hass) {
+    this._hass = hass;
+    let sig = "";
+    if (this.config.points_entity && hass.states[this.config.points_entity]) sig += hass.states[this.config.points_entity].state;
+    this.config.routines.forEach(g => (g.tasks || []).forEach(t => { const s = hass.states[t.entity]; sig += "|" + (s ? s.state : "?"); }));
+    if (sig === this._sig) return;
+    this._sig = sig; this._render();
+  }
+  _esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  _isOn(e) { const s = this._hass && this._hass.states[e]; return !!(s && s.state === "on"); }
+  _fmtStars(v) { const n = parseFloat(v); return isNaN(n) ? v : String(Math.round(n)); }
+  _toggle(task) {
+    if (!this._hass || !task || !task.entity) return;
+    const wasOn = this._isOn(task.entity);
+    this._hass.callService("input_boolean", "toggle", { entity_id: task.entity });
+    if (!wasOn) {
+      this._celebrate(task.emoji);
+      if (this.config.reward_button) { try { this._hass.callService("button", "press", { entity_id: this.config.reward_button }); } catch (e) {} }
+    } else {
+      if (this.config.penalty_button) { try { this._hass.callService("button", "press", { entity_id: this.config.penalty_button }); } catch (e) {} }
+    }
+  }
+  _resetGroup(tasks) { const ids = (tasks || []).map(t => t.entity).filter(Boolean); if (this._hass && ids.length) this._hass.callService("input_boolean", "turn_off", { entity_id: ids }); }
+  _celebrate(emoji) {
+    if (!this._fx) return;
+    const e = emoji || CPR(0x2B50);
+    for (let i = 0; i < 14; i++) {
+      const s = document.createElement("span");
+      s.className = "kr-drop"; s.textContent = e;
+      s.style.left = (Math.random() * 100) + "%";
+      s.style.fontSize = (18 + Math.random() * 22) + "px";
+      s.style.animationDelay = (Math.random() * 0.3) + "s";
+      s.style.animationDuration = (1.1 + Math.random() * 0.9) + "s";
+      this._fx.appendChild(s);
+      setTimeout(() => { if (s.parentNode) s.parentNode.removeChild(s); }, 2400);
+    }
+  }
+  _render() {
+    if (!this._hass) return;
+    if (!this._built) {
+      this.innerHTML = `<style>${this._css()}</style><ha-card class="kr-card"><div class="kr-fx"></div><div class="kr-content"></div></ha-card>`;
+      this._fx = this.querySelector(".kr-fx"); this._content = this.querySelector(".kr-content"); this._built = true;
+    }
+    const stars = this.config.points_entity && this._hass.states[this.config.points_entity] ? this._hass.states[this.config.points_entity].state : null;
+    let html = `<div class="kr-head"><div class="kr-title">${this._esc(this.config.title)}</div>` + (stars != null ? `<div class="kr-stars">${CPR(0x2B50)} ${this._esc(this._fmtStars(stars))}</div>` : "") + `</div>`;
+    this.config.routines.forEach((g, gi) => {
+      const tasks = g.tasks || [];
+      const done = tasks.filter(t => this._isOn(t.entity)).length;
+      const all = tasks.length && done === tasks.length;
+      html += `<div class="kr-group${all ? " kr-done" : ""}"><div class="kr-glabel"><span>${this._esc(g.icon || "")} ${this._esc(g.label || "")}</span><span class="kr-prog">${done}/${tasks.length}</span><button class="kr-reset" data-g="${gi}" title="Zuruecksetzen">${CPR(0x21BB)}</button></div><div class="kr-tasks">`;
+      tasks.forEach((t, ti) => {
+        const on = this._isOn(t.entity);
+        html += `<button class="kr-task${on ? " kr-on" : ""}" data-g="${gi}" data-t="${ti}"><span class="kr-emoji">${this._esc(t.emoji || "")}</span><span class="kr-lbl">${this._esc(t.label || "")}</span>${on ? `<span class="kr-check">${CPR(0x2714)}</span>` : ""}</button>`;
+      });
+      html += `</div></div>`;
+    });
+    this._content.innerHTML = html;
+    this._content.querySelectorAll(".kr-task").forEach(b => b.addEventListener("click", () => { const g = +b.dataset.g, t = +b.dataset.t; this._toggle(this.config.routines[g].tasks[t]); }));
+    this._content.querySelectorAll(".kr-reset").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); this._resetGroup(this.config.routines[+b.dataset.g].tasks || []); }));
+  }
+  _css() {
+    return `
+    .kr-card{position:relative;overflow:hidden;padding:6px 6px 12px;}
+    .kr-fx{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5;}
+    .kr-drop{position:absolute;top:-34px;animation-name:kr-fall;animation-timing-function:linear;animation-fill-mode:forwards;}
+    @keyframes kr-fall{to{transform:translateY(380px) rotate(45deg);opacity:0;}}
+    .kr-head{display:flex;justify-content:space-between;align-items:center;padding:8px 8px 4px;}
+    .kr-title{font-size:1.2rem;font-weight:700;}
+    .kr-stars{font-size:1.05rem;font-weight:700;color:#f9a825;}
+    .kr-group{margin:6px 4px;border-radius:16px;padding:6px 8px;background:var(--secondary-background-color,rgba(0,0,0,.03));transition:background .2s;}
+    .kr-group.kr-done{background:rgba(67,160,71,.16);}
+    .kr-glabel{display:flex;align-items:center;gap:8px;font-weight:700;font-size:.95rem;padding:2px 2px 6px;}
+    .kr-glabel>span:first-child{flex:1;}
+    .kr-prog{font-size:.8rem;color:var(--secondary-text-color);font-weight:600;}
+    .kr-reset{border:none;background:transparent;color:var(--secondary-text-color);font-size:1.1rem;cursor:pointer;line-height:1;}
+    .kr-tasks{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:8px;}
+    .kr-task{position:relative;border:none;border-radius:16px;padding:10px 6px;background:var(--card-background-color,#fff);box-shadow:0 1px 4px rgba(0,0,0,.14);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;transition:transform .1s,background .15s;}
+    .kr-task:active{transform:scale(.94);}
+    .kr-task.kr-on{background:rgba(67,160,71,.20);}
+    .kr-emoji{font-size:2rem;line-height:1;}
+    .kr-task.kr-on .kr-emoji{filter:grayscale(.15);}
+    .kr-lbl{font-size:.72rem;text-align:center;color:var(--primary-text-color);line-height:1.05;}
+    .kr-check{position:absolute;top:4px;right:6px;color:#2e7d32;font-weight:800;font-size:.9rem;}
+    `;
+  }
+  getCardSize() { return 6; }
+}
+if (!customElements.get("kids-routine-card")) {
+  customElements.define("kids-routine-card", KidsRoutineCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "kids-routine-card", name: "Kids Routine Card", description: "Buddy-style routines with emoji + rewards" });
 }
 })();
