@@ -1,6 +1,6 @@
-/* Family Planner custom cards - meal-grid-card + family-calendar-card (same-origin local file) */
+/* Family Planner custom cards v1.2.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card */
 
-/* ===== meal-grid-card v8 (week auto-fill + clear + recipe link + AT german) ===== */
+/* ===== meal-grid-card v12 (diet preference + variety, umlauts, light-theme bg text fix) ===== */
 (() => {
 const CP = cp => String.fromCodePoint(cp);
 class MealGridCard extends HTMLElement {
@@ -10,7 +10,7 @@ class MealGridCard extends HTMLElement {
       show_emojis: true, meal_icons: true, background: "",
       ai_suggest: true, ai_entity: "", recipe_url: "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html",
       meals: [
-        { label: "Fruehstueck", start: 0, end: 11 },
+        { label: "Frühstück", start: 0, end: 11 },
         { label: "Mittag", start: 11, end: 15 },
         { label: "Abend", start: 15, end: 24 },
       ],
@@ -86,13 +86,19 @@ class MealGridCard extends HTMLElement {
       ["burger", 0x1F354], ["taco", 0x1F32E], ["burrito", 0x1F32F], ["wrap", 0x1F32F], ["doener", 0x1F959], ["doner", 0x1F959], ["kebab", 0x1F959],
       ["pfannkuchen", 0x1F95E], ["palatschinke", 0x1F95E], ["pancake", 0x1F95E], ["waffel", 0x1F9C7],
       ["kaese", 0x1F9C0], ["kase", 0x1F9C0],
-      ["brokkoli", 0x1F966], ["broccoli", 0x1F966], ["gemuese", 0x1F966], ["gemuse", 0x1F966],
+      ["brokkoli", 0x1F966], ["broccoli", 0x1F966], ["karfiol", 0x1F966], ["blumenkohl", 0x1F966], ["gemuese", 0x1F966], ["gemuse", 0x1F966],
+      ["paprika", 0x1FAD1], ["peperoni", 0x1F336], ["chili", 0x1F336], ["chilli", 0x1F336], ["scharf", 0x1F336],
+      ["tomate", 0x1F345], ["paradeiser", 0x1F345], ["pilz", 0x1F344], ["champignon", 0x1F344], ["mais", 0x1F33D],
+      ["karotte", 0x1F955], ["moehre", 0x1F955], ["mohre", 0x1F955], ["zucchini", 0x1F952], ["gurke", 0x1F952],
+      ["spinat", 0x1F96C], ["kohl", 0x1F96C], ["avocado", 0x1F951], ["bohne", 0x1FAD8], ["linse", 0x1FAD8], ["kichererbse", 0x1FAD8], ["huelsen", 0x1FAD8],
+      ["auflauf", 0x1F958], ["gratin", 0x1F958], ["pfanne", 0x1F958], ["wok", 0x1F35C], ["ramen", 0x1F35C],
+      ["quiche", 0x1F967], ["tarte", 0x1F967], ["sandwich", 0x1F96A], ["baguette", 0x1F956],
       ["banane", 0x1F34C], ["apfel", 0x1F34E], ["beere", 0x1F353], ["obst", 0x1F34E], ["frucht", 0x1F34E],
-      ["kuchen", 0x1F370], ["torte", 0x1F370], ["eis", 0x1F368], ["dessert", 0x1F368], ["pudding", 0x1F368],
-      ["kaffee", 0x2615], ["tee", 0x1F375],
+      ["kuchen", 0x1F370], ["torte", 0x1F370], ["schokolad", 0x1F36B], ["keks", 0x1F36A], ["eis", 0x1F368], ["dessert", 0x1F368], ["pudding", 0x1F368],
+      ["smoothie", 0x1F964], ["milch", 0x1F95B], ["kaffee", 0x2615], ["tee", 0x1F375],
     ];
     for (const [k, cp] of map) { if (n.includes(k)) return CP(cp); }
-    return "";
+    return CP(0x1F37D);
   }
 
   _mealIcon(label) {
@@ -137,17 +143,20 @@ class MealGridCard extends HTMLElement {
     try {
       const existing = [];
       this._cells.forEach(r => r.forEach(c => c.forEach(o => { if (o.summary) existing.push(o.summary); })));
-      const prompt = `Schlage genau EIN Gericht fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Kurz, alltagstauglich, auf oesterreichischem Deutsch (z. B. Topfen statt Quark, Erdaepfel statt Kartoffeln, Paradeiser statt Tomaten, Faschiertes statt Hackfleisch, Obers statt Sahne, Marillen statt Aprikosen). Antworte NUR mit dem Gerichtnamen, ohne Erklaerung, ohne Anfuehrungszeichen, ohne Satzzeichen am Ende.` + (existing.length ? ` Vermeide diese bereits geplanten Gerichte: ${existing.join(", ")}.` : "");
+      const avoid = existing.concat(this._recent || []);
+      const veg = Math.random() < 0.7;
+      const diet = veg ? "Das Gericht MUSS fleischlos (vegetarisch) sein." : "Das Gericht darf auch Fleisch oder Fisch enthalten.";
+      const prompt = `Schlage genau EIN alltagstaugliches Gericht fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. ${diet} Auch einfache Klassiker (z. B. Nudeln mit Pesto, Reis mit Gemuese) sind ausdruecklich willkommen. Sprache: oesterreichisches Deutsch (z. B. Topfen statt Quark, Erdaepfel statt Kartoffeln, Paradeiser statt Tomaten), aber die Gerichte duerfen aus aller Welt stammen, nicht nur oesterreichische Kueche. Antworte NUR mit dem Gerichtnamen, ohne Erklaerung, ohne Anfuehrungszeichen, ohne Satzzeichen am Ende.` + (avoid.length ? ` Vermeide diese Gerichte: ${avoid.join(", ")}.` : "");
       const data = { task_name: "Essensvorschlag", instructions: prompt };
       if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
       const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
       let txt = r && r.response && r.response.data;
       if (txt && typeof txt === "object") txt = txt.text || txt.result || JSON.stringify(txt);
       txt = String(txt || "").trim().replace(/^["'\s]+/, "").replace(/["'\s.]+$/, "");
-      if (txt) { input.value = txt; input.focus(); }
+      if (txt) { input.value = txt; input.focus(); this._recent = this._recent || []; this._recent.push(txt); if (this._recent.length > 14) this._recent.shift(); }
       else throw new Error("leer");
     } catch (e) {
-      input.placeholder = "KI nicht verfuegbar - bitte Text eingeben";
+      input.placeholder = "KI nicht verfügbar - bitte Text eingeben";
       btn.title = "KI nicht eingerichtet (Google Generative AI Integration fehlt)";
     }
     btn.disabled = false; btn.innerHTML = prev;
@@ -167,7 +176,7 @@ class MealGridCard extends HTMLElement {
           if (!(cell && cell.length && cell[0].summary)) emptyDays.push(ci);
         }
         if (!emptyDays.length) continue;
-        const prompt = `Schlage ${emptyDays.length} verschiedene, einfache, alltagstaugliche Gerichte fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Auf oesterreichischem Deutsch (z. B. Topfen statt Quark, Erdaepfel statt Kartoffeln, Paradeiser statt Tomaten, Faschiertes statt Hackfleisch, Obers statt Sahne, Marillen statt Aprikosen). Antworte als reine Liste, ein Gericht pro Zeile, ohne Nummerierung und ohne Aufzaehlungszeichen.` + (existing.length ? ` Vermeide diese Gerichte: ${existing.join(", ")}.` : "");
+        const prompt = `Schlage ${emptyDays.length} verschiedene, einfache, alltagstaugliche Gerichte fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Etwa 70% davon sollen fleischlos (vegetarisch) sein. Sprache: oesterreichisches Deutsch (z. B. Topfen statt Quark, Erdaepfel statt Kartoffeln, Paradeiser statt Tomaten), aber die Gerichte duerfen aus aller Welt stammen, nicht nur oesterreichische Kueche. Antworte als reine Liste, ein Gericht pro Zeile, ohne Nummerierung und ohne Aufzaehlungszeichen.` + (existing.length ? ` Vermeide diese Gerichte: ${existing.join(", ")}.` : "");
         const data = { task_name: "Wochenessensplan", instructions: prompt };
         if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
         const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
@@ -188,7 +197,7 @@ class MealGridCard extends HTMLElement {
 
   async _clearWeek(btn) {
     if (this.config.mode === "compact") return;
-    if (!window.confirm("Wirklich alle Gerichte dieser Woche loeschen?")) return;
+    if (!window.confirm("Wirklich alle Gerichte dieser Woche löschen?")) return;
     const prev = btn.innerHTML; btn.disabled = true; btn.innerHTML = CP(0x1F5D1) + " ...";
     try {
       const evs = [];
@@ -207,7 +216,7 @@ class MealGridCard extends HTMLElement {
     const ov = document.createElement("div"); ov.className = "mg-ov";
     const box = document.createElement("div"); box.className = "mg-modal";
     const suggestBtn = this.config.ai_suggest ? `<div class="mg-suggest-row"><button class="mg-btn mg-suggest">${CP(0x2728)} Vorschlag holen</button></div>` : "";
-    box.innerHTML = `<div class="mg-modal-t"></div><input class="mg-input" type="text" placeholder="Gericht eingeben..."><div class="mg-recipe-row"><button class="mg-btn mg-recipe">${CP(0x1F517)} Zum Rezept</button></div>${suggestBtn}<div class="mg-modal-btns"><button class="mg-btn mg-cancel">Abbrechen</button><button class="mg-btn mg-del">Loeschen</button><button class="mg-btn mg-save">Speichern</button></div>`;
+    box.innerHTML = `<div class="mg-modal-t"></div><input class="mg-input" type="text" placeholder="Gericht eingeben..."><div class="mg-recipe-row"><button class="mg-btn mg-recipe">${CP(0x1F517)} Zum Rezept</button></div>${suggestBtn}<div class="mg-modal-btns"><button class="mg-btn mg-cancel">Abbrechen</button><button class="mg-btn mg-del">Löschen</button><button class="mg-btn mg-save">Speichern</button></div>`;
     box.querySelector(".mg-modal-t").textContent = title;
     const input = box.querySelector(".mg-input");
     input.value = ev ? (ev.summary || "") : "";
@@ -264,7 +273,7 @@ class MealGridCard extends HTMLElement {
         <button class="mg-nav" data-d="-1" title="Vorige Woche">${CP(0x2039)}</button>
         <div class="mg-bar-mid"><div class="mg-bar-t">${this._esc(this.config.title)}</div><div class="mg-bar-s">${range} &middot; ${rel}</div></div>
         <button class="mg-today-btn" data-d="0" title="Aktuelle Woche">${CP(0x1F3E0)}</button>
-        <button class="mg-nav" data-d="1" title="Naechste Woche">${CP(0x203A)}</button>
+        <button class="mg-nav" data-d="1" title="Nächste Woche">${CP(0x203A)}</button>
       </div>`;
     } else if (this.config.title) {
       head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
@@ -290,7 +299,7 @@ class MealGridCard extends HTMLElement {
     });
     html += "</tbody></table></div></ha-card>";
 
-    const bgImg = this.config.background ? `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${this.config.background}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);} .mg-card .mg-day,.mg-card .mg-date,.mg-card .mg-bar-t,.mg-card .mg-bar-s,.mg-card .mg-meal-tx{color:#fff;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}` : "";
+    const bgImg = this.config.background ? `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${this.config.background}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);} .mg-card .mg-day,.mg-card .mg-date,.mg-card .mg-bar-t,.mg-card .mg-bar-s,.mg-card .mg-meal-tx{color:#fff;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;color:#fff;} .mg-card td.mg-cell span{color:#fff;} .mg-card .mg-plus{color:#fff;opacity:.65;} .mg-card thead th{color:#fff;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}` : "";
     const css = `
       .mg-card{overflow:hidden;}
       .mg-h{padding:12px 16px 4px;font-size:1.25rem;font-weight:600;}
@@ -325,10 +334,10 @@ class MealGridCard extends HTMLElement {
       .mg-recipe{width:100%;background:rgba(255,167,38,.18);color:#e65100;font-weight:600;}
       .mg-suggest{width:100%;background:rgba(79,195,247,.18);color:#0277bd;font-weight:600;}
       .mg-fillrow{display:flex;gap:8px;padding:0 14px 10px;}
-      .mg-fill{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(79,195,247,.20);color:#0277bd;font-weight:700;cursor:pointer;}
-      .mg-fill:hover{background:rgba(79,195,247,.32);}
-      .mg-clear{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(229,57,53,.15);color:#c62828;font-weight:700;cursor:pointer;}
-      .mg-clear:hover{background:rgba(229,57,53,.28);}
+      .mg-fill{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(179,229,252,.95);color:#014a73;font-weight:700;cursor:pointer;}
+      .mg-fill:hover{background:rgba(179,229,252,1);}
+      .mg-clear{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(255,205,210,.95);color:#b71c1c;font-weight:700;cursor:pointer;}
+      .mg-clear:hover{background:rgba(255,205,210,1);}
       .mg-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
       .mg-btn{border:none;border-radius:10px;padding:9px 14px;font-size:.9rem;cursor:pointer;}
       .mg-cancel{background:var(--secondary-background-color,#eee);color:var(--primary-text-color);}
@@ -362,7 +371,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v1.5 (adaptive text + create/edit/delete + all-day fix) ===== */
+/* ===== family-calendar-card v1.6 (adaptive text + create/edit/delete + all-day fix + umlauts) ===== */
 (() => {
 const CP = c => String.fromCodePoint(c);
 class FamilyCalendarCard extends HTMLElement {
@@ -597,7 +606,7 @@ class FamilyCalendarCard extends HTMLElement {
       <label class="fcc-lab">Datum</label><input class="fcc-in fcc-date" type="date" value="${dateIso}">
       <label class="fcc-check"><input type="checkbox" class="fcc-allday"${allDay ? " checked" : ""}> Ganztags</label>
       <div class="fcc-row2 fcc-times"><div><label class="fcc-lab">Von</label><input class="fcc-in fcc-von" type="time" value="${von}"></div><div><label class="fcc-lab">Bis</label><input class="fcc-in fcc-bis" type="time" value="${bis}"></div></div>
-      <div class="fcc-modal-btns"><button class="fcc-btn2 fcc-cancel">Abbrechen</button>${edit ? '<button class="fcc-btn2 fcc-del">Loeschen</button>' : ''}<button class="fcc-btn2 fcc-save">Speichern</button></div>`;
+      <div class="fcc-modal-btns"><button class="fcc-btn2 fcc-cancel">Abbrechen</button>${edit ? '<button class="fcc-btn2 fcc-del">Löschen</button>' : ''}<button class="fcc-btn2 fcc-save">Speichern</button></div>`;
     ov.appendChild(box); this.appendChild(ov);
     const ti = box.querySelector(".fcc-title");
     const adCb = box.querySelector(".fcc-allday");
@@ -718,7 +727,7 @@ if (!customElements.get("family-calendar-card")) {
 }
 })();
 
-/* ===== kids-routine-card v4 (integer star display) ===== */
+/* ===== kids-routine-card v5 (integer star display, umlauts) ===== */
 (() => {
 const CPR = cp => String.fromCodePoint(cp);
 class KidsRoutineCard extends HTMLElement {
@@ -775,7 +784,7 @@ class KidsRoutineCard extends HTMLElement {
       const tasks = g.tasks || [];
       const done = tasks.filter(t => this._isOn(t.entity)).length;
       const all = tasks.length && done === tasks.length;
-      html += `<div class="kr-group${all ? " kr-done" : ""}"><div class="kr-glabel"><span>${this._esc(g.icon || "")} ${this._esc(g.label || "")}</span><span class="kr-prog">${done}/${tasks.length}</span><button class="kr-reset" data-g="${gi}" title="Zuruecksetzen">${CPR(0x21BB)}</button></div><div class="kr-tasks">`;
+      html += `<div class="kr-group${all ? " kr-done" : ""}"><div class="kr-glabel"><span>${this._esc(g.icon || "")} ${this._esc(g.label || "")}</span><span class="kr-prog">${done}/${tasks.length}</span><button class="kr-reset" data-g="${gi}" title="Zurücksetzen">${CPR(0x21BB)}</button></div><div class="kr-tasks">`;
       tasks.forEach((t, ti) => {
         const on = this._isOn(t.entity);
         html += `<button class="kr-task${on ? " kr-on" : ""}" data-g="${gi}" data-t="${ti}"><span class="kr-emoji">${this._esc(t.emoji || "")}</span><span class="kr-lbl">${this._esc(t.label || "")}</span>${on ? `<span class="kr-check">${CPR(0x2714)}</span>` : ""}</button>`;
@@ -817,5 +826,181 @@ if (!customElements.get("kids-routine-card")) {
   customElements.define("kids-routine-card", KidsRoutineCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "kids-routine-card", name: "Kids Routine Card", description: "Buddy-style routines with emoji + rewards" });
+}
+})();
+
+/* ===== shopping-fav-card v2 (editable favorites, instant local draft) ===== */
+(() => {
+const CP = cp => String.fromCodePoint(cp);
+class ShoppingFavCard extends HTMLElement {
+  setConfig(config) {
+    if (!config || !config.list_entity) throw new Error("list_entity (todo-Liste) erforderlich");
+    this.config = Object.assign({ columns: 3, store_entity: "", title: "" }, config || {});
+    this._editing = false; this._lastVal = null; this._built = false;
+  }
+  set hass(hass) {
+    this._hass = hass;
+    if (this._editing) return;
+    const v = this._storeVal();
+    if (v !== this._lastVal || !this._built) { this._lastVal = v; this._render(); }
+  }
+  _storeVal() {
+    const e = this.config.store_entity;
+    const st = e && this._hass && this._hass.states[e];
+    return st ? String(st.state) : "";
+  }
+  _items() { return this._storeVal().split(",").map(s => s.trim()).filter(Boolean); }
+  _esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  _norm(s) {
+    let out = "";
+    for (const ch of String(s).toLowerCase()) {
+      const c = ch.codePointAt(0);
+      if (c === 0xe4) out += "a"; else if (c === 0xf6) out += "o";
+      else if (c === 0xfc) out += "u"; else if (c === 0xdf) out += "ss";
+      else out += ch;
+    }
+    return out;
+  }
+  _emoji(name) {
+    const n = this._norm(name);
+    const map = [
+      ["joghurt", 0x1F963], ["topfen", 0x1F963], ["quark", 0x1F963], ["milch", 0x1F95B], ["obers", 0x1F95B], ["sahne", 0x1F95B],
+      ["butter", 0x1F9C8], ["mozzarella", 0x1F9C0], ["parmesan", 0x1F9C0], ["schafkase", 0x1F9C0], ["feta", 0x1F9C0], ["kase", 0x1F9C0],
+      ["ei", 0x1F95A], ["weckerl", 0x1F956], ["semmel", 0x1F956], ["broetchen", 0x1F956], ["brotchen", 0x1F956], ["baguette", 0x1F956],
+      ["toast", 0x1F35E], ["brot", 0x1F35E], ["gebaeck", 0x1F950], ["croissant", 0x1F950],
+      ["schinken", 0x1F356], ["speck", 0x1F953], ["wurst", 0x1F32D], ["faschiert", 0x1F356], ["hack", 0x1F356], ["steak", 0x1F356], ["fleisch", 0x1F356],
+      ["haehnchen", 0x1F357], ["hahnchen", 0x1F357], ["haendl", 0x1F357], ["huhn", 0x1F357], ["pute", 0x1F357],
+      ["lachs", 0x1F41F], ["thunfisch", 0x1F41F], ["fisch", 0x1F41F],
+      ["aufstrich", 0x1F96A], ["aufschnitt", 0x1F96A],
+      ["tomate", 0x1F345], ["paradeiser", 0x1F345], ["paprika", 0x1FAD1], ["chili", 0x1F336], ["peperoni", 0x1F336],
+      ["gurke", 0x1F952], ["salat", 0x1F957], ["zwiebel", 0x1F9C5], ["knoblauch", 0x1F9C4],
+      ["kartoffel", 0x1F954], ["erdapfel", 0x1F954], ["karotte", 0x1F955], ["moehre", 0x1F955], ["mohre", 0x1F955],
+      ["brokkoli", 0x1F966], ["karfiol", 0x1F966], ["blumenkohl", 0x1F966], ["spinat", 0x1F96C], ["kohl", 0x1F96C],
+      ["pilz", 0x1F344], ["champignon", 0x1F344], ["mais", 0x1F33D], ["avocado", 0x1F951], ["gemuese", 0x1F966], ["gemuse", 0x1F966],
+      ["apfel", 0x1F34E], ["banane", 0x1F34C], ["beere", 0x1F353], ["erdbeer", 0x1F353], ["zitrone", 0x1F34B], ["orange", 0x1F34A],
+      ["traube", 0x1F347], ["birne", 0x1F350], ["obst", 0x1F34E],
+      ["nudel", 0x1F35D], ["pasta", 0x1F35D], ["spaghet", 0x1F35D], ["reis", 0x1F35A], ["mehl", 0x1F33E],
+      ["oel", 0x1FAD2], ["essig", 0x1FAD9], ["zucker", 0x1F36C], ["salz", 0x1F9C2], ["honig", 0x1F36F],
+      ["schokolad", 0x1F36B], ["keks", 0x1F36A], ["kuchen", 0x1F370], ["eis", 0x1F368], ["chips", 0x1F37F], ["nuss", 0x1F95C],
+      ["kaffee", 0x2615], ["tee", 0x1F375], ["wasser", 0x1F4A7], ["saft", 0x1F9C3], ["bier", 0x1F37A], ["wein", 0x1F377], ["smoothie", 0x1F964],
+      ["klopapier", 0x1F9FB], ["toilettenpapier", 0x1F9FB], ["kuechenroll", 0x1F9FB], ["taschentuch", 0x1F9FB],
+      ["seife", 0x1F9FC], ["shampoo", 0x1F9F4], ["zahnpasta", 0x1FAA5], ["waschmittel", 0x1F9F4], ["putz", 0x1F9FD], ["spuel", 0x1F9FD],
+      ["windel", 0x1F9F7], ["batterie", 0x1F50B], ["blume", 0x1F490],
+    ];
+    for (const [k, cp] of map) { if (n.includes(k)) return CP(cp); }
+    return CP(0x1F6D2);
+  }
+  _save(items) {
+    const val = items.join(",");
+    this._lastVal = val;
+    if (this._hass && this.config.store_entity) {
+      this._hass.callService("input_text", "set_value", { entity_id: this.config.store_entity, value: val });
+    }
+  }
+  _add(name) {
+    const item = String(name || "").trim();
+    if (!item) return;
+    const items = this._draft || (this._draft = this._items());
+    if (items.some(x => x.toLowerCase() === item.toLowerCase())) return;
+    items.push(item); this._renderEditor(); this._persist();
+  }
+  _remove(i) {
+    const items = this._draft || (this._draft = this._items());
+    items.splice(i, 1); this._renderEditor(); this._persist();
+  }
+  _move(i, d) {
+    const items = this._draft || (this._draft = this._items()); const j = i + d;
+    if (j < 0 || j >= items.length) return;
+    const t = items[i]; items[i] = items[j]; items[j] = t;
+    this._renderEditor(); this._persist();
+  }
+  _persist() {
+    if (!this._draft) return;
+    const val = this._draft.join(",");
+    this._lastVal = val;
+    if (this._hass && this.config.store_entity) {
+      this._hass.callService("input_text", "set_value", { entity_id: this.config.store_entity, value: val });
+    }
+  }
+  _addToCart(name) {
+    if (this._hass) this._hass.callService("todo", "add_item", { entity_id: this.config.list_entity, item: name });
+  }
+  _flash(b) {
+    const o = b.innerHTML; b.classList.add("sf-added"); b.innerHTML = CP(0x2713) + " Hinzugefuegt";
+    setTimeout(() => { b.classList.remove("sf-added"); b.innerHTML = o; }, 850);
+  }
+  _render() {
+    this._built = true;
+    const items = this._items();
+    const cols = this.config.columns || 3;
+    const chips = items.map(it => `<button class="sf-chip" data-n="${this._esc(it)}">${this._emoji(it)} ${this._esc(it)}</button>`).join("");
+    this.innerHTML = `<ha-card class="sf-card">${this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : ""}<div class="sf-grid" style="grid-template-columns:repeat(${cols},1fr);">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div><div class="sf-editbar"><button class="sf-edit">${CP(0x270F) + CP(0xFE0F)} Favoriten bearbeiten</button></div></ha-card>${this._styles()}`;
+    this.querySelectorAll(".sf-chip").forEach(b => b.addEventListener("click", () => { this._addToCart(b.dataset.n); this._flash(b); }));
+    const eb = this.querySelector(".sf-edit"); if (eb) eb.addEventListener("click", () => this._openEditor());
+  }
+  _openEditor() {
+    this._editing = true;
+    this._draft = this._items();
+    const ov = document.createElement("div"); ov.className = "sf-ov"; this._ov = ov;
+    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">Favoriten bearbeiten</div><div class="sf-list"></div><div class="sf-addrow"><input class="sf-new" type="text" placeholder="Neuer Favorit..."><button class="sf-addbtn">${CP(0x2795)} Hinzufuegen</button></div><div class="sf-foot"><button class="sf-done">Fertig</button></div></div>`;
+    this.appendChild(ov);
+    ov.addEventListener("click", e => { if (e.target === ov) this._closeEditor(); });
+    const inp = ov.querySelector(".sf-new");
+    ov.querySelector(".sf-addbtn").addEventListener("click", () => { this._add(inp.value); inp.value = ""; inp.focus(); });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); this._add(inp.value); inp.value = ""; } });
+    ov.querySelector(".sf-done").addEventListener("click", () => this._closeEditor());
+    this._renderEditor();
+  }
+  _renderEditor() {
+    if (!this._ov) return;
+    const list = this._ov.querySelector(".sf-list");
+    const items = this._draft || this._items();
+    list.innerHTML = items.map((it, i) => `<div class="sf-row"><span class="sf-rlbl">${this._emoji(it)} ${this._esc(it)}</span><span class="sf-acts"><button data-a="up" data-i="${i}" title="Hoch">${CP(0x25B2)}</button><button data-a="dn" data-i="${i}" title="Runter">${CP(0x25BC)}</button><button class="sf-x" data-a="rm" data-i="${i}" title="Entfernen">${CP(0x2715)}</button></span></div>`).join("") || `<div class="sf-empty">Noch keine Favoriten</div>`;
+    list.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+      const i = +b.dataset.i, a = b.dataset.a;
+      if (a === "rm") this._remove(i); else if (a === "up") this._move(i, -1); else if (a === "dn") this._move(i, 1);
+    }));
+  }
+  _closeEditor() {
+    this._editing = false;
+    if (this._ov && this._ov.parentNode) this._ov.parentNode.removeChild(this._ov);
+    this._ov = null; this._draft = null; this._lastVal = this._storeVal(); this._render();
+  }
+  _styles() {
+    return `<style>
+      .sf-card{padding:12px;}
+      .sf-title{font-weight:700;margin-bottom:8px;}
+      .sf-grid{display:grid;gap:8px;}
+      .sf-chip{height:50px;border:1px solid var(--divider-color);border-radius:12px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.92rem;font-weight:600;cursor:pointer;padding:4px;line-height:1.1;}
+      .sf-chip:hover{background:var(--primary-color);color:var(--text-primary-color,#fff);}
+      .sf-chip:active{transform:scale(.97);}
+      .sf-added{background:rgba(76,175,80,.85)!important;color:#fff!important;border-color:transparent!important;}
+      .sf-empty{grid-column:1/-1;color:var(--secondary-text-color);padding:8px;text-align:center;}
+      .sf-editbar{margin-top:10px;display:flex;}
+      .sf-edit{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(120,144,156,.16);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
+      .sf-edit:hover{background:rgba(120,144,156,.30);}
+      .sf-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
+      .sf-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(92vw,420px);max-height:82vh;overflow:auto;border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
+      .sf-mhead{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
+      .sf-list{display:flex;flex-direction:column;gap:6px;}
+      .sf-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(127,127,127,.10);border-radius:10px;padding:6px 8px;}
+      .sf-rlbl{font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .sf-acts{display:flex;gap:2px;flex:none;}
+      .sf-acts button{border:none;background:transparent;cursor:pointer;font-size:1rem;padding:4px 7px;color:var(--secondary-text-color);border-radius:8px;}
+      .sf-acts button:hover{background:rgba(127,127,127,.18);}
+      .sf-acts .sf-x{color:#c62828;}
+      .sf-addrow{display:flex;gap:8px;margin-top:14px;}
+      .sf-new{flex:1;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .sf-addbtn{border:none;border-radius:10px;padding:10px 12px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;white-space:nowrap;}
+      .sf-foot{margin-top:16px;display:flex;justify-content:flex-end;}
+      .sf-done{border:none;border-radius:10px;padding:10px 18px;background:rgba(120,144,156,.22);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
+    </style>`;
+  }
+  getCardSize() { return 3; }
+}
+if (!customElements.get("shopping-fav-card")) {
+  customElements.define("shopping-fav-card", ShoppingFavCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "shopping-fav-card", name: "Shopping Favorites Card", description: "Editable shopping quick-add favorites" });
 }
 })();
