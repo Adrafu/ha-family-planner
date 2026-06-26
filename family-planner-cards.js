@@ -1,12 +1,12 @@
-/* Family Planner custom cards v1.2.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card */
+/* Family Planner custom cards v1.3.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card */
 
-/* ===== meal-grid-card v12 (diet preference + variety, umlauts, light-theme bg text fix) ===== */
+/* ===== meal-grid-card v14 (diet/variety, umlauts, bg text fix, nav_path tap) ===== */
 (() => {
 const CP = cp => String.fromCodePoint(cp);
 class MealGridCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
-      title: "Wochenplan", mode: "week", week_offset: 0,
+      title: "Wochenplan", mode: "week", week_offset: 0, nav_path: "",
       show_emojis: true, meal_icons: true, background: "",
       ai_suggest: true, ai_entity: "", recipe_url: "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html",
       meals: [
@@ -66,6 +66,7 @@ class MealGridCard extends HTMLElement {
   _esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
   _pad(n) { return String(n).padStart(2, "0"); }
   _evDate(ev) { const dt = (ev.start && (ev.start.dateTime || ev.start.date)) || ev.start; return new Date(dt); }
+  _nav(path) { history.pushState(null, "", path); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); }
 
   _food(dish) {
     const n = this._norm(dish);
@@ -299,7 +300,7 @@ class MealGridCard extends HTMLElement {
     });
     html += "</tbody></table></div></ha-card>";
 
-    const bgImg = this.config.background ? `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${this.config.background}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);} .mg-card .mg-day,.mg-card .mg-date,.mg-card .mg-bar-t,.mg-card .mg-bar-s,.mg-card .mg-meal-tx{color:#fff;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;color:#fff;} .mg-card td.mg-cell span{color:#fff;} .mg-card .mg-plus{color:#fff;opacity:.65;} .mg-card thead th{color:#fff;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}` : "";
+    const bgImg = this.config.background ? `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${this.config.background}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);} .mg-card .mg-bar-t,.mg-card .mg-bar-s,.mg-card .mg-meal-tx{color:#fff;} .mg-card thead th,.mg-card thead .mg-day,.mg-card thead .mg-date{color:#fff !important;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;color:#fff !important;} .mg-card td.mg-cell span{color:#fff !important;} .mg-card .mg-plus{color:#fff !important;opacity:.65;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}` : "";
     const css = `
       .mg-card{overflow:hidden;}
       .mg-h{padding:12px 16px 4px;font-size:1.25rem;font-weight:600;}
@@ -359,7 +360,10 @@ class MealGridCard extends HTMLElement {
       });
     });
     this.querySelectorAll(".mg-cell").forEach(cell => {
-      cell.addEventListener("click", () => this._openEditor(parseInt(cell.dataset.mi, 10), parseInt(cell.dataset.ci, 10)));
+      cell.addEventListener("click", () => {
+        if (this.config.nav_path) { this._nav(this.config.nav_path); return; }
+        this._openEditor(parseInt(cell.dataset.mi, 10), parseInt(cell.dataset.ci, 10));
+      });
     });
   }
   getCardSize() { return this.config.mode === "compact" ? 3 : 6; }
@@ -829,13 +833,13 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v2 (editable favorites, instant local draft) ===== */
+/* ===== shopping-fav-card v4 (assign dialog, big buttons, household emojis + config fallback) ===== */
 (() => {
 const CP = cp => String.fromCodePoint(cp);
 class ShoppingFavCard extends HTMLElement {
   setConfig(config) {
     if (!config || !config.list_entity) throw new Error("list_entity (todo-Liste) erforderlich");
-    this.config = Object.assign({ columns: 3, store_entity: "", title: "" }, config || {});
+    this.config = Object.assign({ columns: 3, store_entity: "", title: "", assign: false, targets: [], default_target: "", big: false, fallback: "" }, config || {});
     this._editing = false; this._lastVal = null; this._built = false;
   }
   set hass(hass) {
@@ -886,9 +890,23 @@ class ShoppingFavCard extends HTMLElement {
       ["klopapier", 0x1F9FB], ["toilettenpapier", 0x1F9FB], ["kuechenroll", 0x1F9FB], ["taschentuch", 0x1F9FB],
       ["seife", 0x1F9FC], ["shampoo", 0x1F9F4], ["zahnpasta", 0x1FAA5], ["waschmittel", 0x1F9F4], ["putz", 0x1F9FD], ["spuel", 0x1F9FD],
       ["windel", 0x1F9F7], ["batterie", 0x1F50B], ["blume", 0x1F490],
+      ["mull", 0x1F5D1], ["abfall", 0x1F5D1], ["restmull", 0x1F5D1], ["biomull", 0x1F5D1], ["tonne", 0x1F5D1],
+      ["altpapier", 0x267B], ["papier", 0x267B], ["recyc", 0x267B], ["karton", 0x1F4E6], ["paket", 0x1F4E6], ["brief", 0x2709],
+      ["waesche", 0x1F9FA], ["wasche", 0x1F9FA], ["waschen", 0x1F9FA], ["waschmasch", 0x1F9FA], ["aufraeum", 0x1F9FA], ["aufraum", 0x1F9FA], ["ordnung", 0x1F9FA],
+      ["geschirr", 0x1F37D], ["spuelmasch", 0x1F37D], ["spulmasch", 0x1F37D], ["abwasch", 0x1F37D], ["decken", 0x1F37D],
+      ["staubsaug", 0x1F9F9], ["saugen", 0x1F9F9], ["staub", 0x1F9F9], ["kehren", 0x1F9F9], ["fegen", 0x1F9F9],
+      ["putz", 0x1F9FD], ["wisch", 0x1F9FD], ["reinig", 0x1F9FD], ["fenster", 0x1F9FD],
+      ["buegel", 0x1F455], ["bugel", 0x1F455], ["bett", 0x1F6CF],
+      ["kochen", 0x1F373], ["backen", 0x1F9C1],
+      ["rasen", 0x1F33F], ["maehen", 0x1F33F], ["mahen", 0x1F33F], ["garten", 0x1F33F], ["unkraut", 0x1F33F],
+      ["gassi", 0x1F415], ["hund", 0x1F415], ["katze", 0x1F408], ["fuettern", 0x1F43E], ["futtern", 0x1F43E],
+      ["rechnung", 0x1F4B6], ["zahlen", 0x1F4B6], ["ueberweis", 0x1F4B6], ["bank", 0x1F4B6],
+      ["tanken", 0x26FD], ["auto", 0x1F697], ["werkstatt", 0x1F527], ["reparier", 0x1F527], ["reparatur", 0x1F527],
+      ["apotheke", 0x1F48A], ["medikament", 0x1F48A], ["arzt", 0x1F3E5], ["termin", 0x1F4C5],
+      ["einkauf", 0x1F6D2],
     ];
     for (const [k, cp] of map) { if (n.includes(k)) return CP(cp); }
-    return CP(0x1F6D2);
+    return this.config.fallback || CP(0x1F6D2);
   }
   _save(items) {
     const val = items.join(",");
@@ -922,8 +940,42 @@ class ShoppingFavCard extends HTMLElement {
       this._hass.callService("input_text", "set_value", { entity_id: this.config.store_entity, value: val });
     }
   }
-  _addToCart(name) {
-    if (this._hass) this._hass.callService("todo", "add_item", { entity_id: this.config.list_entity, item: name });
+  _addItem(name, target, due) {
+    if (!this._hass) return;
+    const data = { entity_id: target || this.config.list_entity, item: name };
+    if (due) data.due_date = due;
+    this._hass.callService("todo", "add_item", data);
+  }
+  _isoDate(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  _openAssign(name) {
+    this._editing = true;
+    const targets = this.config.targets || [];
+    const def = this.config.default_target || this.config.list_entity || (targets[0] && targets[0].entity) || "";
+    this._sel = def; this._due = "";
+    const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
+    const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
+    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${this._emoji(name)} ${this._esc(name)}</div><div class="sf-sub">Wer?</div><div class="sf-tgts">${tbtns}</div><div class="sf-sub">Bis wann?</div><div class="sf-dates"><button class="sf-q sf-q-on" data-q="none">Kein Datum</button><button class="sf-q" data-q="today">Heute</button><button class="sf-q" data-q="tom">Morgen</button></div><input class="sf-date" type="date"><div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">OK</button></div></div>`;
+    this.appendChild(ov);
+    ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
+    ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => {
+      this._sel = b.dataset.e;
+      ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b));
+    }));
+    const dateInp = ov.querySelector(".sf-date");
+    ov.querySelectorAll(".sf-q").forEach(b => b.addEventListener("click", () => {
+      const q = b.dataset.q;
+      if (q === "none") { this._due = ""; dateInp.value = ""; }
+      else { const d = new Date(); if (q === "tom") d.setDate(d.getDate() + 1); this._due = this._isoDate(d); dateInp.value = this._due; }
+      ov.querySelectorAll(".sf-q").forEach(x => x.classList.toggle("sf-q-on", x === b));
+    }));
+    dateInp.addEventListener("change", () => { this._due = dateInp.value; ov.querySelectorAll(".sf-q").forEach(x => x.classList.remove("sf-q-on")); });
+    ov.querySelector(".sf-cancel").addEventListener("click", () => this._closeAssign());
+    ov.querySelector(".sf-ok").addEventListener("click", () => { this._addItem(name, this._sel || def, this._due); this._closeAssign(); });
+  }
+  _closeAssign() {
+    this._editing = false;
+    if (this._aov && this._aov.parentNode) this._aov.parentNode.removeChild(this._aov);
+    this._aov = null;
   }
   _flash(b) {
     const o = b.innerHTML; b.classList.add("sf-added"); b.innerHTML = CP(0x2713) + " Hinzugefuegt";
@@ -933,9 +985,14 @@ class ShoppingFavCard extends HTMLElement {
     this._built = true;
     const items = this._items();
     const cols = this.config.columns || 3;
-    const chips = items.map(it => `<button class="sf-chip" data-n="${this._esc(it)}">${this._emoji(it)} ${this._esc(it)}</button>`).join("");
+    const big = this.config.big ? " sf-big" : "";
+    const chips = items.map(it => `<button class="sf-chip${big}" data-n="${this._esc(it)}">${this._emoji(it)} ${this._esc(it)}</button>`).join("");
     this.innerHTML = `<ha-card class="sf-card">${this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : ""}<div class="sf-grid" style="grid-template-columns:repeat(${cols},1fr);">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div><div class="sf-editbar"><button class="sf-edit">${CP(0x270F) + CP(0xFE0F)} Favoriten bearbeiten</button></div></ha-card>${this._styles()}`;
-    this.querySelectorAll(".sf-chip").forEach(b => b.addEventListener("click", () => { this._addToCart(b.dataset.n); this._flash(b); }));
+    const assign = this.config.assign && (this.config.targets || []).length;
+    this.querySelectorAll(".sf-chip").forEach(b => b.addEventListener("click", () => {
+      if (assign) { this._openAssign(b.dataset.n); }
+      else { this._addItem(b.dataset.n, this.config.list_entity); this._flash(b); }
+    }));
     const eb = this.querySelector(".sf-edit"); if (eb) eb.addEventListener("click", () => this._openEditor());
   }
   _openEditor() {
@@ -994,6 +1051,16 @@ class ShoppingFavCard extends HTMLElement {
       .sf-addbtn{border:none;border-radius:10px;padding:10px 12px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;white-space:nowrap;}
       .sf-foot{margin-top:16px;display:flex;justify-content:flex-end;}
       .sf-done{border:none;border-radius:10px;padding:10px 18px;background:rgba(120,144,156,.22);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
+      .sf-chip.sf-big{height:66px;font-size:1.05rem;border-radius:14px;}
+      .sf-sub{font-size:.8rem;font-weight:700;color:var(--secondary-text-color);text-transform:uppercase;letter-spacing:.03em;margin:14px 0 6px;}
+      .sf-tgts,.sf-dates{display:flex;gap:8px;flex-wrap:wrap;}
+      .sf-tgt{flex:1;min-width:84px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
+      .sf-tgt-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
+      .sf-q{flex:1;min-width:70px;border:1px solid var(--divider-color);border-radius:10px;padding:9px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.9rem;}
+      .sf-q-on{background:rgba(79,195,247,.95);color:#013;border-color:transparent;font-weight:600;}
+      .sf-date{width:100%;box-sizing:border-box;margin-top:8px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:rgba(120,144,156,.20);color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
+      .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;}
     </style>`;
   }
   getCardSize() { return 3; }
@@ -1002,5 +1069,76 @@ if (!customElements.get("shopping-fav-card")) {
   customElements.define("shopping-fav-card", ShoppingFavCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "shopping-fav-card", name: "Shopping Favorites Card", description: "Editable shopping quick-add favorites" });
+}
+})();
+
+/* ===== nav-card v2 (wraps any card; pointer/text-cursor children stay interactive) ===== */
+(() => {
+class NavCard extends HTMLElement {
+  setConfig(config) {
+    if (!config || !config.card) throw new Error("card (zu umhuellende Karte) erforderlich");
+    this.config = config;
+    this._built = false;
+  }
+  set hass(hass) {
+    this._hass = hass;
+    if (this._child) this._child.hass = hass;
+    if (!this._built) this._build();
+  }
+  async _build() {
+    this._built = true;
+    let el;
+    try {
+      const helpers = await window.loadCardHelpers();
+      el = helpers.createCardElement(this.config.card);
+    } catch (e) {
+      this.innerHTML = "<ha-card style='padding:12px'>nav-card: Karte konnte nicht geladen werden</ha-card>";
+      return;
+    }
+    if (this._hass) el.hass = this._hass;
+    this._child = el;
+    const wrap = document.createElement("div");
+    wrap.style.position = "relative";
+    wrap.appendChild(el);
+    this.innerHTML = "";
+    this.appendChild(wrap);
+    wrap.addEventListener("click", e => this._onClick(e));
+  }
+  _isInteractive(path) {
+    const tags = ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "HA-CHECKBOX", "MWC-CHECKBOX", "HA-SWITCH", "HA-TEXTFIELD", "HA-TEXTAREA", "HA-ICON-BUTTON", "MWC-BUTTON", "HA-BUTTON", "PAPER-INPUT", "HA-MD-LIST-ITEM", "HA-CHECK-LIST-ITEM", "MWC-LIST-ITEM", "HA-LIST-ITEM", "HA-SLIDER", "HA-CONTROL-SLIDER", "HA-CONTROL-BUTTON"];
+    const roles = ["checkbox", "button", "textbox", "switch", "option", "menuitem", "slider"];
+    for (const n of path) {
+      if (n === this) break;
+      const t = n.tagName;
+      if (!t) continue;
+      if (tags.indexOf(t) !== -1) return true;
+      if (n.getAttribute) {
+        const r = n.getAttribute("role");
+        if (r && roles.indexOf(r) !== -1) return true;
+        if (n.isContentEditable) return true;
+      }
+    }
+    return false;
+  }
+  _onClick(e) {
+    const path = e.composedPath ? e.composedPath() : [];
+    if (this._isInteractive(path)) return;
+    const target = path.length ? path[0] : e.target;
+    if (target && target.nodeType === 1) {
+      let cur = "";
+      try { cur = getComputedStyle(target).cursor; } catch (er) {}
+      if (cur === "pointer" || cur === "text") return;
+    }
+    const p = this.config.path;
+    if (!p) return;
+    history.pushState(null, "", p);
+    window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
+  }
+  getCardSize() { return (this._child && this._child.getCardSize) ? this._child.getCardSize() : 3; }
+}
+if (!customElements.get("nav-card")) {
+  customElements.define("nav-card", NavCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "nav-card", name: "Nav Card", description: "Wraps a card; taps on non-interactive areas navigate" });
 }
 })();

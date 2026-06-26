@@ -1,11 +1,12 @@
 # Family Planner Cards
 
-Vier eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
+Fünf eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
 - **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und optionalem KI-Vorschlag (`ai_task`).
 - **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen.
 - **`kids-routine-card`** — Buddy-artige Routinen für Kinder: Aufgaben mit Emoji nach Tageszeit, antippen zum Abhaken (Sterne via ChoreOps), mit Belohnungs-Animation.
-- **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Einkaufsartikel (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet.
+- **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional mit Zuweisungs-Dialog (wer & bis wann) und großen Buttons.
+- **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
 
 ## Installation (HACS)
 
@@ -20,6 +21,7 @@ Vier eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - `custom:family-calendar-card`
 - `custom:kids-routine-card`
 - `custom:shopping-fav-card`
+- `custom:nav-card`
 
 ### Beispiel: meal-grid-card
 
@@ -61,6 +63,33 @@ columns: 3
 ```
 
 Der Helper `input_text.einkauf_favoriten` muss vorab angelegt sein (max. 255 Zeichen). Favoriten werden als kommagetrennte Liste gespeichert; der „Favoriten bearbeiten"-Button öffnet einen Editor.
+
+Optional mit Zuweisungs-Dialog (Tipp öffnet „Wer? / Bis wann?"):
+
+```yaml
+type: custom:shopping-fav-card
+list_entity: todo.haushalt
+store_entity: input_text.aufgaben_favoriten
+columns: 4
+big: true
+assign: true                 # Tipp öffnet Dialog statt direktem Hinzufügen
+default_target: todo.haushalt # Ziel bei OK ohne Auswahl
+fallback: "📋"               # Emoji für unbekannte Einträge
+targets:
+  - { label: Gemeinsam, entity: todo.haushalt }
+  - { label: Tobi, entity: todo.tobi }
+  - { label: Verena, entity: todo.verena }
+```
+
+### Beispiel: nav-card
+
+```yaml
+type: custom:nav-card
+path: /lovelace/einkauf      # Ziel-Tab beim Tippen auf nicht-interaktive Bereiche
+card:
+  type: todo-list
+  entity: todo.zuhause
+```
 
 ## Lizenz
 
