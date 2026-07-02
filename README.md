@@ -91,6 +91,14 @@ card:
   entity: todo.zuhause
 ```
 
+## Entwicklung
+
+`family-planner-cards-beta.js` wird aus der Hauptdatei generiert (Karten mit `-beta`-Suffix zum parallelen Testen) — nicht direkt bearbeiten, sondern:
+
+```bash
+node build-beta.js
+```
+
 ## Lizenz
 
 MIT

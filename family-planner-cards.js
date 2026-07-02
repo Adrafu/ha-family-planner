@@ -1,8 +1,22 @@
-/* Family Planner custom cards v1.3.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card */
+/* Family Planner custom cards v1.4.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card */
+
+/* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
+(() => {
+  if (window.__fpUtils) return;
+  window.__fpUtils = {
+    cp: c => String.fromCodePoint(c),
+    esc: s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])),
+    pad: n => String(n).padStart(2, "0"),
+    norm: s => { let out = ""; for (const ch of String(s).toLowerCase()) { const c = ch.codePointAt(0); if (c === 0xe4) out += "a"; else if (c === 0xf6) out += "o"; else if (c === 0xfc) out += "u"; else if (c === 0xdf) out += "ss"; else out += ch; } return out; },
+    reEsc: s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    toast: (el, msg) => { try { el.dispatchEvent(new CustomEvent("hass-notification", { detail: { message: msg }, bubbles: true, composed: true })); } catch (e) {} },
+  };
+})();
 
 /* ===== meal-grid-card v14 (diet/variety, umlauts, bg text fix, nav_path tap) ===== */
 (() => {
-const CP = cp => String.fromCodePoint(cp);
+const U = window.__fpUtils;
+const CP = U.cp;
 class MealGridCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
@@ -48,23 +62,15 @@ class MealGridCard extends HTMLElement {
       const e = encodeURIComponent(endDate.toISOString());
       const evts = await this._hass.callApi("GET", `calendars/${this.config.entity}?start=${s}&end=${e}`);
       this._events = Array.isArray(evts) ? evts : [];
-    } catch (err) { this._events = []; }
+    } catch (err) { this._events = []; this._toast("Essensplan: Kalender konnte nicht geladen werden"); }
     this._render();
   }
 
-  _norm(s) {
-    let out = "";
-    for (const ch of String(s).toLowerCase()) {
-      const c = ch.codePointAt(0);
-      if (c === 0xe4) out += "a"; else if (c === 0xf6) out += "o";
-      else if (c === 0xfc) out += "u"; else if (c === 0xdf) out += "ss";
-      else out += ch;
-    }
-    return out;
-  }
+  _norm(s) { return U.norm(s); }
   _clean(t) { return t ? String(t).replace(/^[\s\p{P}\p{S}]+/u, "").trim() : ""; }
-  _esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-  _pad(n) { return String(n).padStart(2, "0"); }
+  _esc(s) { return U.esc(s); }
+  _pad(n) { return U.pad(n); }
+  _toast(msg) { U.toast(this, msg); }
   _evDate(ev) { const dt = (ev.start && (ev.start.dateTime || ev.start.date)) || ev.start; return new Date(dt); }
   _nav(path) { history.pushState(null, "", path); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); }
 
@@ -120,22 +126,42 @@ class MealGridCard extends HTMLElement {
   }
 
   async _delEvent(ev, noRefresh) {
-    if (!ev || !ev.uid) return;
-    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this.config.entity, uid: ev.uid }); } catch (e) {}
+    if (!ev || !ev.uid) return false;
+    const msg = { type: "calendar/event/delete", entity_id: this.config.entity, uid: ev.uid };
+    if (ev.recurrence_id) msg.recurrence_id = ev.recurrence_id; // nur diese Instanz, nicht die ganze Serie
+    let ok = true;
+    try { await this._hass.callWS(msg); } catch (e) { ok = false; this._toast("Eintrag konnte nicht gelöscht werden"); }
     if (!noRefresh) await this._maybeFetch(true);
+    return ok;
   }
+  _fmtDT(d) { return `${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())} ${this._pad(d.getHours())}:${this._pad(d.getMinutes())}:00`; }
   async _createEvent(meal, date, text, evForTime) {
     let hour = this._mealHour(meal), mins = 0;
     if (evForTime && evForTime.start) { const d = new Date(evForTime.start); hour = d.getHours(); mins = d.getMinutes(); }
-    const ds = `${date.getFullYear()}-${this._pad(date.getMonth() + 1)}-${this._pad(date.getDate())}`;
-    const start = `${ds} ${this._pad(hour)}:${this._pad(mins)}:00`;
-    const end = `${ds} ${this._pad(Math.min(hour + 1, 23))}:${this._pad(mins)}:00`;
-    try { await this._hass.callService("calendar", "create_event", { entity_id: this.config.entity, summary: text, start_date_time: start, end_date_time: end }); } catch (e) {}
+    const sd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, mins);
+    const ed = new Date(sd.getTime() + 3600000); // +1h, rollt korrekt über Mitternacht
+    try {
+      await this._hass.callService("calendar", "create_event", { entity_id: this.config.entity, summary: text, start_date_time: this._fmtDT(sd), end_date_time: this._fmtDT(ed) });
+      return true;
+    } catch (e) { this._toast("Eintrag konnte nicht erstellt werden"); return false; }
+  }
+  async _updateEvent(ev, text) {
+    if (!ev || !ev.uid || !ev.start || !ev.end) return false;
+    const msg = { type: "calendar/event/update", entity_id: this.config.entity, uid: ev.uid, event: { summary: text, dtstart: ev.start, dtend: ev.end } };
+    if (ev.recurrence_id) msg.recurrence_id = ev.recurrence_id;
+    if (ev.description) msg.event.description = ev.description;
+    try { await this._hass.callWS(msg); return true; } catch (e) { return false; }
   }
   async _saveCell(meal, date, ev, text) {
     if (ev && text === "") { await this._delEvent(ev); return; }
-    if (ev && text !== "" && text !== ev.summary) { await this._delEvent(ev, true); await this._createEvent(meal, date, text, ev); await this._maybeFetch(true); return; }
-    if (!ev && text !== "") { await this._createEvent(meal, date, text); await this._maybeFetch(true); }
+    if (ev && text !== "" && text !== ev.summary) {
+      // Erst Update versuchen (erhält UID/Serie); Fallback: erst neu anlegen, dann alt löschen
+      if (!(await this._updateEvent(ev, text))) {
+        if (await this._createEvent(meal, date, text, ev)) await this._delEvent(ev, true);
+      }
+      await this._maybeFetch(true); return;
+    }
+    if (!ev && text !== "") { if (await this._createEvent(meal, date, text)) await this._maybeFetch(true); }
   }
 
   async _suggest(meal, input, btn) {
@@ -192,7 +218,7 @@ class MealGridCard extends HTMLElement {
         }
       }
       await this._maybeFetch(true);
-    } catch (e) {}
+    } catch (e) { this._toast("KI-Wochenplan fehlgeschlagen (ai_task nicht verfügbar?)"); }
     btn.disabled = false; btn.innerHTML = prev;
   }
 
@@ -205,7 +231,7 @@ class MealGridCard extends HTMLElement {
       this._cells.forEach(r => r.forEach(c => c.forEach(o => { if (o.uid) evs.push(o); })));
       for (const o of evs) { await this._delEvent(o, true); }
       await this._maybeFetch(true);
-    } catch (e) {}
+    } catch (e) { this._toast("Woche leeren fehlgeschlagen"); }
     btn.disabled = false; btn.innerHTML = prev;
   }
 
@@ -224,8 +250,9 @@ class MealGridCard extends HTMLElement {
     const delBtn = box.querySelector(".mg-del");
     if (!ev) delBtn.style.display = "none";
     ov.appendChild(box); this.appendChild(ov);
+    this._editing = true; // blockiert Re-Renders, solange der Dialog offen ist
     setTimeout(() => { input.focus(); input.select(); }, 30);
-    const close = () => { if (ov.parentNode) ov.parentNode.removeChild(ov); };
+    const close = () => { this._editing = false; if (ov.parentNode) ov.parentNode.removeChild(ov); this._render(); };
     const save = async () => { const t = input.value.trim(); close(); await this._saveCell(meal, date, ev, t); };
     ov.addEventListener("click", e => { if (e.target === ov) close(); });
     box.querySelector(".mg-cancel").addEventListener("click", close);
@@ -243,6 +270,7 @@ class MealGridCard extends HTMLElement {
 
   _render() {
     if (!this._hass) return;
+    if (this._editing) return; // offenen Dialog nicht zerstören
     const { startDate, days } = this._range();
     const compact = this.config.mode === "compact";
     const meals = this.config.meals;
@@ -258,7 +286,8 @@ class MealGridCard extends HTMLElement {
       let mi = meals.findIndex(m => h >= m.start && h < m.end);
       if (mi < 0) mi = 0;
       const dt = (ev.start && (ev.start.dateTime || ev.start.date)) || ev.start;
-      cells[mi][ci].push({ uid: ev.uid, summary: this._clean(ev.summary || ev.message || ""), start: dt });
+      const de = (ev.end && (ev.end.dateTime || ev.end.date)) || ev.end;
+      cells[mi][ci].push({ uid: ev.uid, recurrence_id: ev.recurrence_id, summary: this._clean(ev.summary || ev.message || ""), start: dt, end: de, description: ev.description });
     });
     this._cols = cols; this._cells = cells; this._meals = meals;
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -377,7 +406,8 @@ if (!customElements.get("meal-grid-card")) {
 
 /* ===== family-calendar-card v1.6 (adaptive text + create/edit/delete + all-day fix + umlauts) ===== */
 (() => {
-const CP = c => String.fromCodePoint(c);
+const U = window.__fpUtils;
+const CP = U.cp;
 class FamilyCalendarCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
@@ -391,7 +421,7 @@ class FamilyCalendarCard extends HTMLElement {
   }
   set hass(hass) { this._hass = hass; this._maybeFetch(); }
 
-  _key() { return "fcc_hidden_" + (this.config.title || "cal"); }
+  _key() { let h = 0; const src = (this.config.persons || []).map(p => p.name + "|" + p.calendar).join(";"); for (let i = 0; i < src.length; i++) h = (h * 31 + src.charCodeAt(i)) | 0; return "fcc_hidden_" + (this.config.title || "cal") + "_" + (h >>> 0).toString(36); }
   _loadHidden() { try { return new Set(JSON.parse(localStorage.getItem(this._key()) || "[]")); } catch (e) { return new Set(); } }
   _saveHidden() { try { localStorage.setItem(this._key(), JSON.stringify([...this._hidden])); } catch (e) {} }
 
@@ -422,24 +452,26 @@ class FamilyCalendarCard extends HTMLElement {
     if (!force && key === this._rangeKey && now - this._lastFetch < 60000) return;
     this._rangeKey = key; this._lastFetch = now;
     const ents = this._entities();
-    const all = [];
+    const all = [], failed = [];
     await Promise.all(ents.map(async ent => {
       try {
         const s = encodeURIComponent(fs.toISOString()), e = encodeURIComponent(fe.toISOString());
         const evts = await this._hass.callApi("GET", `calendars/${ent}?start=${s}&end=${e}`);
         (evts || []).forEach(ev => { ev._entity = ent; all.push(ev); });
-      } catch (err) {}
+      } catch (err) { failed.push(ent); }
     }));
+    if (failed.length) this._toast("Kalender nicht erreichbar: " + failed.join(", "));
     this._events = all;
     this._render();
   }
 
-  _esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-  _pad(n) { return String(n).padStart(2, "0"); }
+  _esc(s) { return U.esc(s); }
+  _pad(n) { return U.pad(n); }
+  _toast(msg) { U.toast(this, msg); }
 
   _textOn(bg) { let h = String(bg).replace("#", ""); if (h.length === 3) h = h.split("").map(x => x + x).join(""); const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16); if (isNaN(r) || isNaN(g) || isNaN(b)) return "#fff"; return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? "#222" : "#fff"; }
-  _matchPrefix(title, prefix) { const re = new RegExp("^" + prefix + "[ :._-]"); return re.test(title); }
-  _stripPrefix(title, prefix) { return title.replace(new RegExp("^" + prefix + "[ :._-]\\s*"), ""); }
+  _matchPrefix(title, prefix) { const re = new RegExp("^" + U.reEsc(prefix) + "[ :._-]"); return re.test(title); }
+  _stripPrefix(title, prefix) { return title.replace(new RegExp("^" + U.reEsc(prefix) + "[ :._-]\\s*"), ""); }
 
   _classify(ev) {
     const title = ev.summary || ev.message || "";
@@ -472,9 +504,10 @@ class FamilyCalendarCard extends HTMLElement {
       const cl = this._classify(ev); if (!cl) return;
       if (this._hidden.has(cl.person.name)) return;
       const t = this._parse(ev);
-      const item = { person: cl.person, display: cl.display, allDay: t.allDay, start: t.start, end: t.end, uid: ev.uid, entity: ev._entity };
+      const item = { person: cl.person, display: cl.display, allDay: t.allDay, start: t.start, end: t.end, uid: ev.uid, recurrence_id: ev.recurrence_id, description: ev.description, entity: ev._entity };
+      item.key = ev._entity + "|" + (ev.uid || "") + "|" + (ev.recurrence_id || ""); // uid allein kollidiert über Kalender/Serien hinweg
       out.push(item);
-      if (ev.uid) this._evMap[ev.uid] = item;
+      if (ev.uid) this._evMap[item.key] = item;
     });
     return out;
   }
@@ -525,7 +558,7 @@ class FamilyCalendarCard extends HTMLElement {
     cols.forEach(d => {
       let cell = '<div class="fcc-ad-cell">';
       items.filter(it => it.allDay && d >= new Date(it.start.getFullYear(), it.start.getMonth(), it.start.getDate()) && d < it.end).forEach(it => {
-        cell += `<div class="fcc-ad-ev" style="background:${it.person.color};color:${this._textOn(it.person.color)}" data-uid="${this._esc(it.uid || "")}" data-ent="${it.entity}">${this._esc(it.display)}</div>`;
+        cell += `<div class="fcc-ad-ev" style="background:${it.person.color};color:${this._textOn(it.person.color)}" data-key="${this._esc(it.key)}" data-ent="${it.entity}">${this._esc(it.display)}</div>`;
       });
       cell += "</div>"; allRow += cell;
     });
@@ -549,7 +582,7 @@ class FamilyCalendarCard extends HTMLElement {
         const ed = Math.min(h1, Math.max(sd + 0.25, e.end.getHours() + e.end.getMinutes() / 60 || h1));
         const top = (sd - h0) * HH, hgt = Math.max(16, (ed - sd) * HH);
         const w = 100 / (e._n || 1), left = (e._c || 0) * w;
-        col += `<div class="fcc-ev" data-uid="${this._esc(e.uid || "")}" data-ent="${e.entity}" style="top:${top}px;height:${hgt}px;left:${left}%;width:${w}%;background:${e.person.color};color:${this._textOn(e.person.color)}"><span class="fcc-ev-t">${this._esc(e.display)}</span><span class="fcc-ev-h">${this._pad(e.start.getHours())}:${this._pad(e.start.getMinutes())}</span></div>`;
+        col += `<div class="fcc-ev" data-key="${this._esc(e.key)}" data-ent="${e.entity}" style="top:${top}px;height:${hgt}px;left:${left}%;width:${w}%;background:${e.person.color};color:${this._textOn(e.person.color)}"><span class="fcc-ev-t">${this._esc(e.display)}</span><span class="fcc-ev-h">${this._pad(e.start.getHours())}:${this._pad(e.start.getMinutes())}</span></div>`;
       });
       col += "</div>"; body += col;
     });
@@ -571,7 +604,7 @@ class FamilyCalendarCard extends HTMLElement {
       const dayEv = items.filter(it => { const s = new Date(it.start.getFullYear(), it.start.getMonth(), it.start.getDate()); const e = it.allDay ? it.end : new Date(it.end.getFullYear(), it.end.getMonth(), it.end.getDate() + 1); return c >= s && c < e; });
       dayEv.sort((a, b) => (a.allDay === b.allDay) ? a.start - b.start : (a.allDay ? -1 : 1));
       let cell = `<div class="fcc-m-cell${inMonth ? "" : " fcc-dim"}${this._isToday(c) ? " fcc-today" : ""}" data-date="${c.getFullYear()}-${this._pad(c.getMonth() + 1)}-${this._pad(c.getDate())}"><div class="fcc-m-num">${c.getDate()}</div>`;
-      dayEv.slice(0, 4).forEach(it => { const tm = it.allDay ? "" : `${this._pad(it.start.getHours())}:${this._pad(it.start.getMinutes())} `; cell += `<div class="fcc-m-ev" data-uid="${this._esc(it.uid || "")}" data-ent="${it.entity}" style="border-left-color:${it.person.color}"><span class="fcc-m-t">${this._esc(tm)}${this._esc(it.display)}</span></div>`; });
+      dayEv.slice(0, 4).forEach(it => { const tm = it.allDay ? "" : `${this._pad(it.start.getHours())}:${this._pad(it.start.getMinutes())} `; cell += `<div class="fcc-m-ev" data-key="${this._esc(it.key)}" data-ent="${it.entity}" style="border-left-color:${it.person.color}"><span class="fcc-m-t">${this._esc(tm)}${this._esc(it.display)}</span></div>`; });
       if (dayEv.length > 4) cell += `<div class="fcc-m-more">+${dayEv.length - 4}</div>`;
       cell += "</div>"; grid += cell;
     });
@@ -612,37 +645,72 @@ class FamilyCalendarCard extends HTMLElement {
       <div class="fcc-row2 fcc-times"><div><label class="fcc-lab">Von</label><input class="fcc-in fcc-von" type="time" value="${von}"></div><div><label class="fcc-lab">Bis</label><input class="fcc-in fcc-bis" type="time" value="${bis}"></div></div>
       <div class="fcc-modal-btns"><button class="fcc-btn2 fcc-cancel">Abbrechen</button>${edit ? '<button class="fcc-btn2 fcc-del">Löschen</button>' : ''}<button class="fcc-btn2 fcc-save">Speichern</button></div>`;
     ov.appendChild(box); this.appendChild(ov);
+    this._editing = true; // blockiert Re-Renders, solange der Dialog offen ist
     const ti = box.querySelector(".fcc-title");
     const adCb = box.querySelector(".fcc-allday");
     const timesEl = box.querySelector(".fcc-times");
     const syncTimes = () => { timesEl.style.display = adCb.checked ? "none" : "flex"; };
     syncTimes(); adCb.addEventListener("change", syncTimes);
     setTimeout(() => { ti.focus(); }, 30);
-    const close = () => { if (ov.parentNode) ov.parentNode.removeChild(ov); };
+    const close = () => { this._editing = false; if (ov.parentNode) ov.parentNode.removeChild(ov); };
     ov.addEventListener("click", e => { if (e.target === ov) close(); });
     box.querySelector(".fcc-cancel").addEventListener("click", close);
     const delBtn = box.querySelector(".fcc-del");
-    if (delBtn) delBtn.addEventListener("click", () => { close(); if (it && it.uid) this._hass.callWS({ type: "calendar/event/delete", entity_id: it.entity, uid: it.uid }).then(() => this._maybeFetch(true)).catch(() => {}); });
+    if (delBtn) delBtn.addEventListener("click", () => { close(); this._deleteItem(it).then(() => this._maybeFetch(true)); });
     box.querySelector(".fcc-save").addEventListener("click", () => {
       const t = ti.value.trim(); if (!t) { ti.focus(); return; }
       const p = persons[+box.querySelector(".fcc-person").value];
       const d = box.querySelector(".fcc-date").value;
       const ad = adCb.checked;
       const summary = (p.prefix ? p.prefix + " " : "") + t;
+      // Zeiten/Daten vor close() aus dem Formular lesen; mehrtägige Ganztagstermine behalten ihre Dauer
+      let days = 1;
+      if (edit && it.allDay && ad) days = Math.max(1, Math.round((it.end - it.start) / 86400000));
+      let startDate = d, endDate = "", startDT = "", endDT = "";
+      if (ad) {
+        const nd = new Date(d + "T00:00:00"); nd.setDate(nd.getDate() + days);
+        endDate = `${nd.getFullYear()}-${pad(nd.getMonth() + 1)}-${pad(nd.getDate())}`;
+      } else {
+        let v = box.querySelector(".fcc-von").value || "09:00";
+        let b = box.querySelector(".fcc-bis").value || v;
+        if (b <= v) { const bd = new Date(d + "T" + v + ":00"); const day0 = bd.getDate(); bd.setMinutes(bd.getMinutes() + 60); b = bd.getDate() !== day0 ? "23:59" : pad(bd.getHours()) + ":" + pad(bd.getMinutes()); }
+        startDT = d + " " + v + ":00"; endDT = d + " " + b + ":00";
+      }
       close();
+      const refresh = () => this._maybeFetch(true);
       const doCreate = () => {
         const data = { entity_id: p.calendar, summary: summary };
-        if (ad) { const nd = new Date(d + "T00:00:00"); nd.setDate(nd.getDate() + 1); data.start_date = d; data.end_date = `${nd.getFullYear()}-${pad(nd.getMonth() + 1)}-${pad(nd.getDate())}`; }
-        else { let v = box.querySelector(".fcc-von").value || "09:00"; let b = box.querySelector(".fcc-bis").value || v; if (b <= v) b = pad(Math.min(parseInt(v.split(":")[0], 10) + 1, 23)) + ":" + (v.split(":")[1] || "00"); data.start_date_time = d + " " + v + ":00"; data.end_date_time = d + " " + b + ":00"; }
-        this._hass.callService("calendar", "create_event", data).then(() => this._maybeFetch(true)).catch(() => {});
+        if (edit && it.description) data.description = it.description;
+        if (ad) { data.start_date = startDate; data.end_date = endDate; }
+        else { data.start_date_time = startDT; data.end_date_time = endDT; }
+        return this._hass.callService("calendar", "create_event", data).then(() => true).catch(() => { this._toast("Termin konnte nicht gespeichert werden"); return false; });
       };
-      if (edit && it && it.uid) this._hass.callWS({ type: "calendar/event/delete", entity_id: it.entity, uid: it.uid }).then(doCreate).catch(doCreate);
-      else doCreate();
+      const createThenDelete = () => doCreate().then(ok => { if (ok) return this._deleteItem(it); }).then(refresh);
+      if (edit && it && it.uid && p.calendar === it.entity) {
+        // Bestehenden Termin aktualisieren (erhält UID, Serie, Beschreibung); Fallback: neu anlegen, dann alt löschen
+        const msg = { type: "calendar/event/update", entity_id: it.entity, uid: it.uid, event: { summary: summary } };
+        if (it.recurrence_id) msg.recurrence_id = it.recurrence_id;
+        if (it.description) msg.event.description = it.description;
+        if (ad) { msg.event.dtstart = startDate; msg.event.dtend = endDate; }
+        else { msg.event.dtstart = startDT.replace(" ", "T"); msg.event.dtend = endDT.replace(" ", "T"); }
+        this._hass.callWS(msg).then(refresh).catch(createThenDelete);
+      } else if (edit && it && it.uid) {
+        createThenDelete(); // Kalender gewechselt
+      } else {
+        doCreate().then(refresh);
+      }
     });
+  }
+  _deleteItem(it) {
+    if (!it || !it.uid) return Promise.resolve(false);
+    const msg = { type: "calendar/event/delete", entity_id: it.entity, uid: it.uid };
+    if (it.recurrence_id) msg.recurrence_id = it.recurrence_id; // nur diese Instanz, nicht die ganze Serie
+    return this._hass.callWS(msg).then(() => true).catch(() => { this._toast("Termin konnte nicht gelöscht werden"); return false; });
   }
 
   _render() {
     if (!this._hass) return;
+    if (this._editing) return; // offenen Dialog nicht zerstören
     const view = this._view === "month" ? this._monthHTML() : this._weekHTML();
     const css = this._css();
     this.innerHTML = `<style>${css}</style><ha-card class="fcc-card">${this._headerHTML(view.label)}${this._legendHTML()}${view.html}</ha-card>`;
@@ -651,8 +719,8 @@ class FamilyCalendarCard extends HTMLElement {
     this.querySelectorAll(".fcc-chip").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; if (this._hidden.has(n)) this._hidden.delete(n); else this._hidden.add(n); this._saveHidden(); this._render(); }));
     this.querySelectorAll(".fcc-ev,.fcc-ad-ev,.fcc-m-ev").forEach(el => el.addEventListener("click", e => {
       e.stopPropagation();
-      const uid = el.dataset.uid;
-      const item = uid && this._evMap ? this._evMap[uid] : null;
+      const k = el.dataset.key;
+      const item = k && this._evMap ? this._evMap[k] : null;
       if (item && !(item.person && item.person.no_create)) { this._openEvent({ item: item }); return; }
       const ent = el.dataset.ent; if (ent) this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: ent }, bubbles: true, composed: true }));
     }));
@@ -733,7 +801,8 @@ if (!customElements.get("family-calendar-card")) {
 
 /* ===== kids-routine-card v5 (integer star display, umlauts) ===== */
 (() => {
-const CPR = cp => String.fromCodePoint(cp);
+const U = window.__fpUtils;
+const CPR = U.cp;
 class KidsRoutineCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({ title: "Routinen", points_entity: "", reward_button: "", penalty_button: "", routines: [] }, config || {});
@@ -747,21 +816,22 @@ class KidsRoutineCard extends HTMLElement {
     if (sig === this._sig) return;
     this._sig = sig; this._render();
   }
-  _esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  _esc(s) { return U.esc(s); }
+  _toast(msg) { U.toast(this, msg); }
   _isOn(e) { const s = this._hass && this._hass.states[e]; return !!(s && s.state === "on"); }
   _fmtStars(v) { const n = parseFloat(v); return isNaN(n) ? v : String(Math.round(n)); }
   _toggle(task) {
     if (!this._hass || !task || !task.entity) return;
     const wasOn = this._isOn(task.entity);
-    this._hass.callService("input_boolean", "toggle", { entity_id: task.entity });
+    this._hass.callService("input_boolean", "toggle", { entity_id: task.entity }).catch(() => this._toast("Aufgabe konnte nicht umgeschaltet werden"));
     if (!wasOn) {
       this._celebrate(task.emoji);
-      if (this.config.reward_button) { try { this._hass.callService("button", "press", { entity_id: this.config.reward_button }); } catch (e) {} }
+      if (this.config.reward_button) this._hass.callService("button", "press", { entity_id: this.config.reward_button }).catch(() => {});
     } else {
-      if (this.config.penalty_button) { try { this._hass.callService("button", "press", { entity_id: this.config.penalty_button }); } catch (e) {} }
+      if (this.config.penalty_button) this._hass.callService("button", "press", { entity_id: this.config.penalty_button }).catch(() => {});
     }
   }
-  _resetGroup(tasks) { const ids = (tasks || []).map(t => t.entity).filter(Boolean); if (this._hass && ids.length) this._hass.callService("input_boolean", "turn_off", { entity_id: ids }); }
+  _resetGroup(tasks) { const ids = (tasks || []).map(t => t.entity).filter(Boolean); if (this._hass && ids.length) this._hass.callService("input_boolean", "turn_off", { entity_id: ids }).catch(() => this._toast("Zurücksetzen fehlgeschlagen")); }
   _celebrate(emoji) {
     if (!this._fx) return;
     const e = emoji || CPR(0x2B50);
@@ -835,7 +905,8 @@ if (!customElements.get("kids-routine-card")) {
 
 /* ===== shopping-fav-card v4 (assign dialog, big buttons, household emojis + config fallback) ===== */
 (() => {
-const CP = cp => String.fromCodePoint(cp);
+const U = window.__fpUtils;
+const CP = U.cp;
 class ShoppingFavCard extends HTMLElement {
   setConfig(config) {
     if (!config || !config.list_entity) throw new Error("list_entity (todo-Liste) erforderlich");
@@ -854,17 +925,9 @@ class ShoppingFavCard extends HTMLElement {
     return st ? String(st.state) : "";
   }
   _items() { return this._storeVal().split(",").map(s => s.trim()).filter(Boolean); }
-  _esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-  _norm(s) {
-    let out = "";
-    for (const ch of String(s).toLowerCase()) {
-      const c = ch.codePointAt(0);
-      if (c === 0xe4) out += "a"; else if (c === 0xf6) out += "o";
-      else if (c === 0xfc) out += "u"; else if (c === 0xdf) out += "ss";
-      else out += ch;
-    }
-    return out;
-  }
+  _esc(s) { return U.esc(s); }
+  _norm(s) { return U.norm(s); }
+  _toast(msg) { U.toast(this, msg); }
   _emoji(name) {
     const n = this._norm(name);
     const map = [
@@ -895,7 +958,7 @@ class ShoppingFavCard extends HTMLElement {
       ["waesche", 0x1F9FA], ["wasche", 0x1F9FA], ["waschen", 0x1F9FA], ["waschmasch", 0x1F9FA], ["aufraeum", 0x1F9FA], ["aufraum", 0x1F9FA], ["ordnung", 0x1F9FA],
       ["geschirr", 0x1F37D], ["spuelmasch", 0x1F37D], ["spulmasch", 0x1F37D], ["abwasch", 0x1F37D], ["decken", 0x1F37D],
       ["staubsaug", 0x1F9F9], ["saugen", 0x1F9F9], ["staub", 0x1F9F9], ["kehren", 0x1F9F9], ["fegen", 0x1F9F9],
-      ["putz", 0x1F9FD], ["wisch", 0x1F9FD], ["reinig", 0x1F9FD], ["fenster", 0x1F9FD],
+      ["wisch", 0x1F9FD], ["reinig", 0x1F9FD], ["fenster", 0x1F9FD],
       ["buegel", 0x1F455], ["bugel", 0x1F455], ["bett", 0x1F6CF],
       ["kochen", 0x1F373], ["backen", 0x1F9C1],
       ["rasen", 0x1F33F], ["maehen", 0x1F33F], ["mahen", 0x1F33F], ["garten", 0x1F33F], ["unkraut", 0x1F33F],
@@ -908,18 +971,13 @@ class ShoppingFavCard extends HTMLElement {
     for (const [k, cp] of map) { if (n.includes(k)) return CP(cp); }
     return this.config.fallback || CP(0x1F6D2);
   }
-  _save(items) {
-    const val = items.join(",");
-    this._lastVal = val;
-    if (this._hass && this.config.store_entity) {
-      this._hass.callService("input_text", "set_value", { entity_id: this.config.store_entity, value: val });
-    }
-  }
   _add(name) {
     const item = String(name || "").trim();
     if (!item) return;
+    if (item.includes(",")) { this._toast("Kommas sind in Favoriten nicht möglich"); return; }
     const items = this._draft || (this._draft = this._items());
     if (items.some(x => x.toLowerCase() === item.toLowerCase())) return;
+    if (items.concat(item).join(",").length > 255) { this._toast("Favoriten-Speicher voll (input_text: max. 255 Zeichen)"); return; }
     items.push(item); this._renderEditor(); this._persist();
   }
   _remove(i) {
@@ -937,14 +995,14 @@ class ShoppingFavCard extends HTMLElement {
     const val = this._draft.join(",");
     this._lastVal = val;
     if (this._hass && this.config.store_entity) {
-      this._hass.callService("input_text", "set_value", { entity_id: this.config.store_entity, value: val });
+      this._hass.callService("input_text", "set_value", { entity_id: this.config.store_entity, value: val }).catch(() => this._toast("Favoriten konnten nicht gespeichert werden"));
     }
   }
   _addItem(name, target, due) {
     if (!this._hass) return;
     const data = { entity_id: target || this.config.list_entity, item: name };
     if (due) data.due_date = due;
-    this._hass.callService("todo", "add_item", data);
+    this._hass.callService("todo", "add_item", data).catch(() => this._toast("Konnte nicht zur Liste hinzugefügt werden"));
   }
   _isoDate(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
   _openAssign(name) {
