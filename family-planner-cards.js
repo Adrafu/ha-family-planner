@@ -1,4 +1,4 @@
-/* Family Planner custom cards v1.5.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card */
+/* Family Planner custom cards v1.5.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 (() => {
@@ -907,7 +907,7 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v11 (add_button-Dialog, show_due/target_label, fp-todo-add-Event) ===== */
+/* ===== shopping-fav-card v12 (add_button-Dialog, kein Auto-Fokus -> Tastatur nur bei Textfeld-Tap) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1054,9 +1054,8 @@ class ShoppingFavCard extends HTMLElement {
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${CP(0x2795)} ${this._esc(this.config.add_label || "Hinzufügen")}</div><input class="sf-addtext" type="text" placeholder="Eingeben..."/>${favChips ? `<div class="sf-sub">Favoriten</div><div class="sf-favs">${favChips}</div>` : ""}${tbtns ? `<div class="sf-sub">${this._esc(this.config.target_label || "Wer?")}</div><div class="sf-tgts">${tbtns}</div>` : ""}${dueHtml}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">Hinzufügen</button></div></div>`;
     this.appendChild(ov);
     const txt = ov.querySelector(".sf-addtext");
-    setTimeout(() => { txt.focus(); }, 30);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
-    ov.querySelectorAll(".sf-favpick").forEach(b => b.addEventListener("click", () => { txt.value = b.dataset.n; txt.focus(); }));
+    ov.querySelectorAll(".sf-favpick").forEach(b => b.addEventListener("click", () => { txt.value = b.dataset.n; }));
     ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => { this._sel = b.dataset.e; ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b)); }));
     const dateInp = ov.querySelector(".sf-date");
     if (dateInp) {
