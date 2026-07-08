@@ -1,12 +1,13 @@
 # Family Planner Cards
 
-Fünf eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
+Sechs eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
 - **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und optionalem KI-Vorschlag (`ai_task`).
 - **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen.
 - **`kids-routine-card`** — Buddy-artige Routinen für Kinder: Aufgaben mit Emoji nach Tageszeit, antippen zum Abhaken (Sterne via ChoreOps), mit Belohnungs-Animation.
-- **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional mit Zuweisungs-Dialog (wer & bis wann) und großen Buttons.
+- **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar).
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
+- **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen.
 
 ## Installation (HACS)
 
@@ -22,6 +23,7 @@ Fünf eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - `custom:kids-routine-card`
 - `custom:shopping-fav-card`
 - `custom:nav-card`
+- `custom:fp-todo-card`
 
 ### Beispiel: meal-grid-card
 
@@ -91,13 +93,19 @@ card:
   entity: todo.zuhause
 ```
 
-## Entwicklung
+### Beispiel: fp-todo-card
 
-`family-planner-cards-beta.js` wird aus der Hauptdatei generiert (Karten mit `-beta`-Suffix zum parallelen Testen) — nicht direkt bearbeiten, sondern:
+Übernimmt alle Optionen der nativen `todo-list`-Karte (`title`, `hide_completed`, `hide_create`, `display_order`, `card_mod`, `hide_section_headers` …) und ergänzt optimistisches Hinzufügen.
 
-```bash
-node build-beta.js
+```yaml
+type: custom:fp-todo-card
+entity: todo.allgemein
+title: Allgemein
+hide_create: true
+display_order: duedate_asc
 ```
+
+Neue Einträge erscheinen sofort (leicht ausgegraut) und werden ersetzt, sobald das Backend nachzieht. Adds über die `shopping-fav-card` (Event `fp-todo-add`) und über das native Eingabefeld werden erkannt.
 
 ## Lizenz
 

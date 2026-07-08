@@ -1,4 +1,4 @@
-/* Family Planner custom cards v1.4.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card */
+/* Family Planner custom cards v1.5.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 (() => {
@@ -13,7 +13,7 @@
   };
 })();
 
-/* ===== meal-grid-card v14 (diet/variety, umlauts, bg text fix, nav_path tap) ===== */
+/* ===== meal-grid-card v15 (update statt delete+create, recurrence_id, modal-guard, toasts) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -62,7 +62,8 @@ class MealGridCard extends HTMLElement {
       const e = encodeURIComponent(endDate.toISOString());
       const evts = await this._hass.callApi("GET", `calendars/${this.config.entity}?start=${s}&end=${e}`);
       this._events = Array.isArray(evts) ? evts : [];
-    } catch (err) { this._events = []; this._toast("Essensplan: Kalender konnte nicht geladen werden"); }
+    } catch (err) { this._events = []; if (this._loadedOnce) this._toast("Essensplan: Kalender konnte nicht geladen werden"); }
+    this._loadedOnce = true; // allerersten Ladefehler (Startup-Flackern) nicht melden
     this._render();
   }
 
@@ -125,12 +126,12 @@ class MealGridCard extends HTMLElement {
     return meal.start > 0 ? meal.start : 8;
   }
 
-  async _delEvent(ev, noRefresh) {
+  async _delEvent(ev, noRefresh, quiet) {
     if (!ev || !ev.uid) return false;
     const msg = { type: "calendar/event/delete", entity_id: this.config.entity, uid: ev.uid };
     if (ev.recurrence_id) msg.recurrence_id = ev.recurrence_id; // nur diese Instanz, nicht die ganze Serie
     let ok = true;
-    try { await this._hass.callWS(msg); } catch (e) { ok = false; this._toast("Eintrag konnte nicht gelöscht werden"); }
+    try { await this._hass.callWS(msg); } catch (e) { ok = false; if (!quiet) this._toast("Eintrag konnte nicht gelöscht werden"); }
     if (!noRefresh) await this._maybeFetch(true);
     return ok;
   }
@@ -157,7 +158,9 @@ class MealGridCard extends HTMLElement {
     if (ev && text !== "" && text !== ev.summary) {
       // Erst Update versuchen (erhält UID/Serie); Fallback: erst neu anlegen, dann alt löschen
       if (!(await this._updateEvent(ev, text))) {
-        if (await this._createEvent(meal, date, text, ev)) await this._delEvent(ev, true);
+        if (await this._createEvent(meal, date, text, ev)) {
+          if (!(await this._delEvent(ev, true, true))) this._toast("Geändert, aber alter Eintrag blieb stehen – bitte Duplikat löschen");
+        }
       }
       await this._maybeFetch(true); return;
     }
@@ -404,7 +407,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v1.6 (adaptive text + create/edit/delete + all-day fix + umlauts) ===== */
+/* ===== family-calendar-card v1.7 (update-ws, recurrence_id, modal-guard, prefix-escape, toasts) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -460,7 +463,8 @@ class FamilyCalendarCard extends HTMLElement {
         (evts || []).forEach(ev => { ev._entity = ent; all.push(ev); });
       } catch (err) { failed.push(ent); }
     }));
-    if (failed.length) this._toast("Kalender nicht erreichbar: " + failed.join(", "));
+    if (failed.length && this._loadedOnce) this._toast("Kalender nicht erreichbar: " + failed.join(", "));
+    this._loadedOnce = true; // allerersten Ladefehler (Startup-Flackern) nicht melden
     this._events = all;
     this._render();
   }
@@ -685,7 +689,7 @@ class FamilyCalendarCard extends HTMLElement {
         else { data.start_date_time = startDT; data.end_date_time = endDT; }
         return this._hass.callService("calendar", "create_event", data).then(() => true).catch(() => { this._toast("Termin konnte nicht gespeichert werden"); return false; });
       };
-      const createThenDelete = () => doCreate().then(ok => { if (ok) return this._deleteItem(it); }).then(refresh);
+      const createThenDelete = () => doCreate().then(ok => { if (!ok) return; return this._deleteItem(it, true).then(del => { if (!del) this._toast("Gespeichert, aber alter Termin blieb stehen – bitte Duplikat prüfen"); }); }).then(refresh);
       if (edit && it && it.uid && p.calendar === it.entity) {
         // Bestehenden Termin aktualisieren (erhält UID, Serie, Beschreibung); Fallback: neu anlegen, dann alt löschen
         const msg = { type: "calendar/event/update", entity_id: it.entity, uid: it.uid, event: { summary: summary } };
@@ -701,11 +705,11 @@ class FamilyCalendarCard extends HTMLElement {
       }
     });
   }
-  _deleteItem(it) {
+  _deleteItem(it, quiet) {
     if (!it || !it.uid) return Promise.resolve(false);
     const msg = { type: "calendar/event/delete", entity_id: it.entity, uid: it.uid };
     if (it.recurrence_id) msg.recurrence_id = it.recurrence_id; // nur diese Instanz, nicht die ganze Serie
-    return this._hass.callWS(msg).then(() => true).catch(() => { this._toast("Termin konnte nicht gelöscht werden"); return false; });
+    return this._hass.callWS(msg).then(() => true).catch(() => { if (!quiet) this._toast("Termin konnte nicht gelöscht werden"); return false; });
   }
 
   _render() {
@@ -799,7 +803,7 @@ if (!customElements.get("family-calendar-card")) {
 }
 })();
 
-/* ===== kids-routine-card v5 (integer star display, umlauts) ===== */
+/* ===== kids-routine-card v6 (fehler-toasts) ===== */
 (() => {
 const U = window.__fpUtils;
 const CPR = U.cp;
@@ -903,14 +907,14 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v4 (assign dialog, big buttons, household emojis + config fallback) ===== */
+/* ===== shopping-fav-card v11 (add_button-Dialog, show_due/target_label, fp-todo-add-Event) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
 class ShoppingFavCard extends HTMLElement {
   setConfig(config) {
     if (!config || !config.list_entity) throw new Error("list_entity (todo-Liste) erforderlich");
-    this.config = Object.assign({ columns: 3, store_entity: "", title: "", assign: false, targets: [], default_target: "", big: false, fallback: "" }, config || {});
+    this.config = Object.assign({ columns: 3, store_entity: "", title: "", assign: false, targets: [], default_target: "", big: false, fallback: "", add_button: false, add_label: "", show_due: true, target_label: "Wer?" }, config || {});
     this._editing = false; this._lastVal = null; this._built = false;
   }
   set hass(hass) {
@@ -1000,8 +1004,10 @@ class ShoppingFavCard extends HTMLElement {
   }
   _addItem(name, target, due) {
     if (!this._hass) return;
-    const data = { entity_id: target || this.config.list_entity, item: name };
+    const ent = target || this.config.list_entity;
+    const data = { entity_id: ent, item: name };
     if (due) data.due_date = due;
+    window.dispatchEvent(new CustomEvent("fp-todo-add", { detail: { entity: ent, summary: name, due: due || null } }));
     this._hass.callService("todo", "add_item", data).catch(() => this._toast("Konnte nicht zur Liste hinzugefügt werden"));
   }
   _isoDate(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
@@ -1035,12 +1041,50 @@ class ShoppingFavCard extends HTMLElement {
     if (this._aov && this._aov.parentNode) this._aov.parentNode.removeChild(this._aov);
     this._aov = null;
   }
+  _openAdd() {
+    this._editing = true;
+    const targets = this.config.targets || [];
+    const def = this.config.default_target || this.config.list_entity || (targets[0] && targets[0].entity) || "";
+    this._sel = def; this._due = "";
+    const favs = this._items();
+    const favChips = favs.map(f => `<button class="sf-favpick" data-n="${this._esc(f)}">${this._emoji(f)} ${this._esc(f)}</button>`).join("");
+    const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
+    const dueHtml = this.config.show_due ? `<div class="sf-sub">Bis wann?</div><div class="sf-dates"><button class="sf-q sf-q-on" data-q="none">Kein Datum</button><button class="sf-q" data-q="today">Heute</button><button class="sf-q" data-q="tom">Morgen</button></div><input class="sf-date" type="date">` : "";
+    const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
+    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${CP(0x2795)} ${this._esc(this.config.add_label || "Hinzufügen")}</div><input class="sf-addtext" type="text" placeholder="Eingeben..."/>${favChips ? `<div class="sf-sub">Favoriten</div><div class="sf-favs">${favChips}</div>` : ""}${tbtns ? `<div class="sf-sub">${this._esc(this.config.target_label || "Wer?")}</div><div class="sf-tgts">${tbtns}</div>` : ""}${dueHtml}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">Hinzufügen</button></div></div>`;
+    this.appendChild(ov);
+    const txt = ov.querySelector(".sf-addtext");
+    setTimeout(() => { txt.focus(); }, 30);
+    ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
+    ov.querySelectorAll(".sf-favpick").forEach(b => b.addEventListener("click", () => { txt.value = b.dataset.n; txt.focus(); }));
+    ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => { this._sel = b.dataset.e; ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b)); }));
+    const dateInp = ov.querySelector(".sf-date");
+    if (dateInp) {
+      ov.querySelectorAll(".sf-q").forEach(b => b.addEventListener("click", () => {
+        const q = b.dataset.q;
+        if (q === "none") { this._due = ""; dateInp.value = ""; }
+        else { const d = new Date(); if (q === "tom") d.setDate(d.getDate() + 1); this._due = this._isoDate(d); dateInp.value = this._due; }
+        ov.querySelectorAll(".sf-q").forEach(x => x.classList.toggle("sf-q-on", x === b));
+      }));
+      dateInp.addEventListener("change", () => { this._due = dateInp.value; ov.querySelectorAll(".sf-q").forEach(x => x.classList.remove("sf-q-on")); });
+    }
+    const submit = () => { const t = txt.value.trim(); if (!t) { txt.focus(); return; } this._addItem(t, this._sel || def, this._due); this._closeAssign(); };
+    txt.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
+    ov.querySelector(".sf-cancel").addEventListener("click", () => this._closeAssign());
+    ov.querySelector(".sf-ok").addEventListener("click", submit);
+  }
   _flash(b) {
     const o = b.innerHTML; b.classList.add("sf-added"); b.innerHTML = CP(0x2713) + " Hinzugefuegt";
     setTimeout(() => { b.classList.remove("sf-added"); b.innerHTML = o; }, 850);
   }
   _render() {
     this._built = true;
+    if (this.config.add_button) {
+      this.innerHTML = `<ha-card class="sf-card sf-addcard">${this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : ""}<button class="sf-addbig">${CP(0x2795)} ${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</button></ha-card>${this._styles()}`;
+      const ab = this.querySelector(".sf-addbig");
+      if (ab) ab.addEventListener("click", () => this._openAdd());
+      return;
+    }
     const items = this._items();
     const cols = this.config.columns || 3;
     const big = this.config.big ? " sf-big" : "";
@@ -1119,6 +1163,13 @@ class ShoppingFavCard extends HTMLElement {
       .sf-date{width:100%;box-sizing:border-box;margin-top:8px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:rgba(120,144,156,.20);color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
       .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;}
+      .sf-addcard{padding:12px;}
+      .sf-addbig{width:100%;border:none;border-radius:12px;padding:14px;background:rgba(79,195,247,.95);color:#013;font-weight:700;font-size:1rem;cursor:pointer;}
+      .sf-addbig:hover{background:rgba(79,195,247,1);}
+      .sf-addtext{width:100%;box-sizing:border-box;border:1px solid var(--divider-color);border-radius:10px;padding:11px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .sf-favs{display:flex;gap:6px;flex-wrap:wrap;}
+      .sf-favpick{border:1px solid var(--divider-color);border-radius:16px;padding:6px 10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.85rem;cursor:pointer;}
+      .sf-favpick:hover{background:var(--primary-color);color:var(--text-primary-color,#fff);}
     </style>`;
   }
   getCardSize() { return 3; }
@@ -1198,5 +1249,90 @@ if (!customElements.get("nav-card")) {
   customElements.define("nav-card", NavCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "nav-card", name: "Nav Card", description: "Wraps a card; taps on non-interactive areas navigate" });
+}
+})();
+
+/* ===== fp-todo-card v5 (native todo-list-Wrapper; optimistisch auch beim nativen Freitext-Feld) ===== */
+(() => {
+class FpTodoCard extends HTMLElement {
+  setConfig(config) {
+    if (!config || !config.entity) throw new Error("entity erforderlich");
+    this.config = config;
+    this._pending = [];
+    this._built = false;
+    this._onAdd = e => { const d = e.detail || {}; if (d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary)); };
+    this._onInlineKey = e => { if (e.key === "Enter") this._maybeInline(e); };
+    this._onInlineClick = e => this._maybeInline(e);
+  }
+  connectedCallback() {
+    window.addEventListener("fp-todo-add", this._onAdd);
+    this.addEventListener("keydown", this._onInlineKey, true);
+    this.addEventListener("click", this._onInlineClick, true);
+    this._build();
+  }
+  disconnectedCallback() {
+    window.removeEventListener("fp-todo-add", this._onAdd);
+    this.removeEventListener("keydown", this._onInlineKey, true);
+    this.removeEventListener("click", this._onInlineClick, true);
+    if (this._poll) { clearInterval(this._poll); this._poll = null; }
+  }
+  _maybeInline(e) {
+    const path = e.composedPath ? e.composedPath() : [];
+    if (!path.some(el => el && el.classList && el.classList.contains("addRow"))) return;
+    if (e.type === "click" && !path.some(el => el && el.classList && el.classList.contains("addButton"))) return;
+    const inp = path.find(el => el && el.localName === "ha-input");
+    const val = inp && inp.value != null ? String(inp.value).trim() : "";
+    if (val) this._optimistic(val);
+  }
+  set hass(hass) { this._hass = hass; if (this._child) this._child.hass = hass; else this._build(); }
+  async _build() {
+    if (this._built || !this._hass || !this.isConnected) return;
+    this._built = true;
+    let el;
+    try {
+      const helpers = await window.loadCardHelpers();
+      const cfg = Object.assign({}, this.config);
+      cfg.type = "todo-list";
+      el = helpers.createCardElement(cfg);
+    } catch (e) { this._built = false; return; }
+    el.hass = this._hass;
+    this._child = el;
+    this.innerHTML = "";
+    this.appendChild(el);
+  }
+  _list() {
+    try { return this._child && this._child.shadowRoot && this._child.shadowRoot.querySelector("ha-list"); } catch (e) { return null; }
+  }
+  _optimistic(summary) {
+    const list = this._list();
+    if (!list) return;
+    const node = document.createElement("ha-check-list-item");
+    node.setAttribute("left", "");
+    node.className = "editRow";
+    node.style.opacity = "0.5";
+    const col = document.createElement("div"); col.className = "column";
+    const span = document.createElement("span"); span.className = "summary"; span.textContent = summary;
+    col.appendChild(span); node.appendChild(col);
+    list.insertBefore(node, list.firstChild);
+    this._pending.push({ key: summary.toLowerCase(), node: node, t: Date.now() });
+    if (!this._poll) this._poll = setInterval(() => this._reconcile(), 400);
+  }
+  _reconcile() {
+    const items = (this._child && this._child._items) || [];
+    const active = items.filter(i => i && i.status !== "completed");
+    this._pending = this._pending.filter(p => {
+      const found = active.some(i => (i.summary || "").toLowerCase() === p.key);
+      const old = Date.now() - p.t > 12000;
+      if (found || old) { if (p.node && p.node.parentNode) p.node.parentNode.removeChild(p.node); return false; }
+      return true;
+    });
+    if (!this._pending.length && this._poll) { clearInterval(this._poll); this._poll = null; }
+  }
+  getCardSize() { return (this._child && this._child.getCardSize) ? this._child.getCardSize() : 3; }
+}
+if (!customElements.get("fp-todo-card")) {
+  customElements.define("fp-todo-card", FpTodoCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "fp-todo-card", name: "FP Todo Card", description: "Wraps native todo-list with optimistic instant add" });
 }
 })();
