@@ -1,4 +1,4 @@
-/* Family Planner custom cards v1.5.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card */
+/* Family Planner custom cards v1.6.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 (() => {
@@ -13,7 +13,7 @@
   };
 })();
 
-/* ===== meal-grid-card v15 (update statt delete+create, recurrence_id, modal-guard, toasts) ===== */
+/* ===== meal-grid-card v17 (Farb-Hintergrund statt Foto moeglich; mehr Innen-Padding) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -332,7 +332,16 @@ class MealGridCard extends HTMLElement {
     });
     html += "</tbody></table></div></ha-card>";
 
-    const bgImg = this.config.background ? `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${this.config.background}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);} .mg-card .mg-bar-t,.mg-card .mg-bar-s,.mg-card .mg-meal-tx{color:#fff;} .mg-card thead th,.mg-card thead .mg-day,.mg-card thead .mg-date{color:#fff !important;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;color:#fff !important;} .mg-card td.mg-cell span{color:#fff !important;} .mg-card .mg-plus{color:#fff !important;opacity:.65;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}` : "";
+    let bgImg = "";
+    if (this.config.background) {
+      const _b = this.config.background;
+      const _isImg = /^(https?:|\/|data:)/.test(_b) || /\.(jpe?g|png|webp|gif|avif)/i.test(_b);
+      if (_isImg) {
+        bgImg = `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${_b}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);} .mg-card .mg-bar-t,.mg-card .mg-bar-s,.mg-card .mg-meal-tx{color:#fff;} .mg-card thead th,.mg-card thead .mg-day,.mg-card thead .mg-date{color:#fff !important;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;color:#fff !important;} .mg-card td.mg-cell span{color:#fff !important;} .mg-card .mg-plus{color:#fff !important;opacity:.65;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}`;
+      } else {
+        bgImg = `.mg-card{background:${_b};}`;
+      }
+    }
     const css = `
       .mg-card{overflow:hidden;}
       .mg-h{padding:12px 16px 4px;font-size:1.25rem;font-weight:600;}
@@ -342,7 +351,7 @@ class MealGridCard extends HTMLElement {
       .mg-bar-s{font-size:.78rem;opacity:.95;text-shadow:0 1px 2px rgba(0,0,0,.25);}
       .mg-nav,.mg-today-btn{border:none;background:rgba(255,255,255,.28);color:#fff;width:38px;height:38px;border-radius:50%;font-size:1.25rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;}
       .mg-nav:hover,.mg-today-btn:hover{background:rgba(255,255,255,.45);}
-      .mg-wrap{padding:10px;overflow-x:auto;}
+      .mg-wrap{padding:14px 16px 18px;overflow-x:auto;}
       table.mg{width:100%;border-collapse:separate;border-spacing:7px;table-layout:fixed;}
       table.mg th,table.mg td{text-align:center;}
       table.mg thead th{font-size:.8rem;color:var(--secondary-text-color);padding:2px;}
@@ -351,7 +360,7 @@ class MealGridCard extends HTMLElement {
       th.mg-meal{width:54px;}
       .mg-meal-ic{font-size:1.15rem;line-height:1.2;}
       .mg-meal-tx{font-size:.6rem;color:var(--secondary-text-color);text-transform:uppercase;letter-spacing:.03em;}
-      td.mg-cell{background:var(--mg-cell-bg,rgba(129,212,250,0.10));border-radius:14px;min-height:54px;height:54px;padding:6px;font-size:.82rem;line-height:1.2;color:var(--primary-text-color);cursor:pointer;vertical-align:middle;transition:background .15s,transform .1s;}
+      td.mg-cell{background:var(--mg-cell-bg,rgba(129,212,250,0.10));border:1px solid var(--divider-color);border-radius:14px;min-height:54px;height:54px;padding:6px;font-size:.82rem;line-height:1.2;color:var(--primary-text-color);cursor:pointer;vertical-align:middle;transition:background .15s,transform .1s;}
       td.mg-cell:hover{background:var(--mg-cell-bg-hover,rgba(129,212,250,0.20));transform:translateY(-1px);}
       td.mg-cell span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
       .mg-plus{color:var(--secondary-text-color);opacity:.45;font-size:1.1rem;font-weight:400;}
@@ -407,7 +416,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v1.7 (update-ws, recurrence_id, modal-guard, prefix-escape, toasts) ===== */
+/* ===== family-calendar-card v2.0 (Heute hellblau + vergangene Tage gedimmt) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -423,7 +432,19 @@ class FamilyCalendarCard extends HTMLElement {
     this._hidden = this._loadHidden();
   }
   set hass(hass) { this._hass = hass; this._maybeFetch(); }
-
+  connectedCallback() { if (!this._clock) this._clock = setInterval(() => this._tickNow(), 60000); }
+  disconnectedCallback() { if (this._clock) { clearInterval(this._clock); this._clock = null; } }
+  _tickNow() {
+    if (this._view !== "week") return;
+    const line = this.querySelector(".fcc-now"), past = this.querySelector(".fcc-nowpast");
+    if (!line && !past) return;
+    const now = new Date(); const nf = now.getHours() + now.getMinutes() / 60;
+    const h0 = this.config.day_start, h1 = this.config.day_end, HH = 46;
+    if (nf < h0 || nf >= h1) { if (line) line.style.display = "none"; if (past) past.style.display = "none"; return; }
+    const t = (nf - h0) * HH;
+    if (line) { line.style.display = "block"; line.style.top = t + "px"; }
+    if (past) { past.style.display = "block"; past.style.height = t + "px"; }
+  }
   _key() { let h = 0; const src = (this.config.persons || []).map(p => p.name + "|" + p.calendar).join(";"); for (let i = 0; i < src.length; i++) h = (h * 31 + src.charCodeAt(i)) | 0; return "fcc_hidden_" + (this.config.title || "cal") + "_" + (h >>> 0).toString(36); }
   _loadHidden() { try { return new Set(JSON.parse(localStorage.getItem(this._key()) || "[]")); } catch (e) { return new Set(); } }
   _saveHidden() { try { localStorage.setItem(this._key(), JSON.stringify([...this._hidden])); } catch (e) {} }
@@ -572,6 +593,8 @@ class FamilyCalendarCard extends HTMLElement {
     for (let h = h0; h < h1; h++) hours += `<div class="fcc-hr" style="height:${HH}px"><span>${this._pad(h)}:00</span></div>`;
     hours += "</div>";
 
+    const nowD = new Date(); const nowFrac = nowD.getHours() + nowD.getMinutes() / 60;
+    const todayMid = new Date(nowD); todayMid.setHours(0, 0, 0, 0);
     let body = `<div class="fcc-grid"><div class="fcc-gutter">${hours}</div>`;
     cols.forEach(d => {
       const dayItems = items.filter(it => !it.allDay && this._sameDay(it.start, d));
@@ -580,7 +603,12 @@ class FamilyCalendarCard extends HTMLElement {
       dayItems.forEach(e => { if (curEnd !== null && e.start >= curEnd) { clusters.push(cur); cur = []; curEnd = null; } cur.push(e); curEnd = curEnd === null ? e.end : new Date(Math.max(curEnd, e.end)); });
       if (cur.length) clusters.push(cur);
       clusters.forEach(cl => { const colsEnd = []; cl.forEach(e => { let placed = false; for (let i = 0; i < colsEnd.length; i++) { if (colsEnd[i] <= e.start) { e._c = i; colsEnd[i] = e.end; placed = true; break; } } if (!placed) { e._c = colsEnd.length; colsEnd.push(e.end); } }); cl.forEach(e => e._n = colsEnd.length); });
-      let col = `<div class="fcc-col${this._isToday(d) ? " fcc-today-col" : ""}" data-date="${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())}" style="height:${gridH}px;background-size:100% ${HH}px">`;
+      const today = this._isToday(d);
+      const dMid = new Date(d); dMid.setHours(0, 0, 0, 0);
+      const isPast = !today && dMid < todayMid;
+      let col = `<div class="fcc-col${today ? " fcc-today-col" : ""}" data-date="${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())}" style="height:${gridH}px;background-size:100% ${HH}px">`;
+      if (today && nowFrac >= h0 && nowFrac < h1) { const nt = (nowFrac - h0) * HH; col += `<div class="fcc-past fcc-nowpast" style="height:${nt}px"></div><div class="fcc-now" style="top:${nt}px"></div>`; }
+      else if (isPast) { col += `<div class="fcc-past" style="height:${gridH}px"></div>`; }
       dayItems.forEach(e => {
         const sd = Math.max(h0, e.start.getHours() + e.start.getMinutes() / 60);
         const ed = Math.min(h1, Math.max(sd + 0.25, e.end.getHours() + e.end.getMinutes() / 60 || h1));
@@ -730,7 +758,7 @@ class FamilyCalendarCard extends HTMLElement {
     }));
     this.querySelectorAll(".fcc-col").forEach(col => col.addEventListener("click", e => { const ds = col.dataset.date; if (!ds) return; const h = Math.min(this.config.day_end - 1, Math.max(this.config.day_start, this.config.day_start + Math.floor(e.offsetY / 46))); this._openEvent({ dateIso: ds, hour: h }); }));
     this.querySelectorAll(".fcc-m-cell").forEach(c => c.addEventListener("click", () => { const ds = c.dataset.date; if (ds) this._openEvent({ dateIso: ds, hour: 9 }); }));
-    if (this._view === "week") { const sc = this.querySelector(".fcc-scroll"); if (sc) sc.scrollTop = Math.max(0, (8 - this.config.day_start) * 46); }
+    if (this._view === "week") { const sc = this.querySelector(".fcc-scroll"); if (sc) { const nd = new Date(); const nf = nd.getHours() + nd.getMinutes() / 60; const tgt = (this._offset === 0 && nf > this.config.day_start + 1) ? (nf - this.config.day_start - 1) : (8 - this.config.day_start); sc.scrollTop = Math.max(0, tgt * 46); } }
   }
 
   _css() {
@@ -763,14 +791,17 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-hr{position:relative;}
     .fcc-hr span{position:absolute;top:-7px;right:6px;font-size:.66rem;color:var(--secondary-text-color);}
     .fcc-col{position:relative;flex:1;min-width:0;border-left:1px solid var(--divider-color,#eee);background-image:linear-gradient(var(--divider-color,#eee) 1px,transparent 1px);}
-    .fcc-today-col{background-color:rgba(3,155,229,.05);}
+    .fcc-today-col{background-color:rgba(129,212,250,.20);}
     .fcc-ev{position:absolute;border-radius:7px;color:#fff;padding:2px 5px;overflow:hidden;font-size:.72rem;line-height:1.05;box-shadow:0 1px 3px rgba(0,0,0,.25);cursor:pointer;box-sizing:border-box;}
     .fcc-ev-t{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .fcc-ev-h{font-size:.62rem;opacity:.9;}
+    .fcc-past{position:absolute;left:0;right:0;top:0;background:rgba(0,0,0,.16);pointer-events:none;}
+    .fcc-now{position:absolute;left:0;right:0;height:0;border-top:2px solid #e53935;z-index:6;pointer-events:none;}
+    .fcc-now::before{content:"";position:absolute;left:-1px;top:-4px;width:8px;height:8px;border-radius:50%;background:#e53935;}
     .fcc-m-head{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));padding:6px 8px 0;}
     .fcc-m-head>div{text-align:center;font-size:.72rem;font-weight:700;color:var(--secondary-text-color);}
     .fcc-m-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;padding:6px 8px 8px;}
-    .fcc-m-cell{min-width:0;overflow:hidden;min-height:84px;border-radius:8px;background:var(--secondary-background-color,rgba(0,0,0,.03));padding:3px;}
+    .fcc-m-cell{min-width:0;overflow:hidden;min-height:84px;border-radius:8px;border:1px solid var(--divider-color);background:var(--secondary-background-color,rgba(0,0,0,.03));padding:3px;}
     .fcc-m-cell.fcc-dim{opacity:.45;}
     .fcc-m-cell.fcc-today{outline:2px solid #039be5;}
     .fcc-m-num{font-size:.72rem;font-weight:700;text-align:right;color:var(--primary-text-color);padding:0 2px;}
@@ -907,7 +938,7 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v12 (add_button-Dialog, kein Auto-Fokus -> Tastatur nur bei Textfeld-Tap) ===== */
+/* ===== shopping-fav-card v14 (Kontrast: Chip-Raender; Card-Panel via Theme) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1166,8 +1197,9 @@ class ShoppingFavCard extends HTMLElement {
       .sf-addbig{width:100%;border:none;border-radius:12px;padding:14px;background:rgba(79,195,247,.95);color:#013;font-weight:700;font-size:1rem;cursor:pointer;}
       .sf-addbig:hover{background:rgba(79,195,247,1);}
       .sf-addtext{width:100%;box-sizing:border-box;border:1px solid var(--divider-color);border-radius:10px;padding:11px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .sf-favs{display:flex;gap:6px;flex-wrap:wrap;}
-      .sf-favpick{border:1px solid var(--divider-color);border-radius:16px;padding:6px 10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.85rem;cursor:pointer;}
+      .sf-favs{display:flex;gap:8px;flex-wrap:wrap;}
+      .sf-favpick{border:1px solid var(--divider-color);border-radius:12px;padding:12px 14px;min-height:46px;box-sizing:border-box;display:flex;align-items:center;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;font-weight:600;cursor:pointer;}
+      .sf-favpick:active{transform:scale(.97);}
       .sf-favpick:hover{background:var(--primary-color);color:var(--text-primary-color,#fff);}
     </style>`;
   }

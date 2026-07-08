@@ -2,8 +2,8 @@
 
 Sechs eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
-- **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und optionalem KI-Vorschlag (`ai_task`).
-- **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen.
+- **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und optionalem KI-Vorschlag (`ai_task`). `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
+- **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen. Jetzt-Linie (Outlook-Stil), hellblaues Heute-Highlight und ausgegraute vergangene Tage.
 - **`kids-routine-card`** — Buddy-artige Routinen für Kinder: Aufgaben mit Emoji nach Tageszeit, antippen zum Abhaken (Sterne via ChoreOps), mit Belohnungs-Animation.
 - **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar).
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
