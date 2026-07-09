@@ -1,4 +1,4 @@
-/* Family Planner custom cards v1.6.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card */
+/* Family Planner custom cards v1.7.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 (() => {
@@ -1365,5 +1365,248 @@ if (!customElements.get("fp-todo-card")) {
   customElements.define("fp-todo-card", FpTodoCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "fp-todo-card", name: "FP Todo Card", description: "Wraps native todo-list with optimistic instant add" });
+}
+})();
+
+/* ===== fp-glance-card v4 (Pro-Element-Navigation: Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card; Tageszeit-Hintergrund via sun.sun) ===== */
+(() => {
+const U = window.__fpUtils;
+const CP = U.cp;
+class FpGlanceCard extends HTMLElement {
+  setConfig(config) {
+    this.config = Object.assign({
+      name: "Familie",
+      weather_entity: "weather.home",
+      sun_entity: "sun.sun",
+      show_weather: true,
+      weather_card: null,                   // eigene clock-weather-card-Config (optional); sonst Default unten
+      forecast_days: 4,
+      persons: [],                          // wie family-calendar-card: {name,color,calendar,prefix,match}
+      essensplan_entity: "calendar.essensplan",
+      dinner: { start: 15, end: 24 },       // Stunden-Fenster fuers Abendessen
+      backgrounds: {},                      // {morning,day,evening,night} Bild-URLs (optional)
+      background: "",                       // Fallback-Bild/CSS fuer alle Tageszeiten (optional)
+      calendar_path: "",                    // Klick auf Datum + naechsten Termin -> Kalender
+      meals_path: "",                       // Klick auf Abendessen -> Essensplan
+      weather_path: "",                     // Klick aufs Wetter -> Wetter-Tab
+      nav_path: "",                         // (veraltet) Fallback fuer calendar_path
+    }, config || {});
+    this._events = null; this._rangeKey = ""; this._lastFetch = 0;
+    this._built = false; this._wc = null; this._curBg = ""; this._curLight = null;
+    // Eingebettete Wetterkarte (transparent aufs Banner geblendet); volle Config ueberschreibbar via weather_card
+    if (this.config.show_weather) {
+      const base = this.config.weather_card || {
+        type: "custom:clock-weather-card",
+        entity: this.config.weather_entity,
+        sun_entity: this.config.sun_entity,
+        locale: "de-DE", time_format: "24",
+        hide_today_section: false, hide_forecast_section: false,
+        forecast_days: this.config.forecast_days,
+      };
+      if (!base.card_mod) base.card_mod = { style: "ha-card{background:transparent!important;box-shadow:none!important;border:none!important;} :host{--primary-text-color:#fff;--secondary-text-color:rgba(255,255,255,.9);} img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));} svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));}" };
+      this._wcConfig = base;
+    }
+  }
+  set hass(hass) {
+    this._hass = hass;
+    if (this._wc) this._wc.hass = hass;
+    if (!this._built) this._build(); else this._paint();
+    this._maybeFetch();
+  }
+  connectedCallback() { if (!this._clock) this._clock = setInterval(() => { this._maybeFetch(); this._paint(); }, 60000); }
+  disconnectedCallback() { if (this._clock) { clearInterval(this._clock); this._clock = null; } }
+
+  _esc(s) { return U.esc(s); }
+  _pad(n) { return U.pad(n); }
+  _toast(msg) { U.toast(this, msg); }
+  _nav(path) { history.pushState(null, "", path); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); }
+
+  _entities() {
+    const s = new Set();
+    (this.config.persons || []).forEach(p => { if (p.calendar) s.add(p.calendar); });
+    if (this.config.essensplan_entity) s.add(this.config.essensplan_entity);
+    return [...s];
+  }
+  _range() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const end = new Date(start); end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
+  async _maybeFetch(force) {
+    if (!this._hass) return;
+    const { start, end } = this._range();
+    const ents = this._entities();
+    const key = ents.join(",") + "|" + start.toISOString();
+    const now = Date.now();
+    if (!force && key === this._rangeKey && now - this._lastFetch < 60000) return;
+    this._rangeKey = key; this._lastFetch = now;
+    const all = [], failed = [];
+    await Promise.all(ents.map(async ent => {
+      try {
+        const s = encodeURIComponent(start.toISOString()), e = encodeURIComponent(end.toISOString());
+        const evts = await this._hass.callApi("GET", `calendars/${ent}?start=${s}&end=${e}`);
+        (evts || []).forEach(ev => { ev._entity = ent; all.push(ev); });
+      } catch (err) { failed.push(ent); }
+    }));
+    if (failed.length && this._loadedOnce) this._toast("Übersicht: Kalender nicht erreichbar: " + failed.join(", "));
+    this._loadedOnce = true; // allerersten Ladefehler (Startup-Flackern) nicht melden
+    this._events = all;
+    this._paint();
+  }
+
+  _matchPrefix(title, prefix) { const re = new RegExp("^" + U.reEsc(prefix) + "[ :._-]"); return re.test(title); }
+  _stripPrefix(title, prefix) { return title.replace(new RegExp("^" + U.reEsc(prefix) + "[ :._-]\\s*"), ""); }
+  _classify(ev) {
+    const title = ev.summary || ev.message || "";
+    const group = (this.config.persons || []).filter(p => p.calendar === ev._entity);
+    if (!group.length) return { person: null, display: title };
+    const prefixed = group.filter(p => p.prefix);
+    for (const p of prefixed) { if (this._matchPrefix(title, p.prefix)) return { person: p, display: this._stripPrefix(title, p.prefix) }; }
+    const none = group.find(p => p.match === "none") || group.find(p => !p.prefix);
+    if (none) return { person: none, display: title };
+    return { person: group[0], display: title };
+  }
+  _parse(ev) {
+    const s = ev.start || {}, e = ev.end || {};
+    const allDay = !!(s.date && !s.dateTime);
+    let start, end;
+    if (allDay) {
+      const a = String(s.date).split("-"); start = new Date(+a[0], +a[1] - 1, +a[2]);
+      const b = String(e.date || s.date).split("-"); end = new Date(+b[0], +b[1] - 1, +b[2]);
+    } else { start = new Date(s.dateTime || s.date); end = new Date(e.dateTime || e.date || s.dateTime || s.date); }
+    return { allDay, start, end };
+  }
+  _nextAppt() {
+    const now = new Date();
+    const persEnts = new Set((this.config.persons || []).map(p => p.calendar));
+    const cands = [];
+    (this._events || []).forEach(ev => {
+      if (!persEnts.has(ev._entity)) return;
+      const t = this._parse(ev);
+      if (t.end <= now && !t.allDay) return;
+      const cl = this._classify(ev);
+      cands.push({ display: cl.display, person: cl.person, allDay: t.allDay, start: t.start });
+    });
+    cands.sort((a, b) => (a.allDay === b.allDay) ? a.start - b.start : (a.allDay ? 1 : -1));
+    return cands[0] || null;
+  }
+  _dinner() {
+    const ent = this.config.essensplan_entity;
+    const d = this.config.dinner || { start: 15, end: 24 };
+    let pick = null;
+    (this._events || []).forEach(ev => {
+      if (ev._entity !== ent) return;
+      const t = this._parse(ev);
+      const h = t.allDay ? 12 : t.start.getHours();
+      if (h >= d.start && h < d.end) { if (!pick || t.start < pick.start) pick = { summary: ev.summary || ev.message || "", start: t.start }; }
+    });
+    return pick;
+  }
+
+  _daypart() { const h = new Date().getHours(); if (h >= 5 && h < 11) return "morning"; if (h >= 11 && h < 17) return "day"; if (h >= 17 && h < 22) return "evening"; return "night"; }
+  _greet() { const p = this._daypart(); return p === "morning" ? "Guten Morgen" : p === "evening" ? "Guten Abend" : p === "night" ? "Gute Nacht" : "Hallo"; }
+  _defaultBg(part) { return part === "morning" ? "linear-gradient(135deg,#5b9bd5,#89c4f4)" : part === "day" ? "linear-gradient(135deg,#2f80c4,#5aa9e6)" : part === "evening" ? "linear-gradient(135deg,#3a5a8c,#7b6ca8)" : "linear-gradient(135deg,#1b2a4a,#33415e)"; }
+  _bg() {
+    const part = this._daypart();
+    const bgs = this.config.backgrounds || {};
+    const bRaw = bgs[part] || this.config.background || "";
+    const isImg = bRaw && (/^(https?:|\/|data:)/.test(bRaw) || /\.(jpe?g|png|webp|gif|avif)/i.test(bRaw));
+    if (isImg) return { style: `background-image:linear-gradient(rgba(0,0,0,.42),rgba(0,0,0,.58)),url('${bRaw}');background-size:cover;background-position:center;`, light: true };
+    if (bRaw) return { style: `background:${bRaw};`, light: false };
+    return { style: `background:${this._defaultBg(part)};`, light: true };
+  }
+
+  async _build() {
+    this._built = true;
+    this.innerHTML = `
+      <style>
+        .fpg-card{position:relative;border-radius:12px;overflow:hidden;padding:16px 18px;box-sizing:border-box;}
+        .fpg-light{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.55);}
+        .fpg-dark{color:var(--primary-text-color);}
+        .fpg-clk{cursor:pointer;}
+        .fpg-date.fpg-clk:hover,.fpg-chip.fpg-clk:hover{text-decoration:underline;}
+        .fpg-wc.fpg-clk{cursor:pointer;}
+        .fpg-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;}
+        .fpg-date{font-size:.82rem;opacity:.88;}
+        .fpg-hi{font-size:1.3rem;font-weight:700;margin-top:2px;}
+        .fpg-info{display:flex;gap:16px;flex-wrap:wrap;margin-top:13px;padding-top:11px;border-top:1px solid rgba(255,255,255,.28);font-size:.9rem;}
+        .fpg-dark .fpg-info{border-top-color:var(--divider-color);}
+        .fpg-chip{display:inline-flex;align-items:center;gap:6px;}
+        .fpg-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+        .fpg-muted{opacity:.72;}
+        .fpg-wc{margin-top:8px;}
+        .fpg-wc-hidden{display:none;}
+      </style>
+      <div class="fpg-card">
+        <div class="fpg-top">
+          <div class="fpg-greet"><div class="fpg-date"></div><div class="fpg-hi"></div></div>
+        </div>
+        <div class="fpg-info"></div>
+        <div class="fpg-wc"></div>
+      </div>`;
+    this._elCard = this.querySelector(".fpg-card");
+    this._elDate = this.querySelector(".fpg-date");
+    this._elGreet = this.querySelector(".fpg-hi");
+    this._elInfo = this.querySelector(".fpg-info");
+    this._elWc = this.querySelector(".fpg-wc");
+    // Pro-Element-Navigation: Datum + Termin -> Kalender, Essen -> Essensplan, Wetter -> Wetter-Tab
+    const calPath = this.config.calendar_path || this.config.nav_path || "";
+    if (calPath) { this._elDate.classList.add("fpg-clk"); this._elDate.addEventListener("click", () => this._nav(calPath)); }
+    this._elInfo.addEventListener("click", e => {
+      const p = e.composedPath ? e.composedPath() : [];
+      for (const n of p) { if (n === this._elInfo) break; if (n.dataset && n.dataset.nav) { this._nav(n.dataset.nav); return; } }
+    });
+    if (this.config.weather_path) {
+      this._elWc.classList.add("fpg-clk");
+      // Capture-Phase + stopPropagation: verhindert das More-Info-Popup der eingebetteten Wetterkarte
+      this._elWc.addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); this._nav(this.config.weather_path); }, true);
+    }
+    if (this.config.show_weather && this._wcConfig) {
+      try {
+        const helpers = await window.loadCardHelpers();
+        const el = helpers.createCardElement(this._wcConfig);
+        if (this._hass) el.hass = this._hass;
+        this._wc = el; this._elWc.appendChild(el);
+      } catch (e) { this._elWc.classList.add("fpg-wc-hidden"); if (this._loadedOnce) this._toast("Wetterkarte konnte nicht geladen werden"); }
+    } else { this._elWc.classList.add("fpg-wc-hidden"); }
+    this._paint();
+  }
+
+  _paint() {
+    if (!this._hass || !this._built || !this._elCard) return;
+    const bg = this._bg();
+    if (bg.style !== this._curBg) { this._elCard.setAttribute("style", bg.style); this._curBg = bg.style; }
+    if (bg.light !== this._curLight) {
+      this._elCard.classList.toggle("fpg-light", bg.light);
+      this._elCard.classList.toggle("fpg-dark", !bg.light);
+      this._curLight = bg.light;
+    }
+    const now = new Date();
+    this._elDate.textContent = now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+    this._elGreet.textContent = this._greet() + (this.config.name ? ", " + this.config.name : "") + "!";
+    const calPath = this.config.calendar_path || this.config.nav_path || "";
+    const mealsPath = this.config.meals_path || "";
+    const clkCal = calPath ? " fpg-clk" : "", clkMeal = mealsPath ? " fpg-clk" : "";
+    const chips = [];
+    const appt = this._nextAppt();
+    if (appt) {
+      const time = appt.allDay ? "ganztägig" : `${this._pad(appt.start.getHours())}:${this._pad(appt.start.getMinutes())}`;
+      const dot = appt.person && appt.person.color ? `<span class="fpg-dot" style="background:${appt.person.color}"></span>` : "";
+      chips.push(`<span class="fpg-chip${clkCal}" data-nav="${this._esc(calPath)}">${dot}${CP(0x1F4C5)} ${this._esc(time)} · ${this._esc(appt.display)}</span>`);
+    } else {
+      chips.push(`<span class="fpg-chip fpg-muted${clkCal}" data-nav="${this._esc(calPath)}">${CP(0x1F4C5)} Keine Termine mehr heute</span>`);
+    }
+    const din = this._dinner();
+    chips.push(`<span class="fpg-chip${clkMeal}" data-nav="${this._esc(mealsPath)}">${CP(0x1F37D)} Abends: ${din ? this._esc(din.summary) : "<span class=\"fpg-muted\">noch offen</span>"}</span>`);
+    this._elInfo.innerHTML = chips.join("");
+  }
+
+  getCardSize() { return (this._wc && this._wc.getCardSize) ? (this._wc.getCardSize() + 2) : 4; }
+}
+if (!customElements.get("fp-glance-card")) {
+  customElements.define("fp-glance-card", FpGlanceCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "fp-glance-card", name: "FP Glance Card", description: "Today at a glance: greeting + next event + dinner, with embedded animated clock-weather-card" });
 }
 })();

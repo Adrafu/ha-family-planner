@@ -1,6 +1,6 @@
 # Family Planner Cards
 
-Sechs eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
+Sieben eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
 - **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und optionalem KI-Vorschlag (`ai_task`). `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
 - **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen. Jetzt-Linie (Outlook-Stil), hellblaues Heute-Highlight und ausgegraute vergangene Tage.
@@ -8,6 +8,7 @@ Sechs eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar).
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
 - **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen.
+- **`fp-glance-card`** — „Today at a glance"-Banner für die Übersicht: tageszeitabhängige Begrüßung, Datum, nächster Termin (Präfix-Personen aufgelöst) und heutiges Abendessen, mit tageszeit-adaptivem Foto-/Verlaufs-Hintergrund (via `sun.sun`). Das Wetter wird als eingebettete `clock-weather-card` (echte Animationen + Vorschau) transparent auf den Banner geblendet. Klick pro Element navigiert getrennt (Datum/Termin → Kalender, Essen → Essensplan, Wetter → eigener Wetter-Tab); das More-Info-Popup der eingebetteten Karte wird unterdrückt.
 
 ## Installation (HACS)
 
@@ -24,6 +25,7 @@ Sechs eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - `custom:shopping-fav-card`
 - `custom:nav-card`
 - `custom:fp-todo-card`
+- `custom:fp-glance-card`
 
 ### Beispiel: meal-grid-card
 
@@ -106,6 +108,31 @@ display_order: duedate_asc
 ```
 
 Neue Einträge erscheinen sofort (leicht ausgegraut) und werden ersetzt, sobald das Backend nachzieht. Adds über die `shopping-fav-card` (Event `fp-todo-add`) und über das native Eingabefeld werden erkannt.
+
+### Beispiel: fp-glance-card
+
+```yaml
+type: custom:fp-glance-card
+name: Familie
+weather_entity: weather.home
+sun_entity: sun.sun
+essensplan_entity: calendar.essensplan
+calendar_path: /familien-planer/kalender   # Klick auf Datum + nächsten Termin
+meals_path: /familien-planer/essensplan     # Klick auf Abendessen
+weather_path: /familien-planer/wetter       # Klick aufs Wetter
+persons:
+  - { name: Familie, color: "#E53935", calendar: calendar.familie, match: none }
+  - { name: Tobi, color: "#FBC02D", calendar: calendar.familie, prefix: "T" }
+  - { name: Verena, color: "#1E88E5", calendar: calendar.familie, prefix: "V" }
+  - { name: Kind I, color: "#43A047", calendar: calendar.kind_i }
+backgrounds:                                # optional, sonst tageszeit-Verlauf als Fallback
+  morning: /local/glance/morning.jpg
+  day: /local/glance/day.jpg
+  evening: /local/glance/evening.jpg
+  night: /local/glance/night.jpg
+```
+
+Ohne `backgrounds` nutzt die Karte automatisch passende Blauverläufe. Das Wetter kann über `weather_card` mit einer vollständigen `clock-weather-card`-Config überschrieben werden; ansonsten wird eine sinnvolle Default-Config verwendet. Benötigt die HACS-Karte `clock-weather-card`.
 
 ## Lizenz
 
