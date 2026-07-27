@@ -1,4 +1,4 @@
-/* Family Planner custom cards v1.7.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card */
+/* Family Planner custom cards v1.8.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 (() => {
@@ -13,7 +13,7 @@
   };
 })();
 
-/* ===== meal-grid-card v17 (Farb-Hintergrund statt Foto moeglich; mehr Innen-Padding) ===== */
+/* ===== meal-grid-card v20 (Vorschlag-Logik wie Kochbuch; „Ins Kochbuch" bleibt beim klassischen Rezept ohne Protein-Fremdzutaten) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -23,6 +23,7 @@ class MealGridCard extends HTMLElement {
       title: "Wochenplan", mode: "week", week_offset: 0, nav_path: "",
       show_emojis: true, meal_icons: true, background: "",
       ai_suggest: true, ai_entity: "", recipe_url: "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html",
+      cookbook_entity: "todo.kochbuch", weather_entity: "weather.home",
       meals: [
         { label: "Frühstück", start: 0, end: 11 },
         { label: "Mittag", start: 11, end: 15 },
@@ -167,23 +168,98 @@ class MealGridCard extends HTMLElement {
     if (!ev && text !== "") { if (await this._createEvent(meal, date, text)) await this._maybeFetch(true); }
   }
 
+  // ---------- Kochbuch-Kopplung ----------
+  _season() { const m = new Date().getMonth() + 1; if (m === 12 || m <= 2) return "Winter"; if (m <= 5) return "Frühling"; if (m <= 8) return "Sommer"; return "Herbst"; }
+  async _loadCookbook() {
+    if (!this._hass || !this.config.cookbook_entity) return [];
+    try {
+      const r = await this._hass.callService("todo", "get_items", { entity_id: this.config.cookbook_entity }, undefined, false, true);
+      const items = (r && r.response && r.response[this.config.cookbook_entity] && r.response[this.config.cookbook_entity].items) || [];
+      return items.map(it => { let m = {}; try { m = JSON.parse(it.description || "{}"); } catch (e) { m = {}; } return Object.assign({ name: it.summary, uid: it.uid, category: "egal", tags: [], rating: 0, last_cooked: null, season: [] }, m, { name: it.summary, uid: it.uid }); });
+    } catch (e) { return []; }
+  }
+  _matchMeal(cat, label) { if (!cat || cat === "egal") return true; return this._norm(cat) === this._norm(label); }
+  _pickWeighted(pool, meal, usedNamesSet) {
+    const season = this._norm(this._season());
+    const cands = pool.filter(d => d.name && !usedNamesSet.has(this._norm(d.name)) && this._matchMeal(d.category, meal.label));
+    if (!cands.length) return null;
+    const now = Date.now();
+    const weighted = cands.map(d => {
+      let w = 1 + (Number(d.rating) || 0);
+      const s = (d.season || []).map(x => this._norm(x));
+      if (s.includes(season) || s.includes("ganzjahrig") || s.includes("ganzjaehrig")) w *= 1.5;
+      if (d.last_cooked) { const days = (now - new Date(d.last_cooked).getTime()) / 86400000; if (days >= 0 && days < 10) w *= 0.2; }
+      return { d, w: Math.max(w, 0.05) };
+    });
+    const total = weighted.reduce((a, b) => a + b.w, 0);
+    let r = Math.random() * total;
+    for (const it of weighted) { r -= it.w; if (r <= 0) return it.d; }
+    return weighted[weighted.length - 1].d;
+  }
+  async _toCookbook(name, btn) {
+    name = (name || "").trim();
+    if (!name) { this._toast("Kein Gericht angegeben"); return; }
+    const prev = btn.innerHTML; btn.disabled = true; btn.innerHTML = CP(0x2605) + " ...";
+    try {
+      const cb = await this._loadCookbook();
+      if (cb.some(d => this._norm(d.name) === this._norm(name))) { this._toast(`„${name}" ist schon im Kochbuch`); btn.disabled = false; btn.innerHTML = prev; return; }
+      const bp = 2;
+      const prompt = `Erzeuge ein bewaehrtes, alltagstaugliches Familienrezept fuer "${name}". Halte dich ans klassische, typische Rezept fuer dieses Gericht und erfinde KEINE zusaetzlichen Hauptzutaten (z. B. keine Huelsenfruechte, kein Fleisch nur wegen Protein), die nicht ueblich dazugehoeren. `
+        + `Tags NUR aus dieser Liste (2-4 passende): vegetarisch, vegan, fleisch, fisch, schnell, proteinreich, kinderliebling, saisonal. Verwende NIEMALS "bunt" als Tag. `
+        + `Sprache: oesterreichisches Deutsch (Erdaepfel, Paradeiser, Topfen, Obers ...). Mengen fuer ${bp} Portionen. `
+        + `Antworte NUR mit GUELTIGEM JSON (kein Markdown, keine Erklaerung), exakt in dieser Form:`
+        + `{"name":"${name}","category":"Frühstück|Mittag|Abend","tags":["vegetarisch","schnell"],"portions_base":${bp},"ingredients":[{"qty":250,"unit":"g","item":"Zutat"}],"steps":["Schritt 1","Schritt 2"],"season":["ganzjährig"]}`;
+      const data = { task_name: "Kochbuch-Rezept", instructions: prompt };
+      if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+      let meta = null;
+      try {
+        const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
+        let txt = r && r.response && r.response.data;
+        if (txt && typeof txt === "object") txt = txt.text || JSON.stringify(txt);
+        const mm = String(txt || "").match(/\{[\s\S]*\}/);
+        if (mm) meta = JSON.parse(mm[0]);
+      } catch (e) { meta = null; }
+      if (!meta) meta = { category: "egal", tags: [], portions_base: bp, ingredients: [], steps: [], season: ["ganzjährig"] };
+      meta.portions_base = meta.portions_base || bp; meta.rating = meta.rating || 0; meta.times_cooked = 0; meta.last_cooked = null;
+      delete meta.name; delete meta.uid;
+      await this._hass.callService("todo", "add_item", { entity_id: this.config.cookbook_entity, item: name, description: JSON.stringify(meta) });
+      this._toast(meta.ingredients && meta.ingredients.length ? `„${name}" mit Rezept ins Kochbuch` : `„${name}" ins Kochbuch (ohne Rezept)`);
+    } catch (e) { this._toast("Ins Kochbuch speichern fehlgeschlagen"); }
+    btn.disabled = false; btn.innerHTML = prev;
+  }
+
   async _suggest(meal, input, btn) {
     const prev = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = CP(0x2728) + " ...";
     try {
       const existing = [];
       this._cells.forEach(r => r.forEach(c => c.forEach(o => { if (o.summary) existing.push(o.summary); })));
-      const avoid = existing.concat(this._recent || []);
+      const avoid = Array.from(new Set(existing.concat(this._recent || []))).filter(Boolean);
+      const typed = (input.value || "").trim();
+      const hint = (typed && typed !== (this._mgAiSet || "")) ? typed : ""; // getippten Wunsch auslesen, KI-gesetzte Namen ignorieren
+      const season = this._season();
+      const w = this._hass.states[this.config.weather_entity];
+      const cond = w ? w.state : "";
+      const temp = w && w.attributes && w.attributes.temperature != null ? w.attributes.temperature : "";
+      const pick = a => a[Math.floor(Math.random() * a.length)];
+      const cuisine = pick(["österreichisch/deutsch", "italienisch", "asiatisch (Wok/Curry)", "indisch", "orientalisch/levantinisch", "mexikanisch", "griechisch/mediterran", "spanisch", "französisch", "Balkan/ungarisch"]);
+      const base = pick(["mit Hülsenfrüchten", "als Ofengericht", "als Pfannengericht", "als Eintopf/Suppe", "mit Reis/Getreide", "als Auflauf/Gratin", "als Bowl/Salat", "mit Nudeln", "mit Erdäpfeln", "mit Tofu/Ei/Käse"]);
       const veg = Math.random() < 0.7;
-      const diet = veg ? "Das Gericht MUSS fleischlos (vegetarisch) sein." : "Das Gericht darf auch Fleisch oder Fisch enthalten.";
-      const prompt = `Schlage genau EIN alltagstaugliches Gericht fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. ${diet} Auch einfache Klassiker (z. B. Nudeln mit Pesto, Reis mit Gemuese) sind ausdruecklich willkommen. Sprache: oesterreichisches Deutsch (z. B. Topfen statt Quark, Erdaepfel statt Kartoffeln, Paradeiser statt Tomaten), aber die Gerichte duerfen aus aller Welt stammen, nicht nur oesterreichische Kueche. Antworte NUR mit dem Gerichtnamen, ohne Erklaerung, ohne Anfuehrungszeichen, ohne Satzzeichen am Ende.` + (avoid.length ? ` Vermeide diese Gerichte: ${avoid.join(", ")}.` : "");
+      const diet = veg ? "Das Gericht soll moeglichst fleischlos (vegetarisch) sein." : "Das Gericht darf auch Fleisch oder Fisch enthalten.";
+      const prompt = `Schlage genau EIN alltagstaugliches Gericht fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. `
+        + (hint ? `Beziehe unbedingt diesen Wunsch ein (Zutat/Idee/Richtung): "${hint}". Kueche und Grundform frei, solange es dazu passt. ` : `Kueche diesmal: ${cuisine}. Grundform diesmal: ${base}. `)
+        + `${diet} Beruecksichtige Jahreszeit (${season})${cond ? ` und Wetter (${cond}${temp !== "" ? `, ${temp} Grad` : ""})` : ""}. `
+        + `Auch einfache Klassiker sind willkommen, aber auf keinen Fall Erdaepfelgulasch. `
+        + `Sprache: oesterreichisches Deutsch (Topfen, Erdaepfel, Paradeiser ...), Gerichte duerfen aus aller Welt stammen. Zufalls-Seed: ${Math.random().toString(36).slice(2, 8)}. `
+        + `Antworte NUR mit dem Gerichtnamen, ohne Erklaerung, ohne Anfuehrungszeichen, ohne Satzzeichen am Ende.`
+        + (avoid.length ? ` Vermeide diese Gerichte: ${avoid.join(", ")}.` : "");
       const data = { task_name: "Essensvorschlag", instructions: prompt };
       if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
       const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
       let txt = r && r.response && r.response.data;
       if (txt && typeof txt === "object") txt = txt.text || txt.result || JSON.stringify(txt);
       txt = String(txt || "").trim().replace(/^["'\s]+/, "").replace(/["'\s.]+$/, "");
-      if (txt) { input.value = txt; input.focus(); this._recent = this._recent || []; this._recent.push(txt); if (this._recent.length > 14) this._recent.shift(); }
+      if (txt) { input.value = txt; this._mgAiSet = txt; input.focus(); this._recent = this._recent || []; this._recent.push(txt); if (this._recent.length > 14) this._recent.shift(); }
       else throw new Error("leer");
     } catch (e) {
       input.placeholder = "KI nicht verfügbar - bitte Text eingeben";
@@ -196,8 +272,11 @@ class MealGridCard extends HTMLElement {
     if (this.config.mode === "compact") return;
     const prev = btn.innerHTML; btn.disabled = true; btn.innerHTML = CP(0x2728) + " ...";
     try {
+      const cookbook = await this._loadCookbook();
+      const usedNames = new Set();
       const existing = [];
-      this._cells.forEach(r => r.forEach(c => c.forEach(o => { if (o.summary) existing.push(o.summary); })));
+      this._cells.forEach(r => r.forEach(c => c.forEach(o => { if (o.summary) { existing.push(o.summary); usedNames.add(this._norm(o.summary)); } })));
+      let fromCB = 0, fromAI = 0;
       for (let mi = 0; mi < this._meals.length; mi++) {
         const meal = this._meals[mi];
         const emptyDays = [];
@@ -206,22 +285,33 @@ class MealGridCard extends HTMLElement {
           if (!(cell && cell.length && cell[0].summary)) emptyDays.push(ci);
         }
         if (!emptyDays.length) continue;
-        const prompt = `Schlage ${emptyDays.length} verschiedene, einfache, alltagstaugliche Gerichte fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Etwa 70% davon sollen fleischlos (vegetarisch) sein. Sprache: oesterreichisches Deutsch (z. B. Topfen statt Quark, Erdaepfel statt Kartoffeln, Paradeiser statt Tomaten), aber die Gerichte duerfen aus aller Welt stammen, nicht nur oesterreichische Kueche. Antworte als reine Liste, ein Gericht pro Zeile, ohne Nummerierung und ohne Aufzaehlungszeichen.` + (existing.length ? ` Vermeide diese Gerichte: ${existing.join(", ")}.` : "");
-        const data = { task_name: "Wochenessensplan", instructions: prompt };
-        if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
-        const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
-        let txt = r && r.response && r.response.data;
-        if (txt && typeof txt === "object") txt = txt.text || JSON.stringify(txt);
-        const dishes = String(txt || "").split("\n").map(x => x.replace(/^[\s\d.)\-*]+/, "").trim()).filter(Boolean);
-        for (let k = 0; k < emptyDays.length; k++) {
-          const dish = dishes[k];
-          if (!dish) continue;
-          existing.push(dish);
-          await this._createEvent(meal, this._cols[emptyDays[k]], dish);
+        // 1) erst gewichtet aus dem Kochbuch
+        const aiDays = [];
+        for (const ci of emptyDays) {
+          const pick = this._pickWeighted(cookbook, meal, usedNames);
+          if (pick) { usedNames.add(this._norm(pick.name)); existing.push(pick.name); await this._createEvent(meal, this._cols[ci], pick.name); fromCB++; }
+          else aiDays.push(ci);
+        }
+        // 2) verbleibende Lücken per KI (entschärfter Prompt)
+        if (aiDays.length) {
+          const prompt = `Schlage ${aiDays.length} verschiedene, einfache, alltagstaugliche Gerichte fuer die Mahlzeit "${meal.label}" fuer eine Familie vor. Etwa 70% davon sollen fleischlos (vegetarisch) sein. Beruecksichtige die Jahreszeit (${this._season()}). Sprache: oesterreichisches Deutsch (z. B. Topfen statt Quark, Erdaepfel statt Kartoffeln, Paradeiser statt Tomaten), aber die Gerichte duerfen aus aller Welt stammen. Auf keinen Fall Erdaepfelgulasch. Antworte als reine Liste, ein Gericht pro Zeile, ohne Nummerierung und ohne Aufzaehlungszeichen.` + (existing.length ? ` Vermeide diese Gerichte: ${existing.join(", ")}.` : "");
+          const data = { task_name: "Wochenessensplan", instructions: prompt };
+          if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+          const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
+          let txt = r && r.response && r.response.data;
+          if (txt && typeof txt === "object") txt = txt.text || JSON.stringify(txt);
+          const dishes = String(txt || "").split("\n").map(x => x.replace(/^[\s\d.)\-*]+/, "").trim()).filter(Boolean);
+          for (let k = 0; k < aiDays.length; k++) {
+            const dish = dishes[k];
+            if (!dish) continue;
+            existing.push(dish); usedNames.add(this._norm(dish));
+            await this._createEvent(meal, this._cols[aiDays[k]], dish); fromAI++;
+          }
         }
       }
       await this._maybeFetch(true);
-    } catch (e) { this._toast("KI-Wochenplan fehlgeschlagen (ai_task nicht verfügbar?)"); }
+      this._toast(`Woche gefüllt: ${fromCB} aus Kochbuch, ${fromAI} per KI`);
+    } catch (e) { this._toast("Woche füllen fehlgeschlagen (ai_task nicht verfügbar?)"); }
     btn.disabled = false; btn.innerHTML = prev;
   }
 
@@ -246,10 +336,12 @@ class MealGridCard extends HTMLElement {
     const ov = document.createElement("div"); ov.className = "mg-ov";
     const box = document.createElement("div"); box.className = "mg-modal";
     const suggestBtn = this.config.ai_suggest ? `<div class="mg-suggest-row"><button class="mg-btn mg-suggest">${CP(0x2728)} Vorschlag holen</button></div>` : "";
-    box.innerHTML = `<div class="mg-modal-t"></div><input class="mg-input" type="text" placeholder="Gericht eingeben..."><div class="mg-recipe-row"><button class="mg-btn mg-recipe">${CP(0x1F517)} Zum Rezept</button></div>${suggestBtn}<div class="mg-modal-btns"><button class="mg-btn mg-cancel">Abbrechen</button><button class="mg-btn mg-del">Löschen</button><button class="mg-btn mg-save">Speichern</button></div>`;
+    const cookBtn = this.config.cookbook_entity ? `<div class="mg-cook-row"><button class="mg-btn mg-tocook">${CP(0x2605)} Ins Kochbuch</button></div>` : "";
+    box.innerHTML = `<div class="mg-modal-t"></div><input class="mg-input" type="text" placeholder="Gericht eingeben..."><div class="mg-recipe-row"><button class="mg-btn mg-recipe">${CP(0x1F517)} Zum Rezept</button></div>${suggestBtn}${cookBtn}<div class="mg-modal-btns"><button class="mg-btn mg-cancel">Abbrechen</button><button class="mg-btn mg-del">Löschen</button><button class="mg-btn mg-save">Speichern</button></div>`;
     box.querySelector(".mg-modal-t").textContent = title;
     const input = box.querySelector(".mg-input");
     input.value = ev ? (ev.summary || "") : "";
+    this._mgAiSet = ""; // getippter/vorhandener Text zählt als Wunsch; nur KI-Vorschläge werden ignoriert
     const delBtn = box.querySelector(".mg-del");
     if (!ev) delBtn.style.display = "none";
     ov.appendChild(box); this.appendChild(ov);
@@ -263,6 +355,8 @@ class MealGridCard extends HTMLElement {
     box.querySelector(".mg-save").addEventListener("click", save);
     const sb = box.querySelector(".mg-suggest");
     if (sb) sb.addEventListener("click", () => this._suggest(meal, input, sb));
+    const cbtn = box.querySelector(".mg-tocook");
+    if (cbtn) cbtn.addEventListener("click", () => this._toCookbook(input.value, cbtn));
     const rb = box.querySelector(".mg-recipe");
     if (rb) {
       if (!ev) { const rr = rb.closest(".mg-recipe-row"); if (rr) rr.style.display = "none"; }
@@ -372,9 +466,11 @@ class MealGridCard extends HTMLElement {
       .mg-modal-t{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
       .mg-input{width:100%;box-sizing:border-box;padding:11px 12px;font-size:1rem;border:1px solid var(--divider-color,#ccc);border-radius:12px;background:var(--secondary-background-color,#f3f3f3);color:var(--primary-text-color);}
       .mg-suggest-row{margin-top:10px;}
+      .mg-cook-row{margin-top:10px;}
       .mg-recipe-row{margin-top:10px;}
       .mg-recipe{width:100%;background:rgba(255,167,38,.18);color:#e65100;font-weight:600;}
       .mg-suggest{width:100%;background:rgba(79,195,247,.18);color:#0277bd;font-weight:600;}
+      .mg-tocook{width:100%;background:rgba(245,179,1,.18);color:#a86b00;font-weight:600;}
       .mg-fillrow{display:flex;gap:8px;padding:0 14px 10px;}
       .mg-fill{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(179,229,252,.95);color:#014a73;font-weight:700;cursor:pointer;}
       .mg-fill:hover{background:rgba(179,229,252,1);}
@@ -938,7 +1034,7 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v14 (Kontrast: Chip-Raender; Card-Panel via Theme) ===== */
+/* ===== shopping-fav-card v15 (Umlaut-Fix: Hinzufügen/Hinzugefügt) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1104,7 +1200,7 @@ class ShoppingFavCard extends HTMLElement {
     ov.querySelector(".sf-ok").addEventListener("click", submit);
   }
   _flash(b) {
-    const o = b.innerHTML; b.classList.add("sf-added"); b.innerHTML = CP(0x2713) + " Hinzugefuegt";
+    const o = b.innerHTML; b.classList.add("sf-added"); b.innerHTML = CP(0x2713) + " Hinzugefügt";
     setTimeout(() => { b.classList.remove("sf-added"); b.innerHTML = o; }, 850);
   }
   _render() {
@@ -1131,7 +1227,7 @@ class ShoppingFavCard extends HTMLElement {
     this._editing = true;
     this._draft = this._items();
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._ov = ov;
-    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">Favoriten bearbeiten</div><div class="sf-list"></div><div class="sf-addrow"><input class="sf-new" type="text" placeholder="Neuer Favorit..."><button class="sf-addbtn">${CP(0x2795)} Hinzufuegen</button></div><div class="sf-foot"><button class="sf-done">Fertig</button></div></div>`;
+    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">Favoriten bearbeiten</div><div class="sf-list"></div><div class="sf-addrow"><input class="sf-new" type="text" placeholder="Neuer Favorit..."><button class="sf-addbtn">${CP(0x2795)} Hinzufügen</button></div><div class="sf-foot"><button class="sf-done">Fertig</button></div></div>`;
     this.appendChild(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeEditor(); });
     const inp = ov.querySelector(".sf-new");
@@ -1368,7 +1464,7 @@ if (!customElements.get("fp-todo-card")) {
 }
 })();
 
-/* ===== fp-glance-card v4 (Pro-Element-Navigation: Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card; Tageszeit-Hintergrund via sun.sun) ===== */
+/* ===== fp-glance-card v5 (Wetter-Klick via transparentes Overlay = Touch+Maus zuverlaessig; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card; Tageszeit-Hintergrund via sun.sun) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1535,7 +1631,8 @@ class FpGlanceCard extends HTMLElement {
         .fpg-chip{display:inline-flex;align-items:center;gap:6px;}
         .fpg-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
         .fpg-muted{opacity:.72;}
-        .fpg-wc{margin-top:8px;}
+        .fpg-wc{margin-top:8px;position:relative;}
+        .fpg-wc-ov{position:absolute;inset:0;z-index:2;cursor:pointer;}
         .fpg-wc-hidden{display:none;}
       </style>
       <div class="fpg-card">
@@ -1557,17 +1654,21 @@ class FpGlanceCard extends HTMLElement {
       const p = e.composedPath ? e.composedPath() : [];
       for (const n of p) { if (n === this._elInfo) break; if (n.dataset && n.dataset.nav) { this._nav(n.dataset.nav); return; } }
     });
-    if (this.config.weather_path) {
-      this._elWc.classList.add("fpg-clk");
-      // Capture-Phase + stopPropagation: verhindert das More-Info-Popup der eingebetteten Wetterkarte
-      this._elWc.addEventListener("click", e => { e.stopPropagation(); e.preventDefault(); this._nav(this.config.weather_path); }, true);
-    }
+    if (this.config.weather_path) this._elWc.classList.add("fpg-clk");
     if (this.config.show_weather && this._wcConfig) {
       try {
         const helpers = await window.loadCardHelpers();
         const el = helpers.createCardElement(this._wcConfig);
         if (this._hass) el.hass = this._hass;
         this._wc = el; this._elWc.appendChild(el);
+        // Transparentes Overlay ueber der Wetterkarte: faengt Taps ab (Touch + Maus) und navigiert,
+        // ohne dass die eingebettete Karte das More-Info-Popup oeffnet.
+        if (this.config.weather_path) {
+          const ov = document.createElement("div");
+          ov.className = "fpg-wc-ov";
+          ov.addEventListener("click", () => this._nav(this.config.weather_path));
+          this._elWc.appendChild(ov);
+        }
       } catch (e) { this._elWc.classList.add("fpg-wc-hidden"); if (this._loadedOnce) this._toast("Wetterkarte konnte nicht geladen werden"); }
     } else { this._elWc.classList.add("fpg-wc-hidden"); }
     this._paint();
@@ -1608,5 +1709,389 @@ if (!customElements.get("fp-glance-card")) {
   customElements.define("fp-glance-card", FpGlanceCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "fp-glance-card", name: "FP Glance Card", description: "Today at a glance: greeting + next event + dinner, with embedded animated clock-weather-card" });
+}
+})();
+
+/* ===== fp-cookbook-card v8 (Kochbuch; „Zutaten → Einkauf" mit Auswahl-Popup pro Zutat) ===== */
+(() => {
+const U = window.__fpUtils;
+const CP = U.cp;
+class FpCookbookCard extends HTMLElement {
+  setConfig(config) {
+    this.config = Object.assign({
+      title: "Kochbuch",
+      entity: "todo.kochbuch",              // Ablage (Local To-do)
+      essensplan_entity: "calendar.essensplan",
+      shopping_entity: "todo.zuhause",
+      ai_entity: "ai_task.google_ai_task",
+      weather_entity: "weather.home",
+      base_portions: 2,
+      style: "viel vegetarisch, bunt gemischt, proteinreich, schnell zu kochen",
+      meals: [
+        { label: "Frühstück", at: 8 },
+        { label: "Mittag", at: 12 },
+        { label: "Abend", at: 18 },
+      ],
+    }, config || {});
+    this._dishes = null; this._sig = ""; this._built = false;
+    this._search = ""; this._filter = "Alle"; this._ov = null; this._recentSuggestions = [];
+  }
+  set hass(hass) {
+    this._hass = hass;
+    const st = hass.states[this.config.entity];
+    const sig = st ? st.state + "|" + st.last_updated : "none";
+    if (sig !== this._sig) { this._sig = sig; this._fetch(); }
+    if (!this._built) this._render();
+  }
+
+  _esc(s) { return U.esc(s); }
+  _toast(m) { U.toast(this, m); }
+  _pad(n) { return U.pad(n); }
+
+  async _fetch() {
+    if (!this._hass) return;
+    try {
+      const r = await this._hass.callService("todo", "get_items", { entity_id: this.config.entity }, undefined, false, true);
+      const items = (r && r.response && r.response[this.config.entity] && r.response[this.config.entity].items) || [];
+      this._dishes = items.map(it => {
+        let meta = {};
+        try { meta = JSON.parse(it.description || "{}"); } catch (e) { meta = { note: it.description || "" }; }
+        return Object.assign({ name: it.summary, uid: it.uid, category: "egal", tags: [], portions_base: this.config.base_portions, ingredients: [], steps: [], rating: 0, times_cooked: 0, last_cooked: null }, meta, { name: it.summary, uid: it.uid });
+      });
+    } catch (e) { this._dishes = []; if (this._loadedOnce) this._toast("Kochbuch konnte nicht geladen werden"); }
+    this._loadedOnce = true;
+    this._render();
+  }
+
+  // ---------- Persistenz ----------
+  _dishJson(d) {
+    const { name, uid, ...meta } = d; // name/uid landen in summary; Rest als JSON
+    return JSON.stringify(meta);
+  }
+  async _save(d, existingUid) {
+    const data = { entity_id: this.config.entity, item: existingUid || d.name };
+    try {
+      if (existingUid) {
+        await this._hass.callService("todo", "update_item", { entity_id: this.config.entity, item: existingUid, rename: d.name, description: this._dishJson(d) });
+      } else {
+        await this._hass.callService("todo", "add_item", { entity_id: this.config.entity, item: d.name, description: this._dishJson(d) });
+      }
+      await this._fetch();
+      return true;
+    } catch (e) { this._toast("Speichern fehlgeschlagen"); return false; }
+  }
+  async _delete(d) {
+    try { await this._hass.callService("todo", "remove_item", { entity_id: this.config.entity, item: d.uid || d.name }); await this._fetch(); }
+    catch (e) { this._toast("Löschen fehlgeschlagen"); }
+  }
+
+  // ---------- KI ----------
+  _season() { const m = new Date().getMonth() + 1; if (m === 12 || m <= 2) return "Winter"; if (m <= 5) return "Frühling"; if (m <= 8) return "Sommer"; return "Herbst"; }
+  async _generate(name, freeText, opts) {
+    opts = opts || {};
+    const bp = this.config.base_portions;
+    let head;
+    if (opts.suggest) {
+      const season = this._season();
+      const w = this._hass.states[this.config.weather_entity];
+      const cond = w ? w.state : "";
+      const temp = w && w.attributes && w.attributes.temperature != null ? w.attributes.temperature : "";
+      const pick = a => a[Math.floor(Math.random() * a.length)];
+      const cuisine = pick(["österreichisch/deutsch", "italienisch", "asiatisch (Wok/Curry)", "indisch", "orientalisch/levantinisch", "mexikanisch", "griechisch/mediterran", "spanisch", "französisch", "Balkan/ungarisch"]);
+      const base = pick(["mit Hülsenfrüchten (Linsen/Kichererbsen/Bohnen)", "als Ofengericht", "als Pfannengericht", "als Eintopf oder Suppe", "mit Reis oder Getreide (Bulgur/Couscous)", "als Auflauf/Gratin", "als Bowl/großer Salat", "mit Nudeln/Teigwaren", "mit Kartoffeln/Erdäpfeln", "mit Tofu, Ei oder Käse"]);
+      const avoidNames = Array.from(new Set([].concat((this._dishes || []).map(x => x.name), this._recentSuggestions || []).filter(Boolean))).slice(0, 60).join(", ");
+      const hint = (opts.hint || "").trim();
+      head = `Schlage EIGENSTAENDIG genau EIN konkretes, alltagstaugliches Familiengericht vor (entscheide selbst, keine Rueckfrage). `
+        + (hint ? `Beziehe unbedingt diesen Wunsch des Nutzers ein (Zutat/Idee/Richtung): "${hint}". Kueche und Grundform frei waehlen, solange es zum Wunsch passt. ` : `Kueche diesmal zwingend: ${cuisine}. Grundform diesmal zwingend: ${base}. `)
+        + `Beruecksichtige Jahreszeit (${season})${cond ? ` und Wetter (${cond}${temp !== "" ? `, ${temp} Grad` : ""})` : ""}. `
+        + (avoidNames ? `Vermeide diese bereits vorgeschlagenen/vorhandenen Gerichte UND alles klar Aehnliche: ${avoidNames}. ` : "")
+        + `Auf keinen Fall Erdaepfelgulasch. Zufalls-Seed: ${Math.random().toString(36).slice(2, 8)}. `;
+    } else {
+      head = `Erzeuge ein bewaehrtes, alltagstaugliches Familienrezept${name ? ` fuer "${name}"` : ""}. `
+        + (freeText ? `Nutze als Grundlage diesen Text/dieses Rezept: """${freeText}""". ` : "");
+    }
+    const named = !opts.suggest && !!(name && name.trim());
+    const styleLine = named
+      ? `Halte dich ans klassische, typische Rezept fuer "${name}" und erfinde KEINE zusaetzlichen Hauptzutaten (z. B. keine Huelsenfruechte, kein Fleisch nur wegen Protein), die nicht ueblich dazugehoeren. Der Stil (${this.config.style}) ist nur eine leichte Tendenz und darf das Gericht nicht verfaelschen. `
+      : `Stil/Praeferenz: ${this.config.style} ("bunt gemischt" meint Abwechslung ueber die Zeit, NICHT als Tag). Orientiere dich an sehr gut bewerteten, klassischen Rezepten. `;
+    const prompt = head
+      + styleLine
+      + `Tags NUR aus dieser Liste (2-4 passende): vegetarisch, vegan, fleisch, fisch, schnell, proteinreich, kinderliebling, saisonal. Verwende NIEMALS "bunt" als Tag. `
+      + `Sprache: oesterreichisches Deutsch (Erdaepfel, Paradeiser, Topfen, Obers ...). Mengen fuer ${bp} Portionen. `
+      + `Antworte NUR mit GUELTIGEM JSON (kein Markdown, keine Erklaerung), exakt in dieser Form:`
+      + `{"name":"Gerichtname","category":"Frühstück|Mittag|Abend","tags":["vegetarisch","schnell","proteinreich","kinderliebling"],"portions_base":${bp},"ingredients":[{"qty":250,"unit":"g","item":"Zutat"}],"steps":["Schritt 1","Schritt 2"],"season":["ganzjährig"]}`;
+    const data = { task_name: "Kochbuch-Rezept", instructions: prompt };
+    if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+    const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
+    let txt = r && r.response && r.response.data;
+    if (txt && typeof txt === "object") txt = txt.text || JSON.stringify(txt);
+    const m = String(txt || "").match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("KI-Antwort ohne JSON");
+    const d = JSON.parse(m[0]);
+    d.portions_base = d.portions_base || bp;
+    d.rating = 0; d.times_cooked = 0; d.last_cooked = null;
+    if (name && !d.name) d.name = name;
+    if (opts.suggest && d.name) { this._recentSuggestions = [d.name].concat(this._recentSuggestions || []).slice(0, 20); }
+    return d;
+  }
+
+  // ---------- Aktionen ----------
+  _mealHour(label) { const m = (this.config.meals || []).find(x => x.label === label); return m ? m.at : 18; }
+  _fmtDT(dt) { return `${dt.getFullYear()}-${this._pad(dt.getMonth() + 1)}-${this._pad(dt.getDate())} ${this._pad(dt.getHours())}:${this._pad(dt.getMinutes())}:00`; }
+  async _addToPlan(d, date, mealLabel) {
+    const sd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), this._mealHour(mealLabel), 0);
+    const ed = new Date(sd.getTime() + 3600000);
+    try {
+      await this._hass.callService("calendar", "create_event", { entity_id: this.config.essensplan_entity, summary: d.name, start_date_time: this._fmtDT(sd), end_date_time: this._fmtDT(ed) });
+      d.last_cooked = new Date().toISOString().slice(0, 10); d.times_cooked = (d.times_cooked || 0) + 1;
+      await this._save(d, d.uid);
+      this._toast(`„${d.name}" für ${mealLabel} eingeplant`);
+      return true;
+    } catch (e) { this._toast("Konnte nicht in den Essensplan legen"); return false; }
+  }
+  _scale(q, factor) { const v = (Number(q) || 0) * factor; if (v >= 10) return Math.round(v); if (v >= 1) return Math.round(v * 2) / 2; return Math.round(v * 10) / 10; }
+  _ingLine(i, factor) { return `${this._scale(i.qty, factor) || ""} ${i.unit || ""} ${i.item || ""}`.trim(); }
+  _openShopping(d, portions) {
+    const factor = portions / (d.portions_base || this.config.base_portions);
+    const ings = d.ingredients || [];
+    if (!ings.length) { this._toast("Keine Zutaten hinterlegt"); return; }
+    const rows = ings.map((i, idx) => `<label class="cb-ck"><input type="checkbox" data-idx="${idx}" checked><span>${this._esc(this._ingLine(i, factor))}</span></label>`).join("");
+    const ov = this._overlay(`
+      <div class="cb-m-head"><span>Zutaten wählen (${portions} P.)</span><button class="cb-x">${CP(0x2715)}</button></div>
+      <div class="cb-ck-tools"><button class="cb-linkbtn cb-ck-all">Alle</button><button class="cb-linkbtn cb-ck-none">Keine</button></div>
+      <div class="cb-cklist">${rows}</div>
+      <div class="cb-m-foot"><button class="cb-btn cb-ck-add">🛒 Auf die Einkaufsliste</button></div>`);
+    const boxes = () => Array.from(ov.querySelectorAll(".cb-cklist input[type=checkbox]"));
+    ov.querySelector(".cb-x").addEventListener("click", () => this._closeOv());
+    ov.querySelector(".cb-ck-all").addEventListener("click", () => boxes().forEach(b => b.checked = true));
+    ov.querySelector(".cb-ck-none").addEventListener("click", () => boxes().forEach(b => b.checked = false));
+    ov.querySelector(".cb-ck-add").addEventListener("click", async e => {
+      const chosen = boxes().filter(b => b.checked).map(b => Number(b.dataset.idx));
+      if (!chosen.length) { this._toast("Nichts ausgewählt"); return; }
+      const btn = e.currentTarget; btn.disabled = true;
+      const lines = chosen.map(idx => this._ingLine(ings[idx], factor)).filter(Boolean);
+      try { for (const l of lines) await this._hass.callService("todo", "add_item", { entity_id: this.config.shopping_entity, item: l }); this._toast(`${lines.length} Zutaten auf die Einkaufsliste`); this._closeOv(); }
+      catch (err) { this._toast("Zutaten konnten nicht hinzugefügt werden"); btn.disabled = false; }
+    });
+  }
+
+  // ---------- UI ----------
+  _closeOv() { if (this._ov && this._ov.parentNode) this._ov.parentNode.removeChild(this._ov); this._ov = null; }
+  _stars(n) { let s = ""; for (let i = 1; i <= 5; i++) s += i <= n ? CP(0x2605) : CP(0x2606); return s; }
+  _sinceTxt(iso) {
+    if (!iso) return "noch nie gekocht";
+    const d = new Date(iso), days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return "heute gekocht"; if (days === 1) return "gestern gekocht";
+    if (days < 14) return `vor ${days} Tagen`; return `vor ${Math.floor(days / 7)} Wochen`;
+  }
+
+  _filtered() {
+    const q = U.norm(this._search);
+    return (this._dishes || []).filter(d => {
+      if (this._filter !== "Alle" && d.category !== this._filter && !(d.tags || []).includes(this._filter)) return false;
+      if (!q) return true;
+      return U.norm(d.name).includes(q) || (d.tags || []).some(t => U.norm(t).includes(q));
+    });
+  }
+
+  _render() {
+    if (!this._hass) return;
+    this._built = true;
+    const dishes = this._filtered();
+    const cats = ["Alle", "Frühstück", "Mittag", "Abend", "vegetarisch", "kinderliebling", "schnell"];
+    const chips = cats.map(c => `<button class="cb-chip${this._filter === c ? " cb-chip-on" : ""}" data-f="${this._esc(c)}">${this._esc(c)}</button>`).join("");
+    const cards = dishes.length ? dishes.map(d => `
+      <button class="cb-dish" data-uid="${this._esc(d.uid)}">
+        <div class="cb-d-name">${this._esc(d.name)}</div>
+        <div class="cb-d-meta">${d.category && d.category !== "egal" ? this._esc(d.category) + " · " : ""}${this._esc(this._sinceTxt(d.last_cooked))}</div>
+        <div class="cb-d-tags">${(d.tags || []).slice(0, 3).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
+        <div class="cb-d-stars">${d.rating ? this._stars(d.rating) : ""}</div>
+      </button>`).join("")
+      : `<div class="cb-empty">Noch keine Rezepte. Tippe auf „＋ Neu", um eins per KI zu erzeugen.</div>`;
+
+    this.innerHTML = `
+      <ha-card class="cb-card">
+        <div class="cb-bar">
+          <div class="cb-title">${CP(0x1F4D6)} ${this._esc(this.config.title)}</div>
+          <button class="cb-add">＋ Neu</button>
+        </div>
+        <input class="cb-search" type="text" placeholder="Suchen …" value="${this._esc(this._search)}">
+        <div class="cb-chips">${chips}</div>
+        <div class="cb-grid">${cards}</div>
+      </ha-card>
+      ${this._styles()}`;
+
+    this.querySelector(".cb-add").addEventListener("click", () => this._openAdd());
+    const si = this.querySelector(".cb-search");
+    si.addEventListener("input", e => { this._search = e.target.value; this._renderGridOnly(); });
+    this.querySelectorAll(".cb-chip").forEach(b => b.addEventListener("click", () => { this._filter = b.dataset.f; this._render(); }));
+    this.querySelectorAll(".cb-dish").forEach(b => b.addEventListener("click", () => { const d = this._dishes.find(x => x.uid === b.dataset.uid); if (d) this._openDetail(d); }));
+  }
+  _renderGridOnly() {
+    const grid = this.querySelector(".cb-grid"); if (!grid) return;
+    const dishes = this._filtered();
+    grid.innerHTML = dishes.length ? dishes.map(d => `
+      <button class="cb-dish" data-uid="${this._esc(d.uid)}">
+        <div class="cb-d-name">${this._esc(d.name)}</div>
+        <div class="cb-d-meta">${d.category && d.category !== "egal" ? this._esc(d.category) + " · " : ""}${this._esc(this._sinceTxt(d.last_cooked))}</div>
+        <div class="cb-d-tags">${(d.tags || []).slice(0, 3).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
+        <div class="cb-d-stars">${d.rating ? this._stars(d.rating) : ""}</div>
+      </button>`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
+    grid.querySelectorAll(".cb-dish").forEach(b => b.addEventListener("click", () => { const d = this._dishes.find(x => x.uid === b.dataset.uid); if (d) this._openDetail(d); }));
+  }
+
+  _overlay(html) {
+    this._closeOv();
+    const ov = document.createElement("div"); ov.className = "cb-ov"; ov.innerHTML = `<div class="cb-modal">${html}</div>` + this._styles();
+    ov.addEventListener("click", e => { if (e.target === ov) this._closeOv(); });
+    this.appendChild(ov); this._ov = ov; return ov;
+  }
+
+  _openDetail(d) {
+    let portions = d.portions_base || this.config.base_portions;
+    const ov = this._overlay(`
+      <div class="cb-m-head"><span>${this._esc(d.name)}</span><button class="cb-x">${CP(0x2715)}</button></div>
+      <div class="cb-m-tags">${(d.tags || []).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
+      <div class="cb-rate" data-r="${d.rating || 0}">Bewertung: <span class="cb-rate-stars"></span></div>
+      <div class="cb-port">Portionen: <input class="cb-port-slider" type="range" min="1" max="12" value="${portions}"> <b class="cb-port-val">${portions}</b></div>
+      <div class="cb-sub">Zutaten</div><ul class="cb-ing"></ul>
+      <div class="cb-sub">Zubereitung</div><ol class="cb-steps">${(d.steps || []).map(s => `<li>${this._esc(s)}</li>`).join("") || "<li>—</li>"}</ol>
+      <div class="cb-m-foot">
+        <button class="cb-btn cb-plan">📅 In Plan legen</button>
+        <button class="cb-btn cb-shop">🛒 Zutaten → Einkauf</button>
+        <button class="cb-btn cb-del">🗑</button>
+      </div>`);
+    const renderIng = () => {
+      const factor = portions / (d.portions_base || this.config.base_portions);
+      ov.querySelector(".cb-ing").innerHTML = (d.ingredients || []).map(i => `<li>${this._esc(String(this._scale(i.qty, factor) || ""))} ${this._esc(i.unit || "")} ${this._esc(i.item || "")}</li>`).join("") || "<li>—</li>";
+      ov.querySelector(".cb-port-val").textContent = portions;
+    };
+    renderIng();
+    const renderStars = () => { ov.querySelector(".cb-rate-stars").innerHTML = [1, 2, 3, 4, 5].map(i => `<span class="cb-star" data-v="${i}">${i <= (d.rating || 0) ? CP(0x2605) : CP(0x2606)}</span>`).join(""); };
+    renderStars();
+    ov.querySelector(".cb-x").addEventListener("click", () => this._closeOv());
+    ov.querySelector(".cb-port-slider").addEventListener("input", e => { portions = Number(e.target.value); renderIng(); });
+    ov.querySelector(".cb-rate-stars").addEventListener("click", e => { const s = e.target.closest(".cb-star"); if (!s) return; d.rating = Number(s.dataset.v); renderStars(); this._save(d, d.uid); });
+    ov.querySelector(".cb-plan").addEventListener("click", () => this._openPlan(d));
+    ov.querySelector(".cb-shop").addEventListener("click", () => this._openShopping(d, portions));
+    ov.querySelector(".cb-del").addEventListener("click", () => { if (window.confirm(`„${d.name}" löschen?`)) { this._closeOv(); this._delete(d); } });
+  }
+
+  _openPlan(d) {
+    const days = []; const now = new Date();
+    for (let i = 0; i < 7; i++) { const dd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i); days.push(dd); }
+    const dayBtns = days.map((dd, i) => `<button class="cb-day" data-i="${i}">${i === 0 ? "Heute" : dd.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" })}</button>`).join("");
+    const mealBtns = (this.config.meals || []).map(m => `<button class="cb-meal" data-m="${this._esc(m.label)}">${this._esc(m.label)}</button>`).join("");
+    const ov = this._overlay(`
+      <div class="cb-m-head"><span>„${this._esc(d.name)}" einplanen</span><button class="cb-x">${CP(0x2715)}</button></div>
+      <div class="cb-sub">Tag</div><div class="cb-days">${dayBtns}</div>
+      <div class="cb-sub">Mahlzeit</div><div class="cb-meals">${mealBtns}</div>
+      <div class="cb-m-foot"><button class="cb-btn cb-plan-ok">📅 Einplanen</button></div>`);
+    let dayI = 0, meal = (this.config.meals[2] || this.config.meals[0]).label;
+    const mark = () => { ov.querySelectorAll(".cb-day").forEach(b => b.classList.toggle("cb-on", Number(b.dataset.i) === dayI)); ov.querySelectorAll(".cb-meal").forEach(b => b.classList.toggle("cb-on", b.dataset.m === meal)); };
+    ov.querySelector(".cb-x").addEventListener("click", () => this._closeOv());
+    ov.querySelectorAll(".cb-day").forEach(b => b.addEventListener("click", () => { dayI = Number(b.dataset.i); mark(); }));
+    ov.querySelectorAll(".cb-meal").forEach(b => b.addEventListener("click", () => { meal = b.dataset.m; mark(); }));
+    ov.querySelector(".cb-plan-ok").addEventListener("click", async e => { const btn = e.currentTarget; btn.disabled = true; const ok = await this._addToPlan(d, days[dayI], meal); if (ok) this._closeOv(); else btn.disabled = false; });
+    mark();
+  }
+
+  _openAdd() {
+    const ov = this._overlay(`
+      <div class="cb-m-head"><span>Neues Rezept</span><button class="cb-x">${CP(0x2715)}</button></div>
+      <input class="cb-in cb-name" type="text" placeholder="Gerichtname (z. B. Linsencurry)">
+      <textarea class="cb-in cb-free" placeholder="Optional: Rezept-Text/Notizen einfügen …"></textarea>
+      <div class="cb-m-foot">
+        <button class="cb-btn cb-gen">✨ KI-Rezept erzeugen</button>
+      </div>
+      <div class="cb-m-foot">
+        <button class="cb-btn cb-suggest">💡 KI-Vorschlag — überrasch mich</button>
+      </div>
+      <div class="cb-gen-out"></div>`);
+    ov.querySelector(".cb-x").addEventListener("click", () => this._closeOv());
+    this._aiSetName = "";
+    const showPreview = (d) => {
+      const nameIn = ov.querySelector(".cb-name");
+      if (nameIn && d.name) { nameIn.value = d.name; this._aiSetName = d.name; } // generierten Namen ins Feld übernehmen (editierbar); merken, dass er von der KI stammt
+      const out = ov.querySelector(".cb-gen-out");
+      out.innerHTML = `<div class="cb-sub">${this._esc(d.name)} — ${this._esc(d.category || "")}</div>
+        <div class="cb-m-tags">${(d.tags || []).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
+        <ul class="cb-ing">${(d.ingredients || []).map(i => `<li>${this._esc(String(i.qty || ""))} ${this._esc(i.unit || "")} ${this._esc(i.item || "")}</li>`).join("")}</ul>
+        <ol class="cb-steps">${(d.steps || []).map(s => `<li>${this._esc(s)}</li>`).join("")}</ol>
+        <div class="cb-m-foot"><button class="cb-btn cb-savegen">✔ Ins Kochbuch speichern</button></div>`;
+      out.querySelector(".cb-savegen").addEventListener("click", async () => { const nm = nameIn && nameIn.value.trim(); if (nm) d.name = nm; if (await this._save(d)) this._closeOv(); });
+    };
+    const run = async (btn, loading, factory) => {
+      const prev = btn.innerHTML; btn.disabled = true; btn.innerHTML = loading;
+      try { showPreview(await factory()); }
+      catch (e) { this._toast("KI-Rezept fehlgeschlagen (ai_task nicht verfügbar?)"); }
+      btn.disabled = false; btn.innerHTML = prev;
+    };
+    ov.querySelector(".cb-gen").addEventListener("click", () => {
+      const name = ov.querySelector(".cb-name").value.trim();
+      const free = ov.querySelector(".cb-free").value.trim();
+      if (!name && !free) { this._toast("Bitte Namen oder Rezept-Text eingeben"); return; }
+      run(ov.querySelector(".cb-gen"), "✨ …", () => this._generate(name, free));
+    });
+    ov.querySelector(".cb-suggest").addEventListener("click", () => {
+      const typed = ov.querySelector(".cb-name").value.trim();
+      const hint = (typed && typed !== (this._aiSetName || "")) ? typed : ""; // nur echten Nutzer-Text als Hinweis, nicht den KI-Namen
+      run(ov.querySelector(".cb-suggest"), "💡 …", () => this._generate("", "", { suggest: true, hint }));
+    });
+  }
+
+  _styles() {
+    return `<style>
+      .cb-card{padding:12px 14px;}
+      .cb-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+      .cb-title{font-weight:700;font-size:1.05rem;}
+      .cb-add{border:none;border-radius:10px;padding:8px 12px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;}
+      .cb-search{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);margin-bottom:8px;}
+      .cb-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+      .cb-chip{border:1px solid var(--divider-color);border-radius:16px;padding:5px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.82rem;cursor:pointer;}
+      .cb-chip-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
+      .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;}
+      .cb-dish{text-align:left;border:1px solid var(--divider-color);border-radius:12px;padding:10px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;display:flex;flex-direction:column;gap:4px;min-height:70px;}
+      .cb-dish:hover{background:rgba(129,212,250,.18);}
+      .cb-d-name{font-weight:700;font-size:.95rem;line-height:1.15;}
+      .cb-d-meta{font-size:.75rem;color:var(--secondary-text-color);}
+      .cb-d-tags{display:flex;gap:4px;flex-wrap:wrap;}
+      .cb-tag{font-size:.68rem;background:rgba(129,212,250,.25);color:#0277bd;border-radius:8px;padding:1px 6px;}
+      .cb-d-stars{color:#f5b301;font-size:.8rem;}
+      .cb-empty{grid-column:1/-1;color:var(--secondary-text-color);text-align:center;padding:18px;}
+      .cb-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
+      .cb-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(94vw,460px);max-height:86vh;overflow:auto;border-radius:16px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
+      .cb-m-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:1.1rem;margin-bottom:8px;}
+      .cb-x{border:none;background:transparent;font-size:1.1rem;cursor:pointer;color:var(--secondary-text-color);}
+      .cb-m-tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;}
+      .cb-rate{font-size:.85rem;color:var(--secondary-text-color);margin:6px 0;}
+      .cb-rate-stars .cb-star,.cb-star{cursor:pointer;color:#f5b301;font-size:1.1rem;}
+      .cb-port{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:.9rem;}
+      .cb-port-slider{flex:1;}
+      .cb-sub{font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.03em;color:var(--secondary-text-color);margin:12px 0 6px;}
+      .cb-ing{margin:0;padding-left:18px;} .cb-ing li{margin:2px 0;}
+      .cb-steps{margin:0;padding-left:20px;} .cb-steps li{margin:5px 0;line-height:1.35;}
+      .cb-m-foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+      .cb-btn{flex:1;border:none;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;background:rgba(179,229,252,.95);color:#014a73;}
+      .cb-btn.cb-del{flex:none;background:rgba(229,57,53,.15);color:#e53935;}
+      .cb-in{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);margin-bottom:8px;font-size:1rem;}
+      textarea.cb-free{min-height:70px;resize:vertical;}
+      .cb-ck-tools{display:flex;gap:14px;margin:2px 0 8px;}
+      .cb-linkbtn{border:none;background:transparent;color:var(--primary-color,#0277bd);cursor:pointer;font-size:.85rem;padding:2px 0;text-decoration:underline;}
+      .cb-cklist{max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:2px;}
+      .cb-ck{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;cursor:pointer;}
+      .cb-ck:hover{background:rgba(129,212,250,.12);}
+      .cb-ck input{width:18px;height:18px;flex:none;}
+      .cb-days,.cb-meals{display:flex;gap:6px;flex-wrap:wrap;}
+      .cb-day,.cb-meal{border:1px solid var(--divider-color);border-radius:10px;padding:9px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;}
+      .cb-day.cb-on,.cb-meal.cb-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
+    </style>`;
+  }
+  getCardSize() { return 8; }
+}
+if (!customElements.get("fp-cookbook-card")) {
+  customElements.define("fp-cookbook-card", FpCookbookCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "fp-cookbook-card", name: "FP Cookbook Card", description: "Kochbuch mit Rezepten, KI-Generierung, in Essensplan legen, Zutaten -> Einkauf" });
 }
 })();
