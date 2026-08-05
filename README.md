@@ -7,9 +7,9 @@ Acht eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - **`kids-routine-card`** — Buddy-artige Routinen für Kinder: Aufgaben mit Emoji nach Tageszeit, antippen zum Abhaken (Sterne via ChoreOps), mit Belohnungs-Animation.
 - **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar).
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
-- **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen.
+- **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Alle Optionen der nativen Karte werden durchgereicht — inklusive `due_date_period` zum Filtern nach Fälligkeit.
 - **`fp-glance-card`** — „Today at a glance"-Banner für die Übersicht: tageszeitabhängige Begrüßung, Datum, nächster Termin (Präfix-Personen aufgelöst) und heutiges Abendessen, mit tageszeit-adaptivem Foto-/Verlaufs-Hintergrund (via `sun.sun`). Das Wetter wird als eingebettete `clock-weather-card` (echte Animationen + Vorschau) transparent auf den Banner geblendet. Klick pro Element navigiert getrennt (Datum/Termin → Kalender, Essen → Essensplan, Wetter → eigener Wetter-Tab); das More-Info-Popup der eingebetteten Karte wird unterdrückt.
-- **`fp-cookbook-card`** — Kochbuch mit Rezepten (Zutaten, Schritt-für-Schritt-Anleitung, Portionen-Slider, Sterne-Bewertung), gespeichert in einer lokalen To-do-Liste. **KI-Rezept** aus Name/Text und **KI-Vorschlag „überrasch mich"** ohne Eingabe (berücksichtigt Jahreszeit + Wetter, erzwingt Abwechslung, meidet zuletzt Vorgeschlagenes → keine Monotonie). „In Plan legen" schreibt in den Essensplan-Kalender; „Zutaten → Einkauf" öffnet ein Auswahl-Popup und legt nur die angehakten (auf die Portionen skalierten) Zutaten auf die Einkaufsliste.
+- **`fp-cookbook-card`** — Kochbuch mit Rezepten (Zutaten, Schritt-für-Schritt-Anleitung, Portionen-Slider, Sterne-Bewertung, **Zubereitungszeit**), gespeichert in einer lokalen To-do-Liste. **KI-Rezept** aus Name/Text und **KI-Vorschlag „überrasch mich"** ohne Eingabe (berücksichtigt Jahreszeit + Wetter, erzwingt Abwechslung, meidet zuletzt Vorgeschlagenes → keine Monotonie). Rezepte lassen sich **vollständig bearbeiten** (Name, Mahlzeit, Tags, Portionen, Zeiten, Zutaten, Schritte). Der Filter „schnell" wird aus der geschätzten Gesamtzeit **berechnet** statt geraten. „In Plan legen" schreibt in den Essensplan-Kalender; „Zutaten → Einkauf" öffnet ein Auswahl-Popup und legt nur die angehakten (auf die Portionen skalierten) Zutaten auf die Einkaufsliste.
 
 ## Installation (HACS)
 
@@ -107,7 +107,13 @@ entity: todo.allgemein
 title: Allgemein
 hide_create: true
 display_order: duedate_asc
+due_date_period:            # optional: nur bald Fälliges zeigen
+  calendar:
+    period: day             # day | week | month | year
+    offset: 4               # 0 = aktuelle Periode
 ```
+
+`due_date_period` ist eine Option der **nativen** To-do-Karte und wird nur durchgereicht. `period: day, offset: 4` zeigt alles, was bis zum Ende des vierten Tages fällig ist — praktisch für kompakte Übersichtsseiten. Aufgaben ohne Fälligkeitsdatum werden dabei ebenfalls ausgeblendet.
 
 Neue Einträge erscheinen sofort (leicht ausgegraut) und werden ersetzt, sobald das Backend nachzieht. Adds über die `shopping-fav-card` (Event `fp-todo-add`) und über das native Eingabefeld werden erkannt.
 
