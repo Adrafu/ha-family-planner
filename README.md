@@ -7,7 +7,7 @@ Acht eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - **`kids-routine-card`** — Buddy-artige Routinen für Kinder: Aufgaben mit Emoji nach Tageszeit, antippen zum Abhaken (Sterne via ChoreOps), mit Belohnungs-Animation.
 - **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar).
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
-- **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Alle Optionen der nativen Karte werden durchgereicht — inklusive `due_date_period` zum Filtern nach Fälligkeit.
+- **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Alle Optionen der nativen Karte werden durchgereicht — inklusive `due_date_period` zum Filtern nach Fälligkeit. Optional ein **eigener Änderungsdialog** (`edit_dialog`): Aufgabe umbenennen, in eine andere Liste verschieben, Fälligkeit per Schnellauswahl setzen und eine Wiederholung vergeben.
 - **`fp-glance-card`** — „Today at a glance"-Banner für die Übersicht: tageszeitabhängige Begrüßung, Datum, nächster Termin (Präfix-Personen aufgelöst) und heutiges Abendessen, mit tageszeit-adaptivem Foto-/Verlaufs-Hintergrund (via `sun.sun`). Das Wetter wird als eingebettete `clock-weather-card` (echte Animationen + Vorschau) transparent auf den Banner geblendet. Klick pro Element navigiert getrennt (Datum/Termin → Kalender, Essen → Essensplan, Wetter → eigener Wetter-Tab); das More-Info-Popup der eingebetteten Karte wird unterdrückt.
 - **`fp-cookbook-card`** — Kochbuch mit Rezepten (Zutaten, Schritt-für-Schritt-Anleitung, Portionen-Slider, Sterne-Bewertung, **Zubereitungszeit**), gespeichert in einer lokalen To-do-Liste. **KI-Rezept** aus Name/Text und **KI-Vorschlag „überrasch mich"** ohne Eingabe (berücksichtigt Jahreszeit + Wetter, erzwingt Abwechslung, meidet zuletzt Vorgeschlagenes → keine Monotonie). Rezepte lassen sich **vollständig bearbeiten** (Name, Mahlzeit, Tags, Portionen, Zeiten, Zutaten, Schritte). Der Filter „schnell" wird aus der geschätzten Gesamtzeit **berechnet** statt geraten. „In Plan legen" schreibt in den Essensplan-Kalender; „Zutaten → Einkauf" öffnet ein Auswahl-Popup und legt nur die angehakten (auf die Portionen skalierten) Zutaten auf die Einkaufsliste.
 
@@ -111,6 +111,13 @@ due_date_period:            # optional: nur bald Fälliges zeigen
   calendar:
     period: day             # day | week | month | year
     offset: 4               # 0 = aktuelle Periode
+edit_dialog: true           # optional: eigener Änderungsdialog statt des nativen
+edit_targets:               # Ziele zum Verschieben (project_id nur für Todoist)
+  - { label: Allgemein, entity: todo.allgemein, project_id: "PROJEKT-ID" }
+  - { label: Tobi,      entity: todo.tobi,      project_id: "PROJEKT-ID" }
+repeat_options:             # optional, nur mit project_id wirksam
+  - { label: "alle 6 Monate", due_string: "every! 6 months" }
+todoist_service: rest_command.todoist_add_task
 ```
 
 `due_date_period` ist eine Option der **nativen** To-do-Karte und wird nur durchgereicht. `period: day, offset: 4` zeigt alles, was bis zum Ende des vierten Tages fällig ist — praktisch für kompakte Übersichtsseiten. Aufgaben ohne Fälligkeitsdatum werden dabei ebenfalls ausgeblendet.

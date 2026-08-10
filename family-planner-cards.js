@@ -1,4 +1,4 @@
-/* Family Planner custom cards v1.9.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
+/* Family Planner custom cards v1.9.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 (() => {
@@ -1054,14 +1054,21 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v15 (Umlaut-Fix: Hinzufügen/Hinzugefügt) ===== */
+/* ===== shopping-fav-card v17 (Favoriten und Hinzufügen-Knopf kombinierbar via show_favorites) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
 class ShoppingFavCard extends HTMLElement {
   setConfig(config) {
     if (!config || !config.list_entity) throw new Error("list_entity (todo-Liste) erforderlich");
-    this.config = Object.assign({ columns: 3, store_entity: "", title: "", assign: false, targets: [], default_target: "", big: false, fallback: "", add_button: false, add_label: "", show_due: true, target_label: "Wer?" }, config || {});
+    this.config = Object.assign({
+      columns: 3, store_entity: "", title: "", assign: false, targets: [], default_target: "",
+      big: false, fallback: "", add_button: false, add_label: "", show_due: true, target_label: "Wer?",
+      // Serienaufgaben: nur moeglich, wenn das Ziel eine Todoist-Liste mit project_id ist.
+      // Home Assistant reicht kein Wiederholungsmuster durch, deshalb legt die Karte solche
+      // Aufgaben direkt ueber die Todoist-Schnittstelle an (rest_command).
+      repeat_options: [], repeat_label: "Wiederholung", todoist_service: "rest_command.todoist_add_task",
+    }, config || {});
     this._editing = false; this._lastVal = null; this._built = false;
   }
   set hass(hass) {
@@ -1149,13 +1156,65 @@ class ShoppingFavCard extends HTMLElement {
       this._hass.callService("input_text", "set_value", { entity_id: this.config.store_entity, value: val }).catch(() => this._toast("Favoriten konnten nicht gespeichert werden"));
     }
   }
-  _addItem(name, target, due) {
+  _projectOf(entity) {
+    const t = (this.config.targets || []).find(x => x.entity === entity);
+    return (t && t.project_id) || "";
+  }
+  _repeatable(entity) { return !!((this.config.repeat_options || []).length && this._projectOf(entity)); }
+
+  _addItem(name, target, due, dueString) {
     if (!this._hass) return;
     const ent = target || this.config.list_entity;
+    if (dueString) { this._addRecurring(name, ent, due, dueString); return; }
     const data = { entity_id: ent, item: name };
     if (due) data.due_date = due;
     window.dispatchEvent(new CustomEvent("fp-todo-add", { detail: { entity: ent, summary: name, due: due || null } }));
     this._hass.callService("todo", "add_item", data).catch(() => this._toast("Konnte nicht zur Liste hinzugefügt werden"));
+  }
+
+  // Serienaufgabe direkt bei Todoist anlegen. Ein gewaehltes Datum wird als
+  // Startpunkt angehaengt ("… starting 2027-02-01"), sonst startet die Serie heute.
+  async _addRecurring(name, ent, due, dueString) {
+    const project = this._projectOf(ent);
+    const svc = String(this.config.todoist_service || "");
+    const [dom, srv] = svc.split(".");
+    if (!project || !dom || !srv) { this._toast("Serienaufgaben sind für diese Liste nicht eingerichtet"); return; }
+    const full = due ? `${dueString} starting ${due}` : dueString;
+    window.dispatchEvent(new CustomEvent("fp-todo-add", { detail: { entity: ent, summary: name, due: due || null } }));
+    try {
+      await this._hass.callService(dom, srv, { content: name, project_id: project, due_string: full });
+      this._toast(`„${name}" als Serie angelegt (${dueString})`);
+      // Todoist braucht einen Moment; danach die Liste nachladen
+      setTimeout(() => this._hass.callService("homeassistant", "update_entity", { entity_id: ent }).catch(() => {}), 3000);
+    } catch (e) {
+      this._toast("Serienaufgabe konnte nicht angelegt werden");
+    }
+  }
+
+  // Auswahlzeile für die Wiederholung (nur bei Todoist-Zielen sinnvoll)
+  _repeatHtml() {
+    const opts = this.config.repeat_options || [];
+    if (!opts.length) return "";
+    const btns = [`<button class="sf-rep sf-rep-on" data-r="">Einmalig</button>`]
+      .concat(opts.map(o => `<button class="sf-rep" data-r="${this._esc(o.due_string)}">${this._esc(o.label)}</button>`)).join("");
+    return `<div class="sf-sub sf-rep-sub">${this._esc(this.config.repeat_label)}</div><div class="sf-reps">${btns}</div>`;
+  }
+  _wireRepeat(ov) {
+    this._rep = "";
+    const sub = ov.querySelector(".sf-rep-sub"), row = ov.querySelector(".sf-reps");
+    if (!row) return;
+    const sync = () => {
+      const on = this._repeatable(this._sel);
+      if (sub) sub.style.display = on ? "" : "none";
+      row.style.display = on ? "" : "none";
+      if (!on) { this._rep = ""; row.querySelectorAll(".sf-rep").forEach(x => x.classList.toggle("sf-rep-on", x.dataset.r === "")); }
+    };
+    row.querySelectorAll(".sf-rep").forEach(b => b.addEventListener("click", () => {
+      this._rep = b.dataset.r;
+      row.querySelectorAll(".sf-rep").forEach(x => x.classList.toggle("sf-rep-on", x === b));
+    }));
+    sync();
+    return sync;
   }
   _isoDate(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
   _openAssign(name) {
@@ -1165,12 +1224,14 @@ class ShoppingFavCard extends HTMLElement {
     this._sel = def; this._due = "";
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
     const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
-    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${this._emoji(name)} ${this._esc(name)}</div><div class="sf-sub">Wer?</div><div class="sf-tgts">${tbtns}</div><div class="sf-sub">Bis wann?</div><div class="sf-dates"><button class="sf-q sf-q-on" data-q="none">Kein Datum</button><button class="sf-q" data-q="today">Heute</button><button class="sf-q" data-q="tom">Morgen</button></div><input class="sf-date" type="date"><div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">OK</button></div></div>`;
+    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${this._emoji(name)} ${this._esc(name)}</div><div class="sf-sub">Wer?</div><div class="sf-tgts">${tbtns}</div><div class="sf-sub">Bis wann?</div><div class="sf-dates"><button class="sf-q sf-q-on" data-q="none">Kein Datum</button><button class="sf-q" data-q="today">Heute</button><button class="sf-q" data-q="tom">Morgen</button></div><input class="sf-date" type="date">${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">OK</button></div></div>`;
     this.appendChild(ov);
+    const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
     ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => {
       this._sel = b.dataset.e;
       ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b));
+      if (syncRep) syncRep();
     }));
     const dateInp = ov.querySelector(".sf-date");
     ov.querySelectorAll(".sf-q").forEach(b => b.addEventListener("click", () => {
@@ -1181,7 +1242,7 @@ class ShoppingFavCard extends HTMLElement {
     }));
     dateInp.addEventListener("change", () => { this._due = dateInp.value; ov.querySelectorAll(".sf-q").forEach(x => x.classList.remove("sf-q-on")); });
     ov.querySelector(".sf-cancel").addEventListener("click", () => this._closeAssign());
-    ov.querySelector(".sf-ok").addEventListener("click", () => { this._addItem(name, this._sel || def, this._due); this._closeAssign(); });
+    ov.querySelector(".sf-ok").addEventListener("click", () => { this._addItem(name, this._sel || def, this._due, this._rep); this._closeAssign(); });
   }
   _closeAssign() {
     this._editing = false;
@@ -1198,12 +1259,13 @@ class ShoppingFavCard extends HTMLElement {
     const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
     const dueHtml = this.config.show_due ? `<div class="sf-sub">Bis wann?</div><div class="sf-dates"><button class="sf-q sf-q-on" data-q="none">Kein Datum</button><button class="sf-q" data-q="today">Heute</button><button class="sf-q" data-q="tom">Morgen</button></div><input class="sf-date" type="date">` : "";
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
-    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${CP(0x2795)} ${this._esc(this.config.add_label || "Hinzufügen")}</div><input class="sf-addtext" type="text" placeholder="Eingeben..."/>${favChips ? `<div class="sf-sub">Favoriten</div><div class="sf-favs">${favChips}</div>` : ""}${tbtns ? `<div class="sf-sub">${this._esc(this.config.target_label || "Wer?")}</div><div class="sf-tgts">${tbtns}</div>` : ""}${dueHtml}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">Hinzufügen</button></div></div>`;
+    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${CP(0x2795)} ${this._esc(this.config.add_label || "Hinzufügen")}</div><input class="sf-addtext" type="text" placeholder="Eingeben..."/>${favChips ? `<div class="sf-sub">Favoriten</div><div class="sf-favs">${favChips}</div>` : ""}${tbtns ? `<div class="sf-sub">${this._esc(this.config.target_label || "Wer?")}</div><div class="sf-tgts">${tbtns}</div>` : ""}${dueHtml}${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">Hinzufügen</button></div></div>`;
     this.appendChild(ov);
     const txt = ov.querySelector(".sf-addtext");
+    const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
     ov.querySelectorAll(".sf-favpick").forEach(b => b.addEventListener("click", () => { txt.value = b.dataset.n; }));
-    ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => { this._sel = b.dataset.e; ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b)); }));
+    ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => { this._sel = b.dataset.e; ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b)); if (syncRep) syncRep(); }));
     const dateInp = ov.querySelector(".sf-date");
     if (dateInp) {
       ov.querySelectorAll(".sf-q").forEach(b => b.addEventListener("click", () => {
@@ -1214,7 +1276,7 @@ class ShoppingFavCard extends HTMLElement {
       }));
       dateInp.addEventListener("change", () => { this._due = dateInp.value; ov.querySelectorAll(".sf-q").forEach(x => x.classList.remove("sf-q-on")); });
     }
-    const submit = () => { const t = txt.value.trim(); if (!t) { txt.focus(); return; } this._addItem(t, this._sel || def, this._due); this._closeAssign(); };
+    const submit = () => { const t = txt.value.trim(); if (!t) { txt.focus(); return; } this._addItem(t, this._sel || def, this._due, this._rep); this._closeAssign(); };
     txt.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
     ov.querySelector(".sf-cancel").addEventListener("click", () => this._closeAssign());
     ov.querySelector(".sf-ok").addEventListener("click", submit);
@@ -1225,17 +1287,29 @@ class ShoppingFavCard extends HTMLElement {
   }
   _render() {
     this._built = true;
-    if (this.config.add_button) {
-      this.innerHTML = `<ha-card class="sf-card sf-addcard">${this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : ""}<button class="sf-addbig">${CP(0x2795)} ${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</button></ha-card>${this._styles()}`;
-      const ab = this.querySelector(".sf-addbig");
-      if (ab) ab.addEventListener("click", () => this._openAdd());
-      return;
+    // Favoriten und Hinzufügen-Knopf sind kombinierbar. Ohne ausdrückliche
+    // Angabe bleibt das alte Verhalten: mit Knopf nur der Knopf (kompakte
+    // Übersicht), ohne Knopf nur die Favoriten.
+    const showFavs = this.config.show_favorites !== undefined
+      ? !!this.config.show_favorites : !this.config.add_button;
+    const head = this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : "";
+    let body = "";
+    if (showFavs) {
+      const items = this._items();
+      const cols = this.config.columns || 3;
+      const big = this.config.big ? " sf-big" : "";
+      const chips = items.map(it => `<button class="sf-chip${big}" data-n="${this._esc(it)}">${this._emoji(it)} ${this._esc(it)}</button>`).join("");
+      body += `<div class="sf-grid" style="grid-template-columns:repeat(${cols},1fr);">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div>`
+            + `<div class="sf-editbar"><button class="sf-edit">${CP(0x270F) + CP(0xFE0F)} Favoriten bearbeiten</button></div>`;
     }
-    const items = this._items();
-    const cols = this.config.columns || 3;
-    const big = this.config.big ? " sf-big" : "";
-    const chips = items.map(it => `<button class="sf-chip${big}" data-n="${this._esc(it)}">${this._emoji(it)} ${this._esc(it)}</button>`).join("");
-    this.innerHTML = `<ha-card class="sf-card">${this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : ""}<div class="sf-grid" style="grid-template-columns:repeat(${cols},1fr);">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div><div class="sf-editbar"><button class="sf-edit">${CP(0x270F) + CP(0xFE0F)} Favoriten bearbeiten</button></div></ha-card>${this._styles()}`;
+    if (this.config.add_button) {
+      // gleiche Leiste wie „Favoriten bearbeiten" -> identische Breite und Abstand
+      body += `<div class="sf-addbar"><button class="sf-addbig">${CP(0x2795)} ${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</button></div>`;
+    }
+    this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${head}${body}</ha-card>${this._styles()}`;
+
+    const ab = this.querySelector(".sf-addbig");
+    if (ab) ab.addEventListener("click", () => this._openAdd());
     const assign = this.config.assign && (this.config.targets || []).length;
     this.querySelectorAll(".sf-chip").forEach(b => b.addEventListener("click", () => {
       if (assign) { this._openAssign(b.dataset.n); }
@@ -1306,11 +1380,16 @@ class ShoppingFavCard extends HTMLElement {
       .sf-tgt-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
       .sf-q{flex:1;min-width:70px;border:1px solid var(--divider-color);border-radius:10px;padding:9px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.9rem;}
       .sf-q-on{background:rgba(79,195,247,.95);color:#013;border-color:transparent;font-weight:600;}
+      .sf-reps{display:flex;gap:6px;flex-wrap:wrap;}
+      .sf-rep{border:1px solid var(--divider-color);border-radius:10px;padding:8px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.85rem;}
+      .sf-rep-on{background:rgba(79,195,247,.95);color:#013;border-color:transparent;font-weight:600;}
       .sf-date{width:100%;box-sizing:border-box;margin-top:8px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:rgba(120,144,156,.20);color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
       .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;}
       .sf-addcard{padding:12px;}
-      .sf-addbig{width:100%;border:none;border-radius:12px;padding:14px;background:rgba(79,195,247,.95);color:#013;font-weight:700;font-size:1rem;cursor:pointer;}
+      .sf-addbar{margin-top:8px;display:flex;}
+      .sf-addcard .sf-addbar{margin-top:0;}
+      .sf-addbig{flex:1;border:none;border-radius:10px;padding:12px;background:rgba(79,195,247,.95);color:#013;font-weight:700;font-size:1rem;cursor:pointer;}
       .sf-addbig:hover{background:rgba(79,195,247,1);}
       .sf-addtext{width:100%;box-sizing:border-box;border:1px solid var(--divider-color);border-radius:10px;padding:11px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-favs{display:flex;gap:8px;flex-wrap:wrap;}
@@ -1399,17 +1478,23 @@ if (!customElements.get("nav-card")) {
 }
 })();
 
-/* ===== fp-todo-card v6 (wie v5; eigener Fälligkeits-Filter verworfen — die native Karte kann das per due_date_period) ===== */
+/* ===== fp-todo-card v9 (Änderungsdialog: Klicks bleiben im Dialog, lösen keine nav-card-Navigation mehr aus) ===== */
 (() => {
+const U = window.__fpUtils;
 class FpTodoCard extends HTMLElement {
   setConfig(config) {
     if (!config || !config.entity) throw new Error("entity erforderlich");
     this.config = config;
+    // Eigener Änderungsdialog statt des nativen: erlaubt Verschieben in eine
+    // andere Liste, Datum-Schnellauswahl und Serien (letztere nur bei Todoist).
+    this._edit = !!config.edit_dialog;
+    this._targets = config.edit_targets || config.targets || [];
+    this._repeats = config.repeat_options || [];
     this._pending = [];
     this._built = false;
     this._onAdd = e => { const d = e.detail || {}; if (d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary)); };
     this._onInlineKey = e => { if (e.key === "Enter") this._maybeInline(e); };
-    this._onInlineClick = e => this._maybeInline(e);
+    this._onInlineClick = e => { this._maybeRowTap(e); if (!e.defaultPrevented) this._maybeInline(e); };
   }
   connectedCallback() {
     window.addEventListener("fp-todo-add", this._onAdd);
@@ -1422,6 +1507,20 @@ class FpTodoCard extends HTMLElement {
     this.removeEventListener("keydown", this._onInlineKey, true);
     this.removeEventListener("click", this._onInlineClick, true);
     if (this._poll) { clearInterval(this._poll); this._poll = null; }
+    this._closeEdit();
+  }
+  // Tipp auf eine Aufgabe abfangen, bevor der native Bearbeiten-Dialog aufgeht.
+  // Die Checkbox bleibt unangetastet — Abhaken muss weiter direkt funktionieren.
+  _maybeRowTap(e) {
+    if (!this._edit || this._ov) return;
+    const path = e.composedPath ? e.composedPath() : [];
+    if (path.some(el => el && el.localName && /checkbox/.test(el.localName))) return;
+    const row = path.find(el => el && el.localName === "ha-check-list-item");
+    if (!row) return;
+    const uid = row.itemId;
+    if (!uid) return;
+    e.stopPropagation(); e.preventDefault();
+    this._openEdit(uid);
   }
   _maybeInline(e) {
     const path = e.composedPath ? e.composedPath() : [];
@@ -1449,6 +1548,131 @@ class FpTodoCard extends HTMLElement {
   }
   _list() {
     try { return this._child && this._child.shadowRoot && this._child.shadowRoot.querySelector("ha-list"); } catch (e) { return null; }
+  }
+
+  // ---------- Änderungsdialog ----------
+  _esc(s) { return U.esc(s); }
+  _iso(d) { return d.getFullYear() + "-" + U.pad(d.getMonth() + 1) + "-" + U.pad(d.getDate()); }
+  _projectOf(entity) {
+    const t = this._targets.find(x => x.entity === entity);
+    return (t && t.project_id) || "";
+  }
+  async _loadItem(uid) {
+    const ent = this.config.entity;
+    const r = await this._hass.callService("todo", "get_items", { entity_id: ent }, undefined, false, true);
+    const items = (r && r.response && r.response[ent] && r.response[ent].items) || [];
+    return items.find(i => i.uid === uid) || null;
+  }
+  async _openEdit(uid) {
+    let item = null;
+    try { item = await this._loadItem(uid); }
+    catch (e) { console.warn("[fp-todo-card] Aufgabe laden fehlgeschlagen:", this.config.entity, uid, e); }
+    if (!item) { U.toast(this, "Aufgabe konnte nicht geladen werden"); return; }
+
+    const src = this.config.entity;
+    let sel = src, due = (item.due || "").slice(0, 10), rep = "";
+    const tbtns = this._targets.map(t => `<button class="ft-tgt${t.entity === src ? " ft-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
+    const rbtns = [`<button class="ft-rep ft-on" data-r="">Unverändert</button>`]
+      .concat(this._repeats.map(o => `<button class="ft-rep" data-r="${this._esc(o.due_string)}">${this._esc(o.label)}</button>`)).join("");
+
+    const ov = document.createElement("div"); ov.className = "ft-ov"; this._ov = ov;
+    ov.innerHTML = `<div class="ft-modal">
+      <div class="ft-head">Aufgabe bearbeiten</div>
+      <input class="ft-name" type="text" value="${this._esc(item.summary || "")}">
+      ${tbtns ? `<div class="ft-sub">Wer?</div><div class="ft-row">${tbtns}</div>` : ""}
+      <div class="ft-sub">Bis wann?</div>
+      <div class="ft-row"><button class="ft-q" data-q="none">Kein Datum</button><button class="ft-q" data-q="today">Heute</button><button class="ft-q" data-q="tom">Morgen</button><button class="ft-q" data-q="week">In 1 Woche</button></div>
+      <input class="ft-date" type="date" value="${this._esc(due)}">
+      ${this._repeats.length ? `<div class="ft-sub ft-rsub">Wiederholung</div><div class="ft-row ft-reps">${rbtns}</div>` : ""}
+      <div class="ft-foot"><button class="ft-btn ft-save">Speichern</button><button class="ft-btn ft-cancel">Abbrechen</button><button class="ft-btn ft-del">🗑</button></div>
+    </div>${this._editStyles()}`;
+    this.appendChild(ov);
+
+    const dateInp = ov.querySelector(".ft-date");
+    const syncRep = () => {
+      const on = !!(this._repeats.length && this._projectOf(sel));
+      ov.querySelectorAll(".ft-rsub, .ft-reps").forEach(x => x.style.display = on ? "" : "none");
+      if (!on) rep = "";
+    };
+    // Kein Klick aus dem Dialog darf nach außen durchschlagen — sonst deutet
+    // eine umschließende nav-card ihn als Navigation und wechselt den Tab.
+    ov.addEventListener("click", e => { e.stopPropagation(); if (e.target === ov) this._closeEdit(); });
+    ov.querySelectorAll(".ft-tgt").forEach(b => b.addEventListener("click", () => {
+      sel = b.dataset.e;
+      ov.querySelectorAll(".ft-tgt").forEach(x => x.classList.toggle("ft-on", x === b));
+      syncRep();
+    }));
+    ov.querySelectorAll(".ft-q").forEach(b => b.addEventListener("click", () => {
+      const q = b.dataset.q;
+      if (q === "none") { due = ""; dateInp.value = ""; }
+      else { const d = new Date(); if (q === "tom") d.setDate(d.getDate() + 1); if (q === "week") d.setDate(d.getDate() + 7); due = this._iso(d); dateInp.value = due; }
+      ov.querySelectorAll(".ft-q").forEach(x => x.classList.toggle("ft-on", x === b));
+    }));
+    dateInp.addEventListener("change", () => { due = dateInp.value; ov.querySelectorAll(".ft-q").forEach(x => x.classList.remove("ft-on")); });
+    ov.querySelectorAll(".ft-rep").forEach(b => b.addEventListener("click", () => {
+      rep = b.dataset.r;
+      ov.querySelectorAll(".ft-rep").forEach(x => x.classList.toggle("ft-on", x === b));
+    }));
+    syncRep();
+
+    ov.querySelector(".ft-cancel").addEventListener("click", () => this._closeEdit());
+    ov.querySelector(".ft-del").addEventListener("click", async () => {
+      if (!window.confirm(`„${item.summary}" löschen?`)) return;
+      this._closeEdit();
+      try { await this._hass.callService("todo", "remove_item", { entity_id: src, item: uid }); }
+      catch (e) { U.toast(this, "Löschen fehlgeschlagen"); }
+    });
+    ov.querySelector(".ft-save").addEventListener("click", async e => {
+      const btn = e.currentTarget; btn.disabled = true;
+      const name = ov.querySelector(".ft-name").value.trim() || item.summary;
+      try {
+        await this._saveEdit({ uid, src, sel, name, due, rep, old: item });
+        this._closeEdit();
+      } catch (err) { U.toast(this, "Änderung fehlgeschlagen"); btn.disabled = false; }
+    });
+  }
+  async _saveEdit({ uid, src, sel, name, due, rep, old }) {
+    const moved = sel !== src;
+    // Serie: nur über die Todoist-Schnittstelle setzbar, HA reicht sie nicht durch
+    if (rep && this._projectOf(sel)) {
+      const svc = String(this.config.todoist_service || "rest_command.todoist_add_task").split(".");
+      await this._hass.callService(svc[0], svc[1], {
+        content: name, project_id: this._projectOf(sel),
+        due_string: due ? `${rep} starting ${due}` : rep,
+      });
+      await this._hass.callService("todo", "remove_item", { entity_id: src, item: uid });
+      U.toast(this, `„${name}" ist jetzt eine Serie`);
+    } else if (moved) {
+      const data = { entity_id: sel, item: name };
+      if (due) data.due_date = due;
+      await this._hass.callService("todo", "add_item", data);
+      await this._hass.callService("todo", "remove_item", { entity_id: src, item: uid });
+      U.toast(this, `„${name}" verschoben`);
+    } else {
+      const data = { entity_id: src, item: uid, rename: name };
+      if (due) data.due_date = due; else data.due_date = null;
+      await this._hass.callService("todo", "update_item", data);
+    }
+    const refresh = moved || rep ? [src, sel] : [src];
+    setTimeout(() => this._hass.callService("homeassistant", "update_entity", { entity_id: refresh }).catch(() => {}), 2500);
+  }
+  _closeEdit() { if (this._ov && this._ov.parentNode) this._ov.parentNode.removeChild(this._ov); this._ov = null; }
+  _editStyles() {
+    return `<style>
+      .ft-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:22;}
+      .ft-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(92vw,420px);max-height:84vh;overflow:auto;border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
+      .ft-head{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
+      .ft-sub{font-weight:700;font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;color:var(--secondary-text-color);margin:14px 0 6px;}
+      .ft-row{display:flex;gap:6px;flex-wrap:wrap;}
+      .ft-name,.ft-date{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;margin-top:6px;}
+      .ft-tgt,.ft-q,.ft-rep{flex:1;min-width:78px;border:1px solid var(--divider-color);border-radius:10px;padding:9px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.85rem;}
+      .ft-on{background:rgba(79,195,247,.95);color:#013;border-color:transparent;font-weight:600;}
+      .ft-foot{display:flex;gap:8px;margin-top:16px;}
+      .ft-btn{flex:1;border:none;border-radius:10px;padding:11px;font-weight:700;cursor:pointer;}
+      .ft-save{background:rgba(79,195,247,.95);color:#013;}
+      .ft-cancel{background:var(--secondary-background-color);color:var(--primary-text-color);}
+      .ft-del{flex:none;background:rgba(229,57,53,.15);color:#e53935;}
+    </style>`;
   }
 
   _optimistic(summary) {
