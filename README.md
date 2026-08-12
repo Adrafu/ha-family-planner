@@ -3,11 +3,11 @@
 Acht eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
 - **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und KI-Vorschlag (`ai_task`; entschärft mit Küchen-/Grundform-Rotation, Saison- und Wetterbezug, liest getippten Wunsch aus). **Kochbuch-Kopplung:** „★ Ins Kochbuch" pro Zelle und „Woche füllen" hybrid (erst gewichtet aus dem Kochbuch, dann KI). `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
-- **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen. Jetzt-Linie (Outlook-Stil), hellblaues Heute-Highlight und ausgegraute vergangene Tage.
+- **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen. Jetzt-Linie (Outlook-Stil), hellblaues Heute-Highlight und ausgegraute vergangene Tage. Dazu eine **kompakte Mehrtagesansicht** (`initial_view: agenda`): eine Spalte je Tag, Termine als Kacheln mit farbiger Kante — gedacht als Ersatz fuer eine fremde Kalenderkarte in der Uebersicht.
 - **`kids-routine-card`** — Buddy-artige Routinen für Kinder: Aufgaben mit Emoji nach Tageszeit, antippen zum Abhaken (Sterne via ChoreOps), mit Belohnungs-Animation.
 - **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar).
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
-- **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Alle Optionen der nativen Karte werden durchgereicht — inklusive `due_date_period` zum Filtern nach Fälligkeit. Optional ein **eigener Änderungsdialog** (`edit_dialog`): Aufgabe umbenennen, in eine andere Liste verschieben, Fälligkeit per Schnellauswahl setzen und eine Wiederholung vergeben.
+- **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Alle Optionen der nativen Karte werden durchgereicht — inklusive `due_date_period` zum Filtern nach Fälligkeit. Optional ein **eigener Änderungsdialog** (`edit_dialog`): Aufgabe umbenennen, in eine andere Liste verschieben, Fälligkeit per Schnellauswahl setzen und eine Wiederholung vergeben. Mit `pill` steht statt der Ueberschrift eine farbige Namens-Pille im Kartenkopf.
 - **`fp-glance-card`** — „Today at a glance"-Banner für die Übersicht: tageszeitabhängige Begrüßung, Datum, nächster Termin (Präfix-Personen aufgelöst) und heutiges Abendessen, mit tageszeit-adaptivem Foto-/Verlaufs-Hintergrund (via `sun.sun`). Das Wetter wird als eingebettete `clock-weather-card` (echte Animationen + Vorschau) transparent auf den Banner geblendet. Klick pro Element navigiert getrennt (Datum/Termin → Kalender, Essen → Essensplan, Wetter → eigener Wetter-Tab); das More-Info-Popup der eingebetteten Karte wird unterdrückt.
 - **`fp-cookbook-card`** — Kochbuch mit Rezepten (Zutaten, Schritt-für-Schritt-Anleitung, Portionen-Slider, Sterne-Bewertung, **Zubereitungszeit**), gespeichert in einer lokalen To-do-Liste. **KI-Rezept** aus Name/Text und **KI-Vorschlag „überrasch mich"** ohne Eingabe (berücksichtigt Jahreszeit + Wetter, erzwingt Abwechslung, meidet zuletzt Vorgeschlagenes → keine Monotonie). Rezepte lassen sich **vollständig bearbeiten** (Name, Mahlzeit, Tags, Portionen, Zeiten, Zutaten, Schritte). Der Filter „schnell" wird aus der geschätzten Gesamtzeit **berechnet** statt geraten. „In Plan legen" schreibt in den Essensplan-Kalender; „Zutaten → Einkauf" öffnet ein Auswahl-Popup und legt nur die angehakten (auf die Portionen skalierten) Zutaten auf die Einkaufsliste.
 
@@ -38,6 +38,9 @@ mode: week            # oder "compact" (heute + morgen)
 title: Wochenplan
 ai_entity: ai_task.google_ai_task
 background: "https://example.com/bild.jpg"
+hide_header: false    # Wochenansicht ohne Kopfleiste und Wochennavigation
+meal_labels: true     # false = nur das Symbol in der linken Spalte
+empty_text: "+"       # was in einer leeren Zelle steht
 meals:
   - { label: "Frühstück", start: 0, end: 11 }
   - { label: "Mittag", start: 11, end: 15 }
@@ -49,7 +52,10 @@ meals:
 ```yaml
 type: custom:family-calendar-card
 title: Familienkalender
-initial_view: week    # oder "month"
+initial_view: week    # "week", "month" oder "agenda"
+days: 4               # nur fuer "agenda": 1 bis 14 Tage nebeneinander
+hide_header: false    # Navigationsleiste ausblenden
+hide_legend: false    # Personenfilter ausblenden
 day_start: 6
 day_end: 23
 persons:

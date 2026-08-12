@@ -1,19 +1,49 @@
-/* Family Planner custom cards v1.9.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
+/* Family Planner custom cards v2.0.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
+// Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
+// Ein "if (window.__fpUtils) return" wuerde bedeuten, dass die zuerst geladene
+// Datei gewinnt — neue Helfer aus der zweiten Datei fehlen dann und die Karten
+// sterben beim Aufbau. Deshalb zusammenfuehren statt abbrechen: vorhandene
+// Implementierungen bleiben, fehlende kommen dazu.
 (() => {
-  if (window.__fpUtils) return;
-  window.__fpUtils = {
+  const defaults = {
     cp: c => String.fromCodePoint(c),
     esc: s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])),
     pad: n => String(n).padStart(2, "0"),
     norm: s => { let out = ""; for (const ch of String(s).toLowerCase()) { const c = ch.codePointAt(0); if (c === 0xe4) out += "a"; else if (c === 0xf6) out += "o"; else if (c === 0xfc) out += "u"; else if (c === 0xdf) out += "ss"; else out += ch; } return out; },
     reEsc: s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
     toast: (el, msg) => { try { el.dispatchEvent(new CustomEvent("hass-notification", { detail: { message: msg }, bubbles: true, composed: true })); } catch (e) {} },
+    // Karte fuellt ihre Rasterzelle aus.
+    // HA gibt dem Grid-Item (div.card) die Zeilenhoehe, dazwischen sitzt aber
+    // <hui-card> ganz ohne eigene Hoehe (light DOM, keine Styles). Damit reisst
+    // die Hoehenkette und die Karte bleibt auf Inhaltshoehe stehen — sichtbar,
+    // sobald zwei verschieden hohe Karten in derselben Rasterzeile liegen.
+    fill: el => {
+      el.style.display = "block";
+      el.style.height = "100%";
+      const p = el.parentElement;
+      if (p && p.localName === "hui-card") { p.style.display = "block"; p.style.height = "100%"; }
+    },
   };
+  // In dasselbe Objekt hineinschreiben, nicht ersetzen: Karten der anderen
+  // Datei halten bereits eine Referenz darauf.
+  const u = window.__fpUtils || (window.__fpUtils = {});
+  for (const k of Object.keys(defaults)) if (!(k in u)) u[k] = defaults[k];
+
+  // Formularelemente erben die Schrift nicht — sie nehmen die des Systems.
+  // Unsere Karten leben im Light DOM, ein Stil im Kopf reicht also aus.
+  // Betrifft Knoepfe, Eingabefelder und Textbereiche in allen eigenen Karten.
+  const SID = "fp-form-font";
+  if (!document.getElementById(SID)) {
+    const st = document.createElement("style");
+    st.id = SID;
+    st.textContent = "button,input,select,textarea{font-family:inherit;}";
+    document.head.appendChild(st);
+  }
 })();
 
-/* ===== meal-grid-card v22 („Zum Rezept" springt ins eigene Kochbuch, wenn das Gericht dort steht; sonst Web-Suche) ===== */
+/* ===== meal-grid-card v25 (Heute als Ring statt Einfaerbung, Knopfleiste im Theme-Ton, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header fuer die Uebersicht, Leistenfarbe via --fp-bar-bg; „Zum Rezept" springt ins eigene Kochbuch, wenn das Gericht dort steht; sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -23,6 +53,9 @@ class MealGridCard extends HTMLElement {
       title: "Wochenplan", mode: "week", week_offset: 0, nav_path: "",
       show_emojis: true, meal_icons: true, background: "",
       ai_suggest: true, ai_entity: "", recipe_url: "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html",
+      hide_header: false,                   // Wochenansicht ohne Kopfleiste und Wochennavigation (fuer die Uebersicht)
+      meal_labels: true,                    // Beschriftung neben dem Mahlzeit-Symbol
+      empty_text: "+",                      // was in einer leeren Zelle steht
       cookbook_entity: "todo.kochbuch", weather_entity: "weather.home", cookbook_path: "",
       meals: [
         { label: "Frühstück", start: 0, end: 11 },
@@ -412,7 +445,9 @@ class MealGridCard extends HTMLElement {
     const colLabel = (d, i) => compact ? (i === 0 ? "Heute" : "Morgen") : dn[(d.getDay() + 6) % 7];
 
     let head = "";
-    if (!compact) {
+    if (!compact && this.config.hide_header) {
+      head = "";
+    } else if (!compact) {
       const a = cols[0], b = cols[cols.length - 1];
       const range = `${a.getDate()}.${a.getMonth() + 1}. - ${b.getDate()}.${b.getMonth() + 1}.`;
       const rel = this._offset === 0 ? "Diese Woche" : (this._offset === 1 ? "+1 Woche" : this._offset === -1 ? "Letzte Woche" : (this._offset > 0 ? "+" : "") + this._offset + " Wochen");
@@ -433,13 +468,16 @@ class MealGridCard extends HTMLElement {
     html += "</tr></thead><tbody>";
     meals.forEach((m, mi) => {
       const ic = this.config.meal_icons ? `<div class="mg-meal-ic">${this._mealIcon(m.label)}</div>` : "";
-      html += `<tr><th class="mg-meal">${ic}<div class="mg-meal-tx">${this._esc(m.label)}</div></th>`;
+      const tx = this.config.meal_labels ? `<div class="mg-meal-tx">${this._esc(m.label)}</div>` : "";
+      // Zeilenklasse: jede Mahlzeit darf eine eigene Feldfarbe bekommen
+      html += `<tr class="mg-r${mi}"><th class="mg-meal">${ic}${tx}</th>`;
       cols.forEach((d, ci) => {
         const items = cells[mi][ci].filter(o => o.summary).map(o => {
           const em = this.config.show_emojis ? this._food(o.summary) : "";
           return (em ? `<span class="mg-em">${em}</span>` : "") + this._esc(o.summary);
         });
-        const inner = items.length ? `<span>${items.join("<br>")}</span>` : `<span class="mg-plus">+</span>`;
+        const inner = items.length ? `<span>${items.join("<br>")}</span>`
+          : `<span class="mg-plus">${this._esc(this.config.empty_text)}</span>`;
         html += `<td class="mg-cell ${isToday(d) ? "mg-today" : ""}" data-mi="${mi}" data-ci="${ci}">${inner}</td>`;
       });
       html += "</tr>";
@@ -459,7 +497,8 @@ class MealGridCard extends HTMLElement {
     const css = `
       .mg-card{overflow:hidden;}
       .mg-h{padding:12px 16px 4px;font-size:1.25rem;font-weight:600;}
-      .mg-bar{display:flex;align-items:center;gap:8px;padding:12px 14px;background:linear-gradient(135deg,rgba(129,212,250,.70),rgba(79,195,247,.70));color:#fff;}
+      /* Leistenfarbe ueber --fp-bar-bg aus dem Theme uebersteuerbar */
+      .mg-bar{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--fp-bar-bg,linear-gradient(135deg,rgba(var(--fp-tint-rgb,129,212,250),.70),rgba(var(--fp-accent-rgb,79,195,247),.70)));color:var(--fp-bar-fg,#fff);}
       .mg-bar-mid{flex:1;text-align:center;line-height:1.15;}
       .mg-bar-t{font-size:1.15rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.30);}
       .mg-bar-s{font-size:.78rem;opacity:.95;text-shadow:0 1px 2px rgba(0,0,0,.25);}
@@ -474,12 +513,20 @@ class MealGridCard extends HTMLElement {
       th.mg-meal{width:54px;}
       .mg-meal-ic{font-size:1.15rem;line-height:1.2;}
       .mg-meal-tx{font-size:.6rem;color:var(--secondary-text-color);text-transform:uppercase;letter-spacing:.03em;}
-      td.mg-cell{background:var(--mg-cell-bg,rgba(129,212,250,0.10));border:1px solid var(--divider-color);border-radius:14px;min-height:54px;height:54px;padding:6px;font-size:.82rem;line-height:1.2;color:var(--primary-text-color);cursor:pointer;vertical-align:middle;transition:background .15s,transform .1s;}
-      td.mg-cell:hover{background:var(--mg-cell-bg-hover,rgba(129,212,250,0.20));transform:translateY(-1px);}
+      /* Feldfarbe je Mahlzeit: das Theme setzt fp-meal0/1/2-bg, ohne Theme
+         bleiben alle drei Zeilen wie bisher. */
+      tr.mg-r0{--mg-cell-bg:var(--fp-meal0-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
+      tr.mg-r1{--mg-cell-bg:var(--fp-meal1-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
+      tr.mg-r2{--mg-cell-bg:var(--fp-meal2-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
+      td.mg-cell{background:var(--mg-cell-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));border:1px solid var(--fp-meal-border,var(--divider-color));border-radius:var(--fp-meal-radius,14px);min-height:var(--fp-meal-h,48px);height:var(--fp-meal-h,48px);padding:6px;font-size:.82rem;line-height:1.2;color:var(--primary-text-color);cursor:pointer;vertical-align:middle;transition:background .15s,transform .1s;}
+      td.mg-cell:hover{background:var(--mg-cell-bg-hover,rgba(var(--fp-tint-rgb,129,212,250),0.20));transform:translateY(-1px);}
       td.mg-cell span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
-      .mg-plus{color:var(--secondary-text-color);opacity:.45;font-size:1.1rem;font-weight:400;}
+      .mg-plus{color:var(--secondary-text-color);opacity:.38;font-size:.78rem;font-weight:400;}
       .mg-em{margin-right:3px;}
-      .mg-today{--mg-cell-bg:rgba(129,212,250,0.24);}
+      /* Heute nicht mehr einfaerben — das uebermalte die Farbe der Mahlzeit.
+         Stattdessen ein Ring um die Zelle und ein hervorgehobenes Datum. */
+      td.mg-cell.mg-today{box-shadow:inset 0 0 0 2px var(--fp-head,var(--primary-color));}
+      thead th.mg-today .mg-day,thead th.mg-today .mg-date{color:var(--fp-head,var(--primary-color));}
       th.mg-corner{width:54px;}
       .mg-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9;}
       .mg-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(92vw,360px);border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);text-shadow:none;}
@@ -489,18 +536,18 @@ class MealGridCard extends HTMLElement {
       .mg-cook-row{margin-top:10px;}
       .mg-recipe-row{margin-top:10px;}
       .mg-recipe{width:100%;background:rgba(255,167,38,.18);color:#e65100;font-weight:600;}
-      .mg-suggest{width:100%;background:rgba(79,195,247,.18);color:#0277bd;font-weight:600;}
+      .mg-suggest{width:100%;background:rgba(var(--fp-accent-rgb,79,195,247),.18);color:var(--fp-head,#0277bd);font-weight:600;}
       .mg-tocook{width:100%;background:rgba(245,179,1,.18);color:#a86b00;font-weight:600;}
-      .mg-fillrow{display:flex;gap:8px;padding:0 14px 10px;}
-      .mg-fill{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(179,229,252,.95);color:#014a73;font-weight:700;cursor:pointer;}
-      .mg-fill:hover{background:rgba(179,229,252,1);}
-      .mg-clear{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(255,205,210,.95);color:#b71c1c;font-weight:700;cursor:pointer;}
-      .mg-clear:hover{background:rgba(255,205,210,1);}
+      .mg-fillrow{display:flex;gap:8px;padding:10px 14px 0;}
+      .mg-fill{flex:1;border:none;border-radius:10px;padding:9px;font-size:.88rem;background:rgba(var(--fp-accent-rgb,79,195,247),.16);color:var(--fp-head,#014a73);font-weight:600;cursor:pointer;}
+      .mg-fill:hover{background:rgba(var(--fp-accent-rgb,79,195,247),.26);}
+      .mg-clear{flex:1;border:none;border-radius:10px;padding:9px;font-size:.88rem;background:transparent;border:1px solid var(--divider-color);color:var(--secondary-text-color);font-weight:600;cursor:pointer;}
+      .mg-clear:hover{color:var(--error-color);border-color:var(--error-color);}
       .mg-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
       .mg-btn{border:none;border-radius:10px;padding:9px 14px;font-size:.9rem;cursor:pointer;}
       .mg-cancel{background:var(--secondary-background-color,#eee);color:var(--primary-text-color);}
       .mg-del{background:rgba(229,57,53,.15);color:#e53935;}
-      .mg-save{background:#4fc3f7;color:#06354a;font-weight:700;}
+      .mg-save{background:var(--fp-accent,#4fc3f7);color:#06354a;font-weight:700;}
       ${bgImg}
     `;
     this.innerHTML = `<style>${css}</style>${html}`;
@@ -532,7 +579,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v2.0 (Heute hellblau + vergangene Tage gedimmt) ===== */
+/* ===== family-calendar-card v2.2 (Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -540,9 +587,13 @@ class FamilyCalendarCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
       title: "Kalender", initial_view: "week", day_start: 6, day_end: 23, persons: [],
+      days: 4,                 // nur fuer initial_view: "agenda"
+      hide_header: false,      // Kopfleiste mit Navigation und Ansichtswechsel
+      hide_legend: false,      // Personenfilter unter der Kopfleiste
     }, config || {});
     if (!this.config.persons || !this.config.persons.length) throw new Error("Bitte 'persons' konfigurieren");
-    this._view = this.config.initial_view === "month" ? "month" : "week";
+    this._view = this.config.initial_view === "month" ? "month"
+      : this.config.initial_view === "agenda" ? "agenda" : "week";
     this._offset = 0;
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
     this._hidden = this._loadHidden();
@@ -569,6 +620,12 @@ class FamilyCalendarCard extends HTMLElement {
 
   _range() {
     const now = new Date(); now.setHours(0, 0, 0, 0);
+    if (this._view === "agenda") {
+      const n = Math.max(1, Math.min(14, this.config.days || 4));
+      const d = new Date(now); d.setDate(d.getDate() + this._offset * n);
+      const end = new Date(d); end.setDate(end.getDate() + n);
+      return { start: d, end, gridStart: d, gridEnd: end };
+    }
     if (this._view === "week") {
       const d = new Date(now); const dow = (d.getDay() + 6) % 7;
       d.setDate(d.getDate() - dow + this._offset * 7);
@@ -585,8 +642,8 @@ class FamilyCalendarCard extends HTMLElement {
   async _maybeFetch(force) {
     if (!this._hass) return;
     const r = this._range();
-    const fs = this._view === "week" ? r.start : r.gridStart;
-    const fe = this._view === "week" ? r.end : r.gridEnd;
+    const fs = this._view === "month" ? r.gridStart : r.start;
+    const fe = this._view === "month" ? r.gridEnd : r.end;
     const key = this._view + "|" + this._offset + "|" + fs.toISOString();
     const now = Date.now();
     if (!force && key === this._rangeKey && now - this._lastFetch < 60000) return;
@@ -655,6 +712,51 @@ class FamilyCalendarCard extends HTMLElement {
 
   _sameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
   _isToday(d) { const t = new Date(); return this._sameDay(d, t); }
+
+  // Personenfarbe als zarte Flaeche und als lesbarer Text darauf.
+  _hex(c) { let h = String(c || "#888888").replace("#", ""); if (h.length === 3) h = h.split("").map(x => x + x).join(""); const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16); return [isNaN(r) ? 136 : r, isNaN(g) ? 136 : g, isNaN(b) ? 136 : b]; }
+  _rgba(c, a) { const [r, g, b] = this._hex(c); return `rgba(${r},${g},${b},${a})`; }
+  _deep(c, f) { const [r, g, b] = this._hex(c); const k = f == null ? 0.55 : f; return `rgb(${Math.round(r * k)},${Math.round(g * k)},${Math.round(b * k)})`; }
+
+  // Kompakte Mehrtagesansicht: eine Spalte je Tag, Termine als Kacheln mit
+  // farbiger Kante. Ersetzt die fremde week-planner-card in der Uebersicht.
+  _agendaHTML() {
+    const r = this._range();
+    const n = Math.max(1, Math.min(14, this.config.days || 4));
+    const items = this._items();
+    const dn = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+    const heute = new Date(); heute.setHours(0, 0, 0, 0);
+    const morgen = new Date(heute); morgen.setDate(morgen.getDate() + 1);
+
+    let html = `<div class="fcc-ag" style="grid-template-columns:repeat(${n},minmax(0,1fr))">`;
+    for (let i = 0; i < n; i++) {
+      const d = new Date(r.start); d.setDate(d.getDate() + i);
+      const de = new Date(d); de.setDate(de.getDate() + 1);
+      const tag = this._sameDay(d, heute) ? "Heute" : this._sameDay(d, morgen) ? "Morgen" : dn[(d.getDay() + 6) % 7];
+      // Ganztaegiges zuerst, danach chronologisch
+      const list = items.filter(it => it.start < de && it.end > d)
+        .sort((a, b) => (a.allDay === b.allDay) ? (a.start - b.start) : (a.allDay ? -1 : 1));
+
+      html += `<div class="fcc-ag-col${this._sameDay(d, heute) ? " fcc-ag-today" : ""}">`;
+      html += `<div class="fcc-ag-h"><span class="fcc-ag-n">${d.getDate()}</span><span class="fcc-ag-w">${this._esc(tag)}</span></div>`;
+      if (!list.length) {
+        html += '<div class="fcc-ag-none">frei</div>';
+      } else {
+        list.forEach(it => {
+          const c = (it.person && it.person.color) || "#888888";
+          const zeit = it.allDay ? "ganztägig" : `${this._pad(it.start.getHours())}:${this._pad(it.start.getMinutes())}`;
+          html += `<div class="fcc-ag-ev" data-key="${this._esc(it.key)}" style="border-left-color:${c};background:${this._rgba(c, 0.14)}">`
+            + `<div class="fcc-ag-t" style="color:${this._deep(c)}">${this._esc(zeit)}</div>`
+            + `<div class="fcc-ag-s">${this._esc(it.display)}</div></div>`;
+        });
+      }
+      html += "</div>";
+    }
+    html += "</div>";
+
+    const a = r.start, b = new Date(r.end); b.setDate(b.getDate() - 1);
+    return { html, label: `${a.getDate()}.${a.getMonth() + 1}. - ${b.getDate()}.${b.getMonth() + 1}.` };
+  }
 
   _legendHTML() {
     let h = '<div class="fcc-legend">';
@@ -859,13 +961,16 @@ class FamilyCalendarCard extends HTMLElement {
   _render() {
     if (!this._hass) return;
     if (this._editing) return; // offenen Dialog nicht zerstören
-    const view = this._view === "month" ? this._monthHTML() : this._weekHTML();
+    const view = this._view === "month" ? this._monthHTML()
+      : this._view === "agenda" ? this._agendaHTML() : this._weekHTML();
     const css = this._css();
-    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card">${this._headerHTML(view.label)}${this._legendHTML()}${view.html}</ha-card>`;
+    const kopf = this.config.hide_header ? "" : this._headerHTML(view.label);
+    const legende = this.config.hide_legend ? "" : this._legendHTML();
+    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card">${kopf}${legende}${view.html}</ha-card>`;
     this.querySelectorAll(".fcc-nav-b,.fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._maybeFetch(true); }));
     this.querySelectorAll(".fcc-vw").forEach(b => b.addEventListener("click", () => { const v = b.dataset.v; if (v !== this._view) { this._view = v; this._offset = 0; this._maybeFetch(true); } }));
     this.querySelectorAll(".fcc-chip").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; if (this._hidden.has(n)) this._hidden.delete(n); else this._hidden.add(n); this._saveHidden(); this._render(); }));
-    this.querySelectorAll(".fcc-ev,.fcc-ad-ev,.fcc-m-ev").forEach(el => el.addEventListener("click", e => {
+    this.querySelectorAll(".fcc-ev,.fcc-ad-ev,.fcc-m-ev,.fcc-ag-ev").forEach(el => el.addEventListener("click", e => {
       e.stopPropagation();
       const k = el.dataset.key;
       const item = k && this._evMap ? this._evMap[k] : null;
@@ -880,17 +985,30 @@ class FamilyCalendarCard extends HTMLElement {
   _css() {
     return `
     .fcc-card{overflow:hidden;padding-bottom:6px;}
-    .fcc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;background:linear-gradient(135deg,rgba(129,212,250,.70),rgba(79,195,247,.70));color:#fff;}
+    .fcc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;background:linear-gradient(135deg,rgba(var(--fp-tint-rgb,129,212,250),.70),rgba(var(--fp-accent-rgb,79,195,247),.70));color:#fff;}
     .fcc-title{font-size:1.15rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.25);}
     .fcc-range{flex:1;text-align:center;font-size:.92rem;font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.2);}
     .fcc-nav,.fcc-views{display:flex;gap:6px;}
     .fcc-btn{border:none;border-radius:9px;padding:7px 12px;font-size:.85rem;cursor:pointer;background:rgba(255,255,255,.25);color:#fff;}
     .fcc-btn:hover{background:rgba(255,255,255,.42);}
-    .fcc-vw-on{background:#fff;color:#0277bd;font-weight:700;}
+    .fcc-vw-on{background:#fff;color:var(--fp-head,#0277bd);font-weight:700;}
     .fcc-legend{display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px 4px;}
     .fcc-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--divider-color,#ddd);background:var(--card-background-color);color:var(--primary-text-color);border-radius:999px;padding:4px 10px;font-size:.82rem;cursor:pointer;}
     .fcc-chip.fcc-off{opacity:.4;text-decoration:line-through;}
     .fcc-dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
+    /* Mehrtagesansicht */
+    .fcc-ag{display:grid;gap:10px;padding:12px 14px 14px;}
+    .fcc-ag-col{min-width:0;}
+    .fcc-ag-h{display:flex;align-items:baseline;gap:6px;margin-bottom:7px;padding-bottom:5px;border-bottom:1px solid var(--divider-color);}
+    .fcc-ag-n{font-size:1.15rem;font-weight:700;color:var(--primary-text-color);line-height:1;}
+    .fcc-ag-w{font-size:.78rem;color:var(--secondary-text-color);}
+    .fcc-ag-today .fcc-ag-n{color:var(--fp-head,var(--primary-color));}
+    .fcc-ag-today .fcc-ag-h{border-bottom-color:var(--fp-head,var(--primary-color));}
+    .fcc-ag-ev{border-left:3px solid #888;border-radius:0 8px 8px 0;padding:5px 8px;margin-bottom:5px;cursor:pointer;}
+    .fcc-ag-ev:hover{filter:brightness(.96);}
+    .fcc-ag-t{font-size:.72rem;font-weight:700;line-height:1.3;}
+    .fcc-ag-s{font-size:.8rem;line-height:1.3;color:var(--primary-text-color);overflow-wrap:anywhere;}
+    .fcc-ag-none{font-size:.78rem;color:var(--secondary-text-color);opacity:.7;padding:5px 2px;}
     .fcc-gutter{width:48px;flex:0 0 48px;}
     .fcc-wk-head{display:flex;padding:6px 8px 0;}
     .fcc-dcol{flex:1;min-width:0;text-align:center;border-radius:8px 8px 0 0;padding:2px;}
@@ -907,7 +1025,7 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-hr{position:relative;}
     .fcc-hr span{position:absolute;top:-7px;right:6px;font-size:.66rem;color:var(--secondary-text-color);}
     .fcc-col{position:relative;flex:1;min-width:0;border-left:1px solid var(--divider-color,#eee);background-image:linear-gradient(var(--divider-color,#eee) 1px,transparent 1px);}
-    .fcc-today-col{background-color:rgba(129,212,250,.20);}
+    .fcc-today-col{background-color:rgba(var(--fp-tint-rgb,129,212,250),.20);}
     .fcc-ev{position:absolute;border-radius:7px;color:#fff;padding:2px 5px;overflow:hidden;font-size:.72rem;line-height:1.05;box-shadow:0 1px 3px rgba(0,0,0,.25);cursor:pointer;box-sizing:border-box;}
     .fcc-ev-t{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .fcc-ev-h{font-size:.62rem;opacity:.9;}
@@ -1054,7 +1172,7 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v18 (Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card v19 (Farben ueber Theme-Variablen, Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1399,7 +1517,7 @@ class ShoppingFavCard extends HTMLElement {
       .sf-acts .sf-x{color:#c62828;}
       .sf-addrow{display:flex;gap:8px;margin-top:14px;}
       .sf-new{flex:1;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .sf-addbtn{border:none;border-radius:10px;padding:10px 12px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;white-space:nowrap;}
+      .sf-addbtn{border:none;border-radius:10px;padding:10px 12px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;white-space:nowrap;}
       .sf-foot{margin-top:16px;display:flex;justify-content:flex-end;}
       .sf-done{border:none;border-radius:10px;padding:10px 18px;background:rgba(120,144,156,.22);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
       .sf-chip.sf-big{height:66px;font-size:1.05rem;border-radius:14px;}
@@ -1408,10 +1526,10 @@ class ShoppingFavCard extends HTMLElement {
       .sf-tgt{flex:1;min-width:84px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
       .sf-tgt-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
       .sf-q{flex:1;min-width:70px;border:1px solid var(--divider-color);border-radius:10px;padding:9px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.9rem;}
-      .sf-q-on{background:rgba(79,195,247,.95);color:#013;border-color:transparent;font-weight:600;}
+      .sf-q-on{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
       .sf-reps{display:flex;gap:6px;flex-wrap:wrap;}
       .sf-rep{border:1px solid var(--divider-color);border-radius:10px;padding:8px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.85rem;}
-      .sf-rep-on{background:rgba(79,195,247,.95);color:#013;border-color:transparent;font-weight:600;}
+      .sf-rep-on{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
       .sf-cust{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;}
       .sf-cust-lbl{color:var(--secondary-text-color);font-size:.9rem;}
       .sf-cust-n{width:66px;padding:8px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.95rem;}
@@ -1419,12 +1537,15 @@ class ShoppingFavCard extends HTMLElement {
       .sf-cu{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:10px;padding:8px 6px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.82rem;}
       .sf-date{width:100%;box-sizing:border-box;margin-top:8px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:rgba(120,144,156,.20);color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
-      .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;}
-      .sf-addcard{padding:12px;}
+      .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;}
+      /* Zeigt die Karte nur den Knopf, ist der Knopf die Kachel: kein Rahmen,
+         keine Innenabstaende, eine durchgehende Flaeche. */
+      .sf-addcard{padding:0;background:transparent;border:none;box-shadow:none;}
       .sf-addbar{margin-top:8px;display:flex;}
       .sf-addcard .sf-addbar{margin-top:0;}
-      .sf-addbig{flex:1;border:none;border-radius:10px;padding:12px;background:rgba(79,195,247,.95);color:#013;font-weight:700;font-size:1rem;cursor:pointer;}
-      .sf-addbig:hover{background:rgba(79,195,247,1);}
+      .sf-addbig{flex:1;border:none;border-radius:10px;padding:12px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;font-size:1rem;cursor:pointer;}
+      .sf-addcard .sf-addbig{border-radius:var(--ha-card-border-radius,12px);padding:15px 12px;}
+      .sf-addbig:hover{background:rgba(var(--fp-accent-rgb,79,195,247),1);}
       .sf-addtext{width:100%;box-sizing:border-box;border:1px solid var(--divider-color);border-radius:10px;padding:11px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-favs{display:flex;gap:8px;flex-wrap:wrap;}
       .sf-favpick{border:1px solid var(--divider-color);border-radius:12px;padding:12px 14px;min-height:46px;box-sizing:border-box;display:flex;align-items:center;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;font-weight:600;cursor:pointer;}
@@ -1441,8 +1562,9 @@ if (!customElements.get("shopping-fav-card")) {
 }
 })();
 
-/* ===== nav-card v2 (wraps any card; pointer/text-cursor children stay interactive) ===== */
+/* ===== nav-card v3 (fuellt die Rasterzelle aus; wraps any card; pointer/text-cursor children stay interactive) ===== */
 (() => {
+const U = window.__fpUtils;
 class NavCard extends HTMLElement {
   setConfig(config) {
     if (!config || !config.card) throw new Error("card (zu umhuellende Karte) erforderlich");
@@ -1468,10 +1590,15 @@ class NavCard extends HTMLElement {
     this._child = el;
     const wrap = document.createElement("div");
     wrap.style.position = "relative";
+    wrap.style.height = "100%";
     wrap.appendChild(el);
     this.innerHTML = "";
     this.appendChild(wrap);
     wrap.addEventListener("click", e => this._onClick(e));
+    // Hoehe bis zur umhuellten Karte durchreichen; deren ha-card braucht
+    // zusaetzlich card_mod: "ha-card{height:100%}" in ihrer eigenen Config.
+    if (U.fill) U.fill(this); // defensiv: fehlender Helfer darf die Karte nie killen
+    if (el.style) el.style.height = "100%";
   }
   _isInteractive(path) {
     const tags = ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "HA-CHECKBOX", "MWC-CHECKBOX", "HA-SWITCH", "HA-TEXTFIELD", "HA-TEXTAREA", "HA-ICON-BUTTON", "MWC-BUTTON", "HA-BUTTON", "PAPER-INPUT", "HA-MD-LIST-ITEM", "HA-CHECK-LIST-ITEM", "MWC-LIST-ITEM", "HA-LIST-ITEM", "HA-SLIDER", "HA-CONTROL-SLIDER", "HA-CONTROL-BUTTON"];
@@ -1512,7 +1639,7 @@ if (!customElements.get("nav-card")) {
 }
 })();
 
-/* ===== fp-todo-card v10 (Änderungsdialog: eigene Wiederholungs-Intervalle) ===== */
+/* ===== fp-todo-card v12 (Namens-Pille als Kartenkopf, Farben ueber Theme-Variablen, Änderungsdialog: eigene Wiederholungs-Intervalle) ===== */
 (() => {
 const U = window.__fpUtils;
 class FpTodoCard extends HTMLElement {
@@ -1564,7 +1691,7 @@ class FpTodoCard extends HTMLElement {
     const val = inp && inp.value != null ? String(inp.value).trim() : "";
     if (val) this._optimistic(val);
   }
-  set hass(hass) { this._hass = hass; if (this._child) this._child.hass = hass; else this._build(); }
+  set hass(hass) { this._hass = hass; if (this._child) { this._child.hass = hass; this._placePill(); } else this._build(); }
   async _build() {
     if (this._built || !this._hass || !this.isConnected) return;
     this._built = true;
@@ -1573,12 +1700,40 @@ class FpTodoCard extends HTMLElement {
       const helpers = await window.loadCardHelpers();
       const cfg = Object.assign({}, this.config);
       cfg.type = "todo-list";
+      // Statt der nativen Ueberschrift eine farbige Pille: die native muss weg,
+      // sonst steht der Name zweimal da.
+      if (this.config.pill) delete cfg.title;
       el = helpers.createCardElement(cfg);
     } catch (e) { this._built = false; return; }
     el.hass = this._hass;
     this._child = el;
     this.innerHTML = "";
     this.appendChild(el);
+    this._pillTries = 0;
+    this._placePill();
+  }
+  // Die Pille gehoert optisch in die Karte, die native Karte hat aber ein
+  // eigenes Shadow-DOM. Also hineinsetzen — und bei jedem Zustandswechsel
+  // nachsehen, ob Lit sie beim Neuzeichnen entfernt hat.
+  _placePill() {
+    const p = this.config && this.config.pill;
+    if (!p) return;
+    const root = this._child && this._child.shadowRoot;
+    const card = root && root.querySelector("ha-card");
+    if (!card) {
+      if ((this._pillTries = (this._pillTries || 0) + 1) < 30) setTimeout(() => this._placePill(), 100);
+      return;
+    }
+    if (card.querySelector(".fpt-pill")) return;
+    const el = document.createElement("div");
+    el.className = "fpt-pill";
+    el.textContent = p.label || this.config.title || "";
+    el.setAttribute("style",
+      "display:inline-block;margin:12px 0 2px 16px;padding:3px 11px;border-radius:99px;"
+      + "font-size:12px;font-weight:600;line-height:1.55;letter-spacing:.01em;"
+      + "background:" + (p.bg || "var(--secondary-background-color)") + ";"
+      + "color:" + (p.color || "var(--primary-text-color)") + ";");
+    card.insertBefore(el, card.firstChild);
   }
   _list() {
     try { return this._child && this._child.shadowRoot && this._child.shadowRoot.querySelector("ha-list"); } catch (e) { return null; }
@@ -1720,7 +1875,7 @@ class FpTodoCard extends HTMLElement {
       .ft-row{display:flex;gap:6px;flex-wrap:wrap;}
       .ft-name,.ft-date{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;margin-top:6px;}
       .ft-tgt,.ft-q,.ft-rep{flex:1;min-width:78px;border:1px solid var(--divider-color);border-radius:10px;padding:9px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.85rem;}
-      .ft-on{background:rgba(79,195,247,.95);color:#013;border-color:transparent;font-weight:600;}
+      .ft-on{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
       .ft-cust{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;}
       .ft-cust-lbl{color:var(--secondary-text-color);font-size:.9rem;}
       .ft-cust-n{width:66px;padding:8px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.95rem;}
@@ -1728,7 +1883,7 @@ class FpTodoCard extends HTMLElement {
       .ft-cu{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:10px;padding:8px 6px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.82rem;}
       .ft-foot{display:flex;gap:8px;margin-top:16px;}
       .ft-btn{flex:1;border:none;border-radius:10px;padding:11px;font-weight:700;cursor:pointer;}
-      .ft-save{background:rgba(79,195,247,.95);color:#013;}
+      .ft-save{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);}
       .ft-cancel{background:var(--secondary-background-color);color:var(--primary-text-color);}
       .ft-del{flex:none;background:rgba(229,57,53,.15);color:#e53935;}
     </style>`;
@@ -1768,7 +1923,7 @@ if (!customElements.get("fp-todo-card")) {
 }
 })();
 
-/* ===== fp-glance-card v5 (Wetter-Klick via transparentes Overlay = Touch+Maus zuverlaessig; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card; Tageszeit-Hintergrund via sun.sun) ===== */
+/* ===== fp-glance-card v6 (fuellt die Rasterzelle aus, forecast_rows statt forecast_days (clock-weather-card v2), hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay = Touch+Maus zuverlaessig; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card; Tageszeit-Hintergrund via sun.sun) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1780,7 +1935,9 @@ class FpGlanceCard extends HTMLElement {
       sun_entity: "sun.sun",
       show_weather: true,
       weather_card: null,                   // eigene clock-weather-card-Config (optional); sonst Default unten
-      forecast_days: 4,
+      shadow: "",                           // eigener Schlagschatten, z. B. "0 4px 14px rgba(0,0,0,.16)" oder "none"
+      forecast_rows: 4,                     // Anzahl Prognosezeilen (hiess in clock-weather-card v1 noch forecast_days)
+      hide_today_section: false,            // grossen Uhr-/Icon-Block ausblenden -> flaches Banner
       persons: [],                          // wie family-calendar-card: {name,color,calendar,prefix,match}
       essensplan_entity: "calendar.essensplan",
       dinner: { start: 15, end: 24 },       // Stunden-Fenster fuers Abendessen
@@ -1795,14 +1952,15 @@ class FpGlanceCard extends HTMLElement {
     this._built = false; this._wc = null; this._curBg = ""; this._curLight = null;
     // Eingebettete Wetterkarte (transparent aufs Banner geblendet); volle Config ueberschreibbar via weather_card
     if (this.config.show_weather) {
-      const base = this.config.weather_card || {
+      // Kopie: eine aus der Dashboard-Konfiguration gereichte weather_card ist eingefroren
+      const base = Object.assign({}, this.config.weather_card || {
         type: "custom:clock-weather-card",
         entity: this.config.weather_entity,
         sun_entity: this.config.sun_entity,
         locale: "de-DE", time_format: "24",
-        hide_today_section: false, hide_forecast_section: false,
-        forecast_days: this.config.forecast_days,
-      };
+        hide_today_section: !!this.config.hide_today_section, hide_forecast_section: false,
+        forecast_rows: this.config.forecast_rows,
+      });
       if (!base.card_mod) base.card_mod = { style: "ha-card{background:transparent!important;box-shadow:none!important;border:none!important;} :host{--primary-text-color:#fff;--secondary-text-color:rgba(255,255,255,.9);} img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));} svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));}" };
       this._wcConfig = base;
     }
@@ -1921,7 +2079,18 @@ class FpGlanceCard extends HTMLElement {
     this._built = true;
     this.innerHTML = `
       <style>
-        .fpg-card{position:relative;border-radius:12px;overflow:hidden;padding:16px 18px;box-sizing:border-box;}
+        /* Radius, Rand und Schatten aus denselben Theme-Variablen wie eine ha-card —
+           die Karte zeichnet ihr eigenes div und wuerde sonst flach danebenstehen. */
+        .fpg-card{position:relative;overflow:hidden;padding:16px 18px;box-sizing:border-box;height:100%;
+          border-radius:var(--ha-card-border-radius,12px);
+          /* box-shadow wird auf diesem div nicht gerendert (in HA nachgemessen),
+             drop-shadow schon. Wert fest statt var(--ha-card-box-shadow):
+             dort steht je nach Theme "none", und drop-shadow(none) macht die
+             ganze Filter-Regel ungueltig — dann faellt auch der Rueckfallwert weg.
+             Ueber die Karten-Option "shadow" ueberschreibbar. */
+          filter:drop-shadow(var(--fpg-shadow,0 4px 14px rgba(0,0,0,.16)));
+          border-width:var(--ha-card-border-width,0);border-style:solid;
+          border-color:var(--ha-card-border-color,var(--divider-color));}
         .fpg-light{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.55);}
         .fpg-dark{color:var(--primary-text-color);}
         .fpg-clk{cursor:pointer;}
@@ -1946,6 +2115,8 @@ class FpGlanceCard extends HTMLElement {
         <div class="fpg-info"></div>
         <div class="fpg-wc"></div>
       </div>`;
+    if (U.fill) U.fill(this); // defensiv: fehlender Helfer darf die Karte nie killen
+    if (this.config.shadow) this.style.setProperty("--fpg-shadow", this.config.shadow);
     this._elCard = this.querySelector(".fpg-card");
     this._elDate = this.querySelector(".fpg-date");
     this._elGreet = this.querySelector(".fpg-hi");
@@ -2016,7 +2187,7 @@ if (!customElements.get("fp-glance-card")) {
 }
 })();
 
-/* ===== fp-cookbook-card v14 (Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Zutaten, Schritte) ===== */
+/* ===== fp-cookbook-card v15 (Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Zutaten, Schritte) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2528,16 +2699,16 @@ class FpCookbookCard extends HTMLElement {
       .cb-card{padding:12px 14px;}
       .cb-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
       .cb-title{font-weight:700;font-size:1.05rem;}
-      .cb-add{border:none;border-radius:10px;padding:8px 12px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;}
+      .cb-add{border:none;border-radius:10px;padding:8px 12px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;}
       .cb-search{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);margin-bottom:8px;}
       .cb-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
       .cb-chip{border:1px solid var(--divider-color);border-radius:16px;padding:5px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.82rem;cursor:pointer;}
       .cb-chip-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
       .cb-src{margin-top:12px;font-size:.85rem;}
-      .cb-src a{color:var(--primary-color,#0277bd);}
+      .cb-src a{color:var(--primary-color,var(--fp-head,#0277bd));}
       .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;}
       .cb-dish{text-align:left;border:1px solid var(--divider-color);border-radius:12px;padding:10px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;display:flex;flex-direction:column;gap:4px;min-height:70px;}
-      .cb-dish:hover{background:rgba(129,212,250,.18);}
+      .cb-dish:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.18);}
       .cb-d-name{font-weight:700;font-size:.95rem;line-height:1.15;}
       .cb-d-meta{font-size:.75rem;color:var(--secondary-text-color);}
       .cb-d-time{font-size:.72rem;color:var(--secondary-text-color);}
@@ -2546,7 +2717,7 @@ class FpCookbookCard extends HTMLElement {
       .cb-fixtimes:hover{background:rgba(255,167,38,.24);}
       .cb-fixtimes:disabled{opacity:.7;cursor:default;}
       .cb-d-tags{display:flex;gap:4px;flex-wrap:wrap;}
-      .cb-tag{font-size:.68rem;background:rgba(129,212,250,.25);color:#0277bd;border-radius:8px;padding:1px 6px;}
+      .cb-tag{font-size:.68rem;background:rgba(var(--fp-tint-rgb,129,212,250),.25);color:var(--fp-head,#0277bd);border-radius:8px;padding:1px 6px;}
       .cb-d-stars{color:#f5b301;font-size:.8rem;}
       .cb-empty{grid-column:1/-1;color:var(--secondary-text-color);text-align:center;padding:18px;}
       .cb-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
@@ -2567,10 +2738,10 @@ class FpCookbookCard extends HTMLElement {
       .cb-in{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);margin-bottom:8px;font-size:1rem;}
       textarea.cb-free{min-height:70px;resize:vertical;}
       .cb-ck-tools{display:flex;gap:14px;margin:2px 0 8px;}
-      .cb-linkbtn{border:none;background:transparent;color:var(--primary-color,#0277bd);cursor:pointer;font-size:.85rem;padding:2px 0;text-decoration:underline;}
+      .cb-linkbtn{border:none;background:transparent;color:var(--primary-color,var(--fp-head,#0277bd));cursor:pointer;font-size:.85rem;padding:2px 0;text-decoration:underline;}
       .cb-cklist{max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:2px;}
       .cb-ck{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;cursor:pointer;}
-      .cb-ck:hover{background:rgba(129,212,250,.12);}
+      .cb-ck:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.12);}
       .cb-ck input{width:18px;height:18px;flex:none;}
       .cb-e-cats,.cb-e-tags{display:flex;gap:6px;flex-wrap:wrap;}
       .cb-e-hint{font-size:.75rem;color:var(--secondary-text-color);margin-top:6px;}
