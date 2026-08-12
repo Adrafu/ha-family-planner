@@ -1,0 +1,192 @@
+# ============================================================
+# familienplaner-warm — Theme für den Family Planner
+# ============================================================
+# Nach /config/themes/familienplaner-warm.yaml kopieren, dann
+# Entwicklerwerkzeuge -> YAML -> "Themes" neu laden und im
+# eigenen Profil unten unter "Theme" auswählen.
+#
+# Anders als das frühere ios-light-blue-contrast ist das hier
+# eine Eigenentwicklung ohne fremde Vorlage — darf also mit ins
+# Repo und in die Release Notes.
+#
+# Warme Naturtöne statt des kühlen Blaus: Salbei als Akzent,
+# Beige als Untergrund, weiße Karten mit weichem Rand.
+
+familienplaner-warm:
+  modes:
+    light:
+      # --- Schrift ---
+      # Nunito kommt aus der Lovelace-Ressource (Google Fonts). Ist das Tablet
+      # offline, greift die Systemschrift dahinter — der Rest bleibt heil.
+      # Der aktuelle Name ist ha-font-family-body; primary-font-family und die
+      # paper-font-*-Variablen sind Altlasten und werden kaum noch gelesen.
+      ha-font-family-body: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      ha-font-family-heading: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      primary-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      # Material-Komponenten der ersten Generation (ha-check-list-item in den
+      # Aufgabenlisten) lesen mdc-typography-*, nicht ha-font-*. Ohne diese
+      # Zeilen bleiben genau die Listenzeilen auf Roboto stehen.
+      mdc-typography-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-body1-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-body2-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-subtitle1-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-button-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-headline6-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      md-list-item-label-text-font: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      md-list-item-supporting-text-font: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-common-base_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-common-nowrap_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-body1_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-headline_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-title_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-subhead_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+
+      # --- Akzent ---
+      primary-color: "#4F6B57"
+      dark-primary-color: "#3C5343"
+      light-primary-color: "#B9CBB1"
+      accent-color: "#D99A0B"
+
+      # --- Text ---
+      primary-text-color: "#2E2D28"
+      secondary-text-color: "#75705F"
+      text-primary-color: "#FFFFFF"
+      disabled-text-color: "#A8A292"
+
+      # --- Flächen ---
+      primary-background-color: "#EAE4D6"
+      secondary-background-color: "#E2DBC9"
+      divider-color: "#D6CEBB"
+      markdown-code-background-color: "#F0EADA"
+
+      # --- Karten ---
+      card-background-color: "#FFFFFF"
+      ha-card-background: "#FFFFFF"
+      ha-card-border-radius: "12px"
+      ha-card-border-width: "1px"
+      ha-card-border-color: "#DED6C4"
+      ha-card-box-shadow: "0 2px 8px rgba(70, 58, 34, 0.10)"
+
+      # --- Kopfzeile ---
+      app-header-background-color: "#EAE4D6"
+      app-header-text-color: "#2E2D28"
+      app-header-selection-bar-color: "#4F6B57"
+
+      # --- Seitenleiste ---
+      sidebar-background-color: "#F2EDE1"
+      sidebar-text-color: "#2E2D28"
+      sidebar-icon-color: "#75705F"
+      sidebar-selected-text-color: "#4F6B57"
+      sidebar-selected-icon-color: "#4F6B57"
+
+      # --- Zustände ---
+      state-icon-color: "#4F6B57"
+      state-icon-active-color: "#D99A0B"
+      switch-checked-color: "#4F6B57"
+      paper-item-icon-active-color: "#D99A0B"
+      error-color: "#C0392B"
+      warning-color: "#D99A0B"
+      success-color: "#4A7A3A"
+      info-color: "#1F6F6B"
+
+      # --- Abstand zwischen Karten innerhalb einer Sektion ---
+      # Wetter und Kalender liegen in derselben Sektion, damit sie
+      # gleich hoch werden. Ohne das kleben sie mit 8px aneinander.
+      ha-section-grid-column-gap: "32px"
+
+      # --- eigene Karten ---
+      # Die Karten trugen den alten Hellblau-Akzent fest im Code. Er haengt
+      # jetzt an diesen Variablen; ohne Theme sehen sie aus wie bisher.
+      fp-accent-rgb: "79, 107, 87"      # Salbei, fuer Knopfflaechen
+      fp-tint-rgb: "125, 155, 132"      # helleres Salbei, fuer Toenungen
+      fp-accent-fg: "#FFFFFF"           # Text auf Knopfflaechen
+      fp-accent: "#4F6B57"
+      fp-head: "#3C5343"                # Ueberschriften in eigenen Karten
+      fp-bar-bg: "#4F6B57"
+      fp-bar-fg: "#FFFFFF"
+      # Essensplan: eine eigene Feldfarbe je Tageszeit, randlos
+      fp-meal0-bg: "#F0EADA"            # Fruehstueck
+      fp-meal1-bg: "#DFEBD6"            # Mittag
+      fp-meal2-bg: "#F7E4CC"            # Abend
+      fp-meal-border: "transparent"
+      fp-meal-radius: "8px"
+
+    dark:
+      # Der aktuelle Name ist ha-font-family-body; primary-font-family und die
+      # paper-font-*-Variablen sind Altlasten und werden kaum noch gelesen.
+      ha-font-family-body: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      ha-font-family-heading: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      primary-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      # Material-Komponenten der ersten Generation (ha-check-list-item in den
+      # Aufgabenlisten) lesen mdc-typography-*, nicht ha-font-*. Ohne diese
+      # Zeilen bleiben genau die Listenzeilen auf Roboto stehen.
+      mdc-typography-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-body1-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-body2-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-subtitle1-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-button-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      mdc-typography-headline6-font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      md-list-item-label-text-font: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      md-list-item-supporting-text-font: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-common-base_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-common-nowrap_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-body1_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-headline_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-title_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+      paper-font-subhead_-_font-family: "Nunito, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+
+      primary-color: "#8FB098"
+      dark-primary-color: "#6E8F76"
+      light-primary-color: "#4A5C4E"
+      accent-color: "#E0A93F"
+
+      primary-text-color: "#EDE8DC"
+      secondary-text-color: "#A9A395"
+      text-primary-color: "#1E1C18"
+      disabled-text-color: "#6E6A5F"
+
+      primary-background-color: "#1F1D19"
+      secondary-background-color: "#282621"
+      divider-color: "#3E3B34"
+      markdown-code-background-color: "#2C2A25"
+
+      card-background-color: "#2C2A25"
+      ha-card-background: "#2C2A25"
+      ha-card-border-radius: "12px"
+      ha-card-border-width: "1px"
+      ha-card-border-color: "#3E3B34"
+      ha-card-box-shadow: "0 2px 8px rgba(0, 0, 0, 0.35)"
+
+      app-header-background-color: "#1F1D19"
+      app-header-text-color: "#EDE8DC"
+      app-header-selection-bar-color: "#8FB098"
+
+      sidebar-background-color: "#252320"
+      sidebar-text-color: "#EDE8DC"
+      sidebar-icon-color: "#A9A395"
+      sidebar-selected-text-color: "#8FB098"
+      sidebar-selected-icon-color: "#8FB098"
+
+      state-icon-color: "#8FB098"
+      state-icon-active-color: "#E0A93F"
+      switch-checked-color: "#8FB098"
+      paper-item-icon-active-color: "#E0A93F"
+      error-color: "#E06A5A"
+      warning-color: "#E0A93F"
+      success-color: "#7FB06A"
+      info-color: "#5AA8A4"
+
+      ha-section-grid-column-gap: "32px"
+
+      fp-accent-rgb: "143, 176, 152"
+      fp-tint-rgb: "143, 176, 152"
+      fp-accent-fg: "#1E1C18"
+      fp-accent: "#8FB098"
+      fp-head: "#8FB098"
+      fp-bar-bg: "#3C5343"
+      fp-bar-fg: "#EDE8DC"
+      fp-meal0-bg: "#332F27"
+      fp-meal1-bg: "#2B3529"
+      fp-meal2-bg: "#372E24"
+      fp-meal-border: "transparent"
+      fp-meal-radius: "8px"
