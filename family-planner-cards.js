@@ -1,4 +1,4 @@
-/* Family Planner custom cards v1.9.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
+/* Family Planner custom cards v1.9.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 (() => {
@@ -1054,7 +1054,7 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v17 (Favoriten und Hinzufügen-Knopf kombinierbar via show_favorites) ===== */
+/* ===== shopping-fav-card v18 (Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1192,27 +1192,56 @@ class ShoppingFavCard extends HTMLElement {
   }
 
   // Auswahlzeile für die Wiederholung (nur bei Todoist-Zielen sinnvoll)
+  _unitBtns(cls, sel) {
+    return [["day", "Tage"], ["week", "Wochen"], ["month", "Monate"], ["year", "Jahre"]]
+      .map(([u, l]) => `<button class="${cls}${u === sel ? " sf-rep-on" : ""}" data-u="${u}">${l}</button>`).join("");
+  }
   _repeatHtml() {
     const opts = this.config.repeat_options || [];
     if (!opts.length) return "";
     const btns = [`<button class="sf-rep sf-rep-on" data-r="">Einmalig</button>`]
-      .concat(opts.map(o => `<button class="sf-rep" data-r="${this._esc(o.due_string)}">${this._esc(o.label)}</button>`)).join("");
-    return `<div class="sf-sub sf-rep-sub">${this._esc(this.config.repeat_label)}</div><div class="sf-reps">${btns}</div>`;
+      .concat(opts.map(o => `<button class="sf-rep" data-r="${this._esc(o.due_string)}">${this._esc(o.label)}</button>`))
+      .concat([`<button class="sf-rep" data-r="__custom">Eigene …</button>`]).join("");
+    return `<div class="sf-sub sf-rep-sub">${this._esc(this.config.repeat_label)}</div>`
+      + `<div class="sf-reps">${btns}</div>`
+      + `<div class="sf-cust" style="display:none"><span class="sf-cust-lbl">alle</span>`
+      + `<input class="sf-cust-n" type="number" min="1" max="99" value="2">`
+      + `<div class="sf-cus">${this._unitBtns("sf-cu", "week")}</div></div>`;
   }
   _wireRepeat(ov) {
     this._rep = "";
-    const sub = ov.querySelector(".sf-rep-sub"), row = ov.querySelector(".sf-reps");
+    const sub = ov.querySelector(".sf-rep-sub"), row = ov.querySelector(".sf-reps"), cust = ov.querySelector(".sf-cust");
     if (!row) return;
+    const nInp = cust && cust.querySelector(".sf-cust-n");
+    const custDue = () => {
+      const n = Math.min(99, Math.max(1, parseInt(nInp.value, 10) || 1));
+      const on = cust.querySelector(".sf-cu.sf-rep-on");
+      const u = on ? on.dataset.u : "week";
+      return `every! ${n} ${u}${n > 1 ? "s" : ""}`;   // Todoist: Einzahl bei 1
+    };
+    const custOpen = () => cust && cust.style.display !== "none";
     const sync = () => {
       const on = this._repeatable(this._sel);
       if (sub) sub.style.display = on ? "" : "none";
       row.style.display = on ? "" : "none";
-      if (!on) { this._rep = ""; row.querySelectorAll(".sf-rep").forEach(x => x.classList.toggle("sf-rep-on", x.dataset.r === "")); }
+      if (!on) {
+        this._rep = "";
+        if (cust) cust.style.display = "none";
+        row.querySelectorAll(".sf-rep").forEach(x => x.classList.toggle("sf-rep-on", x.dataset.r === ""));
+      }
     };
     row.querySelectorAll(".sf-rep").forEach(b => b.addEventListener("click", () => {
-      this._rep = b.dataset.r;
       row.querySelectorAll(".sf-rep").forEach(x => x.classList.toggle("sf-rep-on", x === b));
+      if (b.dataset.r === "__custom" && cust) { cust.style.display = "flex"; this._rep = custDue(); }
+      else { if (cust) cust.style.display = "none"; this._rep = b.dataset.r; }
     }));
+    if (cust) {
+      nInp.addEventListener("input", () => { if (custOpen()) this._rep = custDue(); });
+      cust.querySelectorAll(".sf-cu").forEach(b => b.addEventListener("click", () => {
+        cust.querySelectorAll(".sf-cu").forEach(x => x.classList.toggle("sf-rep-on", x === b));
+        if (custOpen()) this._rep = custDue();
+      }));
+    }
     sync();
     return sync;
   }
@@ -1383,6 +1412,11 @@ class ShoppingFavCard extends HTMLElement {
       .sf-reps{display:flex;gap:6px;flex-wrap:wrap;}
       .sf-rep{border:1px solid var(--divider-color);border-radius:10px;padding:8px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.85rem;}
       .sf-rep-on{background:rgba(79,195,247,.95);color:#013;border-color:transparent;font-weight:600;}
+      .sf-cust{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;}
+      .sf-cust-lbl{color:var(--secondary-text-color);font-size:.9rem;}
+      .sf-cust-n{width:66px;padding:8px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.95rem;}
+      .sf-cus{display:flex;gap:5px;flex:1;flex-wrap:wrap;}
+      .sf-cu{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:10px;padding:8px 6px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.82rem;}
       .sf-date{width:100%;box-sizing:border-box;margin-top:8px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:rgba(120,144,156,.20);color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
       .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(79,195,247,.95);color:#013;font-weight:700;cursor:pointer;}
@@ -1478,7 +1512,7 @@ if (!customElements.get("nav-card")) {
 }
 })();
 
-/* ===== fp-todo-card v9 (Änderungsdialog: Klicks bleiben im Dialog, lösen keine nav-card-Navigation mehr aus) ===== */
+/* ===== fp-todo-card v10 (Änderungsdialog: eigene Wiederholungs-Intervalle) ===== */
 (() => {
 const U = window.__fpUtils;
 class FpTodoCard extends HTMLElement {
@@ -1573,7 +1607,10 @@ class FpTodoCard extends HTMLElement {
     let sel = src, due = (item.due || "").slice(0, 10), rep = "";
     const tbtns = this._targets.map(t => `<button class="ft-tgt${t.entity === src ? " ft-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
     const rbtns = [`<button class="ft-rep ft-on" data-r="">Unverändert</button>`]
-      .concat(this._repeats.map(o => `<button class="ft-rep" data-r="${this._esc(o.due_string)}">${this._esc(o.label)}</button>`)).join("");
+      .concat(this._repeats.map(o => `<button class="ft-rep" data-r="${this._esc(o.due_string)}">${this._esc(o.label)}</button>`))
+      .concat([`<button class="ft-rep" data-r="__custom">Eigene …</button>`]).join("");
+    const ubtns = [["day", "Tage"], ["week", "Wochen"], ["month", "Monate"], ["year", "Jahre"]]
+      .map(([u, l]) => `<button class="ft-cu${u === "week" ? " ft-on" : ""}" data-u="${u}">${l}</button>`).join("");
 
     const ov = document.createElement("div"); ov.className = "ft-ov"; this._ov = ov;
     ov.innerHTML = `<div class="ft-modal">
@@ -1583,16 +1620,25 @@ class FpTodoCard extends HTMLElement {
       <div class="ft-sub">Bis wann?</div>
       <div class="ft-row"><button class="ft-q" data-q="none">Kein Datum</button><button class="ft-q" data-q="today">Heute</button><button class="ft-q" data-q="tom">Morgen</button><button class="ft-q" data-q="week">In 1 Woche</button></div>
       <input class="ft-date" type="date" value="${this._esc(due)}">
-      ${this._repeats.length ? `<div class="ft-sub ft-rsub">Wiederholung</div><div class="ft-row ft-reps">${rbtns}</div>` : ""}
+      ${this._repeats.length ? `<div class="ft-sub ft-rsub">Wiederholung</div><div class="ft-row ft-reps">${rbtns}</div>`
+        + `<div class="ft-cust" style="display:none"><span class="ft-cust-lbl">alle</span><input class="ft-cust-n" type="number" min="1" max="99" value="2"><div class="ft-cus">${ubtns}</div></div>` : ""}
       <div class="ft-foot"><button class="ft-btn ft-save">Speichern</button><button class="ft-btn ft-cancel">Abbrechen</button><button class="ft-btn ft-del">🗑</button></div>
     </div>${this._editStyles()}`;
     this.appendChild(ov);
 
     const dateInp = ov.querySelector(".ft-date");
+    const cust = ov.querySelector(".ft-cust");
+    const custDue = () => {
+      const nEl = cust.querySelector(".ft-cust-n");
+      const n = Math.min(99, Math.max(1, parseInt(nEl.value, 10) || 1));
+      const u = (cust.querySelector(".ft-cu.ft-on") || { dataset: { u: "week" } }).dataset.u;
+      return `every! ${n} ${u}${n > 1 ? "s" : ""}`;   // Todoist: Einzahl bei 1
+    };
+    const custOpen = () => cust && cust.style.display !== "none";
     const syncRep = () => {
       const on = !!(this._repeats.length && this._projectOf(sel));
       ov.querySelectorAll(".ft-rsub, .ft-reps").forEach(x => x.style.display = on ? "" : "none");
-      if (!on) rep = "";
+      if (!on) { rep = ""; if (cust) cust.style.display = "none"; }
     };
     // Kein Klick aus dem Dialog darf nach außen durchschlagen — sonst deutet
     // eine umschließende nav-card ihn als Navigation und wechselt den Tab.
@@ -1610,9 +1656,17 @@ class FpTodoCard extends HTMLElement {
     }));
     dateInp.addEventListener("change", () => { due = dateInp.value; ov.querySelectorAll(".ft-q").forEach(x => x.classList.remove("ft-on")); });
     ov.querySelectorAll(".ft-rep").forEach(b => b.addEventListener("click", () => {
-      rep = b.dataset.r;
       ov.querySelectorAll(".ft-rep").forEach(x => x.classList.toggle("ft-on", x === b));
+      if (b.dataset.r === "__custom" && cust) { cust.style.display = "flex"; rep = custDue(); }
+      else { if (cust) cust.style.display = "none"; rep = b.dataset.r; }
     }));
+    if (cust) {
+      cust.querySelector(".ft-cust-n").addEventListener("input", () => { if (custOpen()) rep = custDue(); });
+      cust.querySelectorAll(".ft-cu").forEach(b => b.addEventListener("click", () => {
+        cust.querySelectorAll(".ft-cu").forEach(x => x.classList.toggle("ft-on", x === b));
+        if (custOpen()) rep = custDue();
+      }));
+    }
     syncRep();
 
     ov.querySelector(".ft-cancel").addEventListener("click", () => this._closeEdit());
@@ -1667,6 +1721,11 @@ class FpTodoCard extends HTMLElement {
       .ft-name,.ft-date{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;margin-top:6px;}
       .ft-tgt,.ft-q,.ft-rep{flex:1;min-width:78px;border:1px solid var(--divider-color);border-radius:10px;padding:9px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.85rem;}
       .ft-on{background:rgba(79,195,247,.95);color:#013;border-color:transparent;font-weight:600;}
+      .ft-cust{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;}
+      .ft-cust-lbl{color:var(--secondary-text-color);font-size:.9rem;}
+      .ft-cust-n{width:66px;padding:8px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.95rem;}
+      .ft-cus{display:flex;gap:5px;flex:1;flex-wrap:wrap;}
+      .ft-cu{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:10px;padding:8px 6px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.82rem;}
       .ft-foot{display:flex;gap:8px;margin-top:16px;}
       .ft-btn{flex:1;border:none;border-radius:10px;padding:11px;font-weight:700;cursor:pointer;}
       .ft-save{background:rgba(79,195,247,.95);color:#013;}

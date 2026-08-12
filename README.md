@@ -87,6 +87,21 @@ targets:
   - { label: Verena, entity: todo.verena }
 ```
 
+Optional **Serienaufgaben**. Home Assistant reicht bei `todo.add_item` kein Wiederholungsmuster durch, deshalb legt die Karte solche Aufgaben direkt über die Todoist-Schnittstelle an — dafür braucht jedes Ziel eine `project_id` und es muss ein passender `rest_command` existieren:
+
+```yaml
+show_favorites: true          # Favoriten UND Hinzufügen-Knopf zeigen
+add_button: true
+repeat_options:
+  - { label: "wöchentlich",   due_string: "every! week" }
+  - { label: "alle 6 Monate", due_string: "every! 6 months" }
+todoist_service: rest_command.todoist_add_task
+targets:
+  - { label: Tobi, entity: todo.tobi, project_id: "PROJEKT-ID" }
+```
+
+Zusätzlich zu den Voreinstellungen erscheint **„Eigene …"** für freie Intervalle wie „alle 2 Wochen". Das Rufzeichen in `every!` ist entscheidend: damit rechnet Todoist ab dem **Erledigungsdatum** statt ab der Fälligkeit — bei Haushaltsaufgaben fast immer das Gewollte.
+
 ### Beispiel: nav-card
 
 ```yaml
@@ -117,6 +132,7 @@ edit_targets:               # Ziele zum Verschieben (project_id nur für Todoist
   - { label: Tobi,      entity: todo.tobi,      project_id: "PROJEKT-ID" }
 repeat_options:             # optional, nur mit project_id wirksam
   - { label: "alle 6 Monate", due_string: "every! 6 months" }
+                            # „Eigene …" (freies Intervall) kommt automatisch dazu
 todoist_service: rest_command.todoist_add_task
 ```
 
