@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.0.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
+/* Family Planner custom cards v2.0.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -579,7 +579,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v2.3 (mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
+/* ===== family-calendar-card v2.6 (durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -809,8 +809,14 @@ class FamilyCalendarCard extends HTMLElement {
 
     let allRow = '<div class="fcc-allday"><div class="fcc-gutter fcc-allday-lbl">ganzt.</div>';
     cols.forEach(d => {
+      const tv = new Date(d); tv.setHours(0, 0, 0, 0);
+      const tb = new Date(tv); tb.setDate(tb.getDate() + 1);
       let cell = '<div class="fcc-ad-cell">';
-      items.filter(it => it.allDay && d >= new Date(it.start.getFullYear(), it.start.getMonth(), it.start.getDate()) && d < it.end).forEach(it => {
+      // Auch Termine mit Uhrzeit gehoeren hier hinauf, wenn sie den Tag
+      // komplett ueberdecken — ein Balken ueber das ganze Raster sagt nichts,
+      // ausser dass er nirgends hineinpasst.
+      items.filter(it => (it.allDay && d >= new Date(it.start.getFullYear(), it.start.getMonth(), it.start.getDate()) && d < it.end)
+        || (!it.allDay && it.start <= tv && it.end >= tb)).forEach(it => {
         cell += `<div class="fcc-ad-ev" style="background:${it.person.color};color:${this._textOn(it.person.color)}" data-key="${this._esc(it.key)}" data-ent="${it.entity}">${this._esc(it.display)}</div>`;
       });
       cell += "</div>"; allRow += cell;
@@ -825,7 +831,13 @@ class FamilyCalendarCard extends HTMLElement {
     const todayMid = new Date(nowD); todayMid.setHours(0, 0, 0, 0);
     let body = `<div class="fcc-grid"><div class="fcc-gutter">${hours}</div>`;
     cols.forEach(d => {
-      const dayItems = items.filter(it => !it.allDay && this._sameDay(it.start, d));
+      // Ueberlappung statt Starttag: ein Termin ueber Mitternacht gehoert in
+      // beide Spalten, nicht nur in die des Beginns.
+      const tagVon = new Date(d); tagVon.setHours(0, 0, 0, 0);
+      const tagBis = new Date(tagVon); tagBis.setDate(tagBis.getDate() + 1);
+      // Tage, an denen der Termin durchlaeuft, stehen oben in der Ganztagszeile
+      const dayItems = items.filter(it => !it.allDay && it.start < tagBis && it.end > tagVon
+        && !(it.start <= tagVon && it.end >= tagBis));
       dayItems.sort((a, b) => a.start - b.start || a.end - b.end);
       const clusters = []; let cur = [], curEnd = null;
       dayItems.forEach(e => { if (curEnd !== null && e.start >= curEnd) { clusters.push(cur); cur = []; curEnd = null; } cur.push(e); curEnd = curEnd === null ? e.end : new Date(Math.max(curEnd, e.end)); });
@@ -838,11 +850,18 @@ class FamilyCalendarCard extends HTMLElement {
       if (today && nowFrac >= h0 && nowFrac < h1) { const nt = (nowFrac - h0) * HH; col += `<div class="fcc-past fcc-nowpast" style="height:${nt}px"></div><div class="fcc-now" style="top:${nt}px"></div>`; }
       else if (isPast) { col += `<div class="fcc-past" style="height:${gridH}px"></div>`; }
       dayItems.forEach(e => {
-        const sd = Math.max(h0, e.start.getHours() + e.start.getMinutes() / 60);
-        const ed = Math.min(h1, Math.max(sd + 0.25, e.end.getHours() + e.end.getMinutes() / 60 || h1));
+        // Auf den Tag zuschneiden: laeuft der Termin schon oder laeuft er
+        // weiter, reicht der Balken bis an den Rand des Rasters.
+        const std = e.start <= tagVon ? h0 : e.start.getHours() + e.start.getMinutes() / 60;
+        const end = e.end >= tagBis ? h1 : e.end.getHours() + e.end.getMinutes() / 60;
+        const sd = Math.max(h0, std);
+        const ed = Math.min(h1, Math.max(sd + 0.25, end));
         const top = (sd - h0) * HH, hgt = Math.max(16, (ed - sd) * HH);
         const w = 100 / (e._n || 1), left = (e._c || 0) * w;
-        col += `<div class="fcc-ev" data-key="${this._esc(e.key)}" data-ent="${e.entity}" style="top:${top}px;height:${hgt}px;left:${left}%;width:${w}%;background:${e.person.color};color:${this._textOn(e.person.color)}"><span class="fcc-ev-t">${this._esc(e.display)}</span><span class="fcc-ev-h">${this._pad(e.start.getHours())}:${this._pad(e.start.getMinutes())}</span></div>`;
+        const faengtAn = e.start > tagVon;
+        const zeit = faengtAn ? `${this._pad(e.start.getHours())}:${this._pad(e.start.getMinutes())}`
+          : (e.end < tagBis ? `bis ${this._pad(e.end.getHours())}:${this._pad(e.end.getMinutes())}` : "");
+        col += `<div class="fcc-ev" data-key="${this._esc(e.key)}" data-ent="${e.entity}" style="top:${top}px;height:${hgt}px;left:${left}%;width:${w}%;background:${e.person.color};color:${this._textOn(e.person.color)}"><span class="fcc-ev-t">${this._esc(e.display)}</span><span class="fcc-ev-h">${this._esc(zeit)}</span></div>`;
       });
       col += "</div>"; body += col;
     });
@@ -879,11 +898,16 @@ class FamilyCalendarCard extends HTMLElement {
     const pad = n => String(n).padStart(2, "0");
     const it = opts.item || null;
     const edit = !!it;
-    let dateIso, von, bis, allDay = false, title = "", personIdx = 0;
+    const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    let dateIso, dateIso2, von, bis, allDay = false, title = "", personIdx = 0;
     if (edit) {
       const s = it.start, e = it.end;
-      dateIso = `${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())}`;
+      dateIso = iso(s);
       allDay = !!it.allDay;
+      // Ganztaegige Termine enden in HA am Folgetag (exklusiv). Im Formular
+      // steht der letzte Tag, an dem der Termin tatsaechlich laeuft.
+      if (allDay) { const le = new Date(e); le.setDate(le.getDate() - 1); dateIso2 = iso(le < s ? s : le); }
+      else dateIso2 = iso(e);
       von = pad(s.getHours()) + ":" + pad(s.getMinutes());
       bis = pad(e.getHours()) + ":" + pad(e.getMinutes());
       title = it.display || "";
@@ -891,6 +915,7 @@ class FamilyCalendarCard extends HTMLElement {
       personIdx = pi >= 0 ? pi : 0;
     } else {
       dateIso = opts.dateIso;
+      dateIso2 = opts.dateIso;
       von = pad(opts.hour) + ":00";
       bis = pad(Math.min(opts.hour + 1, 23)) + ":00";
     }
@@ -900,7 +925,7 @@ class FamilyCalendarCard extends HTMLElement {
     box.innerHTML = `<div class="fcc-modal-t">${edit ? "Termin bearbeiten" : "Neuer Termin"}</div>
       <input class="fcc-in fcc-title" type="text" placeholder="Titel" value="${this._esc(title)}">
       <label class="fcc-lab">Wer</label><select class="fcc-in fcc-person">${optsHtml}</select>
-      <label class="fcc-lab">Datum</label><input class="fcc-in fcc-date" type="date" value="${dateIso}">
+      <div class="fcc-row2"><div><label class="fcc-lab">Beginn</label><input class="fcc-in fcc-date" type="date" value="${dateIso}"></div><div><label class="fcc-lab">Ende</label><input class="fcc-in fcc-date2" type="date" value="${dateIso2}"></div></div>
       <label class="fcc-check"><input type="checkbox" class="fcc-allday"${allDay ? " checked" : ""}> Ganztags</label>
       <div class="fcc-row2 fcc-times"><div><label class="fcc-lab">Von</label><input class="fcc-in fcc-von" type="time" value="${von}"></div><div><label class="fcc-lab">Bis</label><input class="fcc-in fcc-bis" type="time" value="${bis}"></div></div>
       <div class="fcc-modal-btns"><button class="fcc-btn2 fcc-cancel">Abbrechen</button>${edit ? '<button class="fcc-btn2 fcc-del">Löschen</button>' : ''}<button class="fcc-btn2 fcc-save">Speichern</button></div>`;
@@ -921,20 +946,28 @@ class FamilyCalendarCard extends HTMLElement {
       const t = ti.value.trim(); if (!t) { ti.focus(); return; }
       const p = persons[+box.querySelector(".fcc-person").value];
       const d = box.querySelector(".fcc-date").value;
+      // Enddatum nie vor dem Startdatum — sonst legt HA einen ungueltigen Termin an
+      let d2 = box.querySelector(".fcc-date2").value || d;
+      if (d2 < d) d2 = d;
       const ad = adCb.checked;
       const summary = (p.prefix ? p.prefix + " " : "") + t;
-      // Zeiten/Daten vor close() aus dem Formular lesen; mehrtägige Ganztagstermine behalten ihre Dauer
-      let days = 1;
-      if (edit && it.allDay && ad) days = Math.max(1, Math.round((it.end - it.start) / 86400000));
+      // Zeiten und Daten vor close() aus dem Formular lesen
       let startDate = d, endDate = "", startDT = "", endDT = "";
       if (ad) {
-        const nd = new Date(d + "T00:00:00"); nd.setDate(nd.getDate() + days);
-        endDate = `${nd.getFullYear()}-${pad(nd.getMonth() + 1)}-${pad(nd.getDate())}`;
+        // Im Formular steht der letzte Tag, HA erwartet den Folgetag
+        const nd = new Date(d2 + "T00:00:00"); nd.setDate(nd.getDate() + 1);
+        endDate = iso(nd);
       } else {
         let v = box.querySelector(".fcc-von").value || "09:00";
         let b = box.querySelector(".fcc-bis").value || v;
-        if (b <= v) { const bd = new Date(d + "T" + v + ":00"); const day0 = bd.getDate(); bd.setMinutes(bd.getMinutes() + 60); b = bd.getDate() !== day0 ? "23:59" : pad(bd.getHours()) + ":" + pad(bd.getMinutes()); }
-        startDT = d + " " + v + ":00"; endDT = d + " " + b + ":00";
+        // Nur innerhalb desselben Tages muss das Ende nach dem Beginn liegen;
+        // ueber Mitternacht hinweg ist eine kleinere Uhrzeit voellig richtig.
+        if (d2 === d && b <= v) {
+          const bd = new Date(d + "T" + v + ":00"); const day0 = bd.getDate();
+          bd.setMinutes(bd.getMinutes() + 60);
+          b = bd.getDate() !== day0 ? "23:59" : pad(bd.getHours()) + ":" + pad(bd.getMinutes());
+        }
+        startDT = d + " " + v + ":00"; endDT = d2 + " " + b + ":00";
       }
       close();
       const refresh = () => this._maybeFetch(true);
