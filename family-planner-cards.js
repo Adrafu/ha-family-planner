@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.0.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
+/* Family Planner custom cards v2.0.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -579,7 +579,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v2.2 (Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
+/* ===== family-calendar-card v2.3 (mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -744,7 +744,17 @@ class FamilyCalendarCard extends HTMLElement {
       } else {
         list.forEach(it => {
           const c = (it.person && it.person.color) || "#888888";
-          const zeit = it.allDay ? "ganztägig" : `${this._pad(it.start.getHours())}:${this._pad(it.start.getMinutes())}`;
+          // Mehrtaegiges: sonst stuende an jedem Tag die urspruengliche
+          // Startzeit, was auf Folgetagen schlicht falsch ist.
+          const faengtHeuteAn = it.start >= d;
+          const hoertHeuteAuf = it.end <= de;
+          const hhmm = t => `${this._pad(t.getHours())}:${this._pad(t.getMinutes())}`;
+          let zeit;
+          if (it.allDay) zeit = "ganztägig";
+          else if (faengtHeuteAn && hoertHeuteAuf) zeit = hhmm(it.start);
+          else if (faengtHeuteAn) zeit = "ab " + hhmm(it.start);
+          else if (hoertHeuteAuf) zeit = "bis " + hhmm(it.end);
+          else zeit = "ganztägig";
           html += `<div class="fcc-ag-ev" data-key="${this._esc(it.key)}" style="border-left-color:${c};background:${this._rgba(c, 0.14)}">`
             + `<div class="fcc-ag-t" style="color:${this._deep(c)}">${this._esc(zeit)}</div>`
             + `<div class="fcc-ag-s">${this._esc(it.display)}</div></div>`;
