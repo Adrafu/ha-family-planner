@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.0.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
+/* Family Planner custom cards v2.1.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -2230,7 +2230,7 @@ if (!customElements.get("fp-glance-card")) {
 }
 })();
 
-/* ===== fp-cookbook-card v15 (Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Zutaten, Schritte) ===== */
+/* ===== fp-cookbook-card v17 (Naehrwerte je Portion, Filter „proteinreich" aus dem Eiweisswert, Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Naehrwerte, Zutaten, Schritte) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2245,6 +2245,7 @@ class FpCookbookCard extends HTMLElement {
       weather_entity: "weather.home",
       base_portions: 2,
       quick_max_min: 20,            // bis hierher gilt ein Gericht als „schnell"
+      protein_min_g: 25,            // ab hier gilt eine Portion als „proteinreich"
       style: "viel vegetarisch, bunt gemischt, proteinreich, schnell zu kochen",
       meals: [
         { label: "Frühstück", at: 8 },
@@ -2341,8 +2342,11 @@ class FpCookbookCard extends HTMLElement {
       + `Schaetze zusaetzlich die Zeit in Minuten, ehrlich und realistisch: "active_min" = reine Arbeitszeit am Herd/Brett, `
       + `"total_min" = Gesamtdauer von Anfang bis servierfertig INKLUSIVE Koch-, Back-, Zieh-, Marinier-, Aufgeh- und Auskuehlzeit. `
       + `Beispiele: Erdaepfelsalat braucht Kochen plus Auskuehlen (total_min etwa 45), Nudeln mit Pesto etwa 20, ein Schmorgericht 120 oder mehr. `
+      + `Schaetze ausserdem die Naehrwerte PRO PORTION, ausgehend von ${bp} Portionen: "kcal" = Kalorien je Portion, `
+      + `"protein_g" = Eiweiss je Portion in Gramm. Rechne beides aus den Zutatenmengen und teile durch die Portionszahl, `
+      + `runde auf ganze Zahlen und gib keine Bandbreiten an. `
       + `Antworte NUR mit GUELTIGEM JSON (kein Markdown, keine Erklaerung), exakt in dieser Form:`
-      + `{"name":"Gerichtname","category":"Frühstück|Mittag|Abend","tags":["vegetarisch","proteinreich"],"portions_base":${bp},"active_min":20,"total_min":45,"ingredients":[{"qty":250,"unit":"g","item":"Zutat"}],"steps":["Schritt 1","Schritt 2"],"season":["ganzjährig"]}`;
+      + `{"name":"Gerichtname","category":"Frühstück|Mittag|Abend","tags":["vegetarisch","proteinreich"],"portions_base":${bp},"active_min":20,"total_min":45,"kcal":520,"protein_g":28,"ingredients":[{"qty":250,"unit":"g","item":"Zutat"}],"steps":["Schritt 1","Schritt 2"],"season":["ganzjährig"]}`;
     const data = { task_name: "Kochbuch-Rezept", instructions: prompt };
     if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
     const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
@@ -2354,6 +2358,8 @@ class FpCookbookCard extends HTMLElement {
     d.portions_base = d.portions_base || bp;
     d.active_min = Number(d.active_min) || 0;
     d.total_min = Number(d.total_min) || d.active_min;
+    d.kcal = Math.round(Number(d.kcal) || 0);
+    d.protein_g = Math.round(Number(d.protein_g) || 0);
     d.tags = (d.tags || []).filter(t => U.norm(t) !== "schnell"); // wird aus total_min abgeleitet
     d.rating = 0; d.times_cooked = 0; d.last_cooked = null;
     if (name && !d.name) d.name = name;
@@ -2400,6 +2406,47 @@ class FpCookbookCard extends HTMLElement {
     btn.disabled = false; btn.innerHTML = prev;
     await this._fetch();
     this._toast(`Zeiten ergänzt: ${ok}${fail ? `, ${fail} fehlgeschlagen` : ""}`);
+  }
+
+  // Nährwerte je Portion für Rezepte ohne Angabe nachtragen (Altbestand)
+  async _estimateNutrition(d) {
+    const bp = Number(d.portions_base) || this.config.base_portions;
+    const prompt = `Wie viele Kalorien und wie viel Eiweiss hat EINE Portion von "${d.name}"?`
+      + ` Das Rezept ergibt ${bp} Portionen.`
+      + ((d.ingredients || []).length ? ` Zutaten fuer ${bp} Portionen: ${(d.ingredients || []).map(i => `${i.qty || ""} ${i.unit || ""} ${i.item || ""}`.trim()).join(", ")}.` : "")
+      + ((d.steps || []).length ? ` Schritte: ${(d.steps || []).join(" | ")}.` : "")
+      + ` Rechne aus den Zutatenmengen und teile durch die Portionszahl. Ganze Zahlen, keine Bandbreiten.`
+      + ` Antworte NUR mit JSON: {"kcal":520,"protein_g":28}`;
+    const data = { task_name: "Nährwerte", instructions: prompt };
+    if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+    const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
+    let txt = r && r.response && r.response.data;
+    if (txt && typeof txt === "object") txt = txt.text || JSON.stringify(txt);
+    const m = String(txt || "").match(/\{[\s\S]*\}/);
+    if (!m) throw new Error("keine Nährwerte erkannt");
+    const j = JSON.parse(m[0]);
+    const kcal = Math.round(Number(j.kcal) || 0);
+    if (!kcal) throw new Error("keine Nährwerte erkannt");
+    return { kcal, protein_g: Math.round(Number(j.protein_g) || 0) };
+  }
+  async _fillNutrition(btn) {
+    const missing = (this._dishes || []).filter(d => !Number(d.kcal));
+    if (!missing.length) { this._toast("Alle Rezepte haben schon Nährwerte"); return; }
+    const prev = btn.innerHTML; btn.disabled = true;
+    let ok = 0, fail = 0;
+    for (let i = 0; i < missing.length; i++) {
+      const d = missing[i];
+      btn.innerHTML = `${CP(0x1F525)} ${i + 1}/${missing.length} …`;
+      try {
+        const n = await this._estimateNutrition(d);
+        d.kcal = n.kcal; d.protein_g = n.protein_g;
+        await this._hass.callService("todo", "update_item", { entity_id: this.config.entity, item: d.uid, rename: d.name, description: this._dishJson(d) });
+        ok++;
+      } catch (e) { fail++; }
+    }
+    btn.disabled = false; btn.innerHTML = prev;
+    await this._fetch();
+    this._toast(`Nährwerte ergänzt: ${ok}${fail ? `, ${fail} fehlgeschlagen` : ""}`);
   }
 
   // ---------- Aktionen ----------
@@ -2459,16 +2506,38 @@ class FpCookbookCard extends HTMLElement {
     if (t > 0) return t <= (this.config.quick_max_min || 20);
     return (d.tags || []).some(x => U.norm(x) === "schnell");
   }
+  // Dasselbe für „proteinreich": lieber der gemessene Wert als das Tag der KI.
+  _isProteinRich(d) {
+    const p = Number(d.protein_g) || 0;
+    if (p > 0) return p >= (this.config.protein_min_g || 25);
+    return (d.tags || []).some(x => U.norm(x) === "proteinreich");
+  }
   _timeTxt(d) {
     const t = Number(d.total_min) || 0;
     if (!t) return "";
     const a = Number(d.active_min) || 0;
     return a && a < t ? `${t} Min (${a} Min Arbeit)` : `${t} Min`;
   }
+  // Nährwerte gelten immer je Portion, unabhängig vom Portionsregler
+  _nutriTxt(d) {
+    const k = Number(d.kcal) || 0, p = Number(d.protein_g) || 0;
+    const parts = [];
+    if (k) parts.push(`${k} kcal`);
+    if (p) parts.push(`${p} g Eiweiß`);
+    return parts.join(" · ");
+  }
+  // Zeit und Nährwerte in einer Zeile; leere Angaben fallen weg
+  _metaRow(d, cls, perPortion) {
+    const bits = [];
+    const t = this._timeTxt(d); if (t) bits.push(`${CP(0x23F1)} ${this._esc(t)}`);
+    const n = this._nutriTxt(d); if (n) bits.push(`${CP(0x1F525)} ${this._esc(n)}${perPortion ? " pro Portion" : ""}`);
+    return bits.length ? `<div class="${cls}">${bits.join(" &nbsp;·&nbsp; ")}</div>` : "";
+  }
   _filtered() {
     const q = U.norm(this._search);
     return (this._dishes || []).filter(d => {
       if (this._filter === "schnell") { if (!this._isQuick(d)) return false; }
+      else if (this._filter === "proteinreich") { if (!this._isProteinRich(d)) return false; }
       else if (this._filter !== "Alle" && d.category !== this._filter && !(d.tags || []).includes(this._filter)) return false;
       if (!q) return true;
       return U.norm(d.name).includes(q) || (d.tags || []).some(t => U.norm(t).includes(q));
@@ -2489,15 +2558,17 @@ class FpCookbookCard extends HTMLElement {
     if (!this._hass) return;
     this._built = true;
     const dishes = this._filtered();
-    const cats = ["Alle", "Frühstück", "Mittag", "Abend", "vegetarisch", "kinderliebling", "schnell"];
+    const cats = ["Alle", "Frühstück", "Mittag", "Abend", "vegetarisch", "kinderliebling", "schnell", "proteinreich"];
     const chips = cats.map(c => `<button class="cb-chip${this._filter === c ? " cb-chip-on" : ""}" data-f="${this._esc(c)}">${this._esc(c)}</button>`).join("");
     const nNoTime = (this._dishes || []).filter(d => !Number(d.total_min)).length;
     const timeBar = nNoTime ? `<button class="cb-fixtimes">${CP(0x23F1)} Zubereitungszeit für ${nNoTime} Rezept${nNoTime === 1 ? "" : "e"} nachrechnen</button>` : "";
+    const nNoNutri = (this._dishes || []).filter(d => !Number(d.kcal)).length;
+    const nutriBar = nNoNutri ? `<button class="cb-fixnutri">${CP(0x1F525)} Nährwerte für ${nNoNutri} Rezept${nNoNutri === 1 ? "" : "e"} berechnen</button>` : "";
     const cards = dishes.length ? dishes.map(d => `
       <button class="cb-dish" data-uid="${this._esc(d.uid)}">
         <div class="cb-d-name">${this._esc(d.name)}</div>
         <div class="cb-d-meta">${d.category && d.category !== "egal" ? this._esc(d.category) + " · " : ""}${this._esc(this._sinceTxt(d.last_cooked))}</div>
-        ${this._timeTxt(d) ? `<div class="cb-d-time">${CP(0x23F1)} ${this._esc(this._timeTxt(d))}</div>` : ""}
+        ${this._metaRow(d, "cb-d-time")}
         <div class="cb-d-tags">${(d.tags || []).slice(0, 3).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
         <div class="cb-d-stars">${d.rating ? this._stars(d.rating) : ""}</div>
       </button>`).join("")
@@ -2510,6 +2581,7 @@ class FpCookbookCard extends HTMLElement {
           <button class="cb-add">＋ Neu</button>
         </div>
         ${timeBar}
+        ${nutriBar}
         <input class="cb-search" type="text" placeholder="Suchen …" value="${this._esc(this._search)}">
         <div class="cb-chips">${chips}</div>
         <div class="cb-grid">${cards}</div>
@@ -2519,6 +2591,8 @@ class FpCookbookCard extends HTMLElement {
     this.querySelector(".cb-add").addEventListener("click", () => this._openAdd());
     const ft = this.querySelector(".cb-fixtimes");
     if (ft) ft.addEventListener("click", () => this._fillTimes(ft));
+    const fn = this.querySelector(".cb-fixnutri");
+    if (fn) fn.addEventListener("click", () => this._fillNutrition(fn));
     const si = this.querySelector(".cb-search");
     si.addEventListener("input", e => { this._search = e.target.value; this._renderGridOnly(); });
     this.querySelectorAll(".cb-chip").forEach(b => b.addEventListener("click", () => { this._filter = b.dataset.f; this._render(); }));
@@ -2531,7 +2605,7 @@ class FpCookbookCard extends HTMLElement {
       <button class="cb-dish" data-uid="${this._esc(d.uid)}">
         <div class="cb-d-name">${this._esc(d.name)}</div>
         <div class="cb-d-meta">${d.category && d.category !== "egal" ? this._esc(d.category) + " · " : ""}${this._esc(this._sinceTxt(d.last_cooked))}</div>
-        ${this._timeTxt(d) ? `<div class="cb-d-time">${CP(0x23F1)} ${this._esc(this._timeTxt(d))}</div>` : ""}
+        ${this._metaRow(d, "cb-d-time")}
         <div class="cb-d-tags">${(d.tags || []).slice(0, 3).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
         <div class="cb-d-stars">${d.rating ? this._stars(d.rating) : ""}</div>
       </button>`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
@@ -2550,7 +2624,7 @@ class FpCookbookCard extends HTMLElement {
     const ov = this._overlay(`
       <div class="cb-m-head"><span>${this._esc(d.name)}</span><button class="cb-x">${CP(0x2715)}</button></div>
       <div class="cb-m-tags">${(d.tags || []).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
-      ${this._timeTxt(d) ? `<div class="cb-time">${CP(0x23F1)} ${this._esc(this._timeTxt(d))}</div>` : ""}
+      ${this._metaRow(d, "cb-time", true)}
       <div class="cb-rate" data-r="${d.rating || 0}">Bewertung: <span class="cb-rate-stars"></span></div>
       <div class="cb-port">Portionen: <input class="cb-port-slider" type="range" min="1" max="12" value="${portions}"> <b class="cb-port-val">${portions}</b></div>
       <div class="cb-sub">Zutaten</div><ul class="cb-ing"></ul>
@@ -2602,12 +2676,14 @@ class FpCookbookCard extends HTMLElement {
       <div class="cb-e-cats">${cats.map(c => `<button class="cb-chip cb-e-cat${(d.category || "egal") === c ? " cb-chip-on" : ""}" data-c="${this._esc(c)}">${this._esc(c)}</button>`).join("")}</div>
       <div class="cb-sub">Tags</div>
       <div class="cb-e-tags">${allTags.map(t => `<button class="cb-chip cb-e-tag${sel.has(U.norm(t)) ? " cb-chip-on" : ""}" data-t="${this._esc(t)}">${this._esc(t)}</button>`).join("")}</div>
-      <div class="cb-e-hint">„schnell" wird automatisch aus der Gesamtzeit abgeleitet (bis ${this.config.quick_max_min || 20} Min).</div>
-      <div class="cb-sub">Portionen &amp; Zeit</div>
+      <div class="cb-e-hint">„schnell" wird automatisch aus der Gesamtzeit abgeleitet (bis ${this.config.quick_max_min || 20} Min). Der Filter „proteinreich" richtet sich nach dem Eiweißwert (ab ${this.config.protein_min_g || 25} g je Portion) und fällt nur ohne Wert auf das Tag zurück.</div>
+      <div class="cb-sub">Portionen, Zeit &amp; Nährwerte</div>
       <div class="cb-e-nums">
         <label>Basis-Portionen<input class="cb-e-in cb-e-port" type="number" min="1" max="20" value="${Number(d.portions_base) || this.config.base_portions}"></label>
         <label>Arbeitszeit (Min)<input class="cb-e-in cb-e-act" type="number" min="0" max="600" value="${Number(d.active_min) || ""}"></label>
         <label>Gesamtzeit (Min)<input class="cb-e-in cb-e-tot" type="number" min="0" max="1440" value="${Number(d.total_min) || ""}"></label>
+        <label>kcal / Portion<input class="cb-e-in cb-e-kcal" type="number" min="0" max="5000" value="${Number(d.kcal) || ""}"></label>
+        <label>Eiweiß (g) / Portion<input class="cb-e-in cb-e-prot" type="number" min="0" max="300" value="${Number(d.protein_g) || ""}"></label>
       </div>
       <div class="cb-sub">Zutaten</div>
       <div class="cb-e-ings">${((d.ingredients || []).length ? d.ingredients : [{}]).map(ingRow).join("")}</div>
@@ -2666,6 +2742,8 @@ class FpCookbookCard extends HTMLElement {
         portions_base: Number(ov.querySelector(".cb-e-port").value) || this.config.base_portions,
         active_min: act,
         total_min: tot || act,
+        kcal: Math.round(Number(ov.querySelector(".cb-e-kcal").value) || 0),
+        protein_g: Math.round(Number(ov.querySelector(".cb-e-prot").value) || 0),
         ingredients: ings,
         steps,
       });
@@ -2759,6 +2837,9 @@ class FpCookbookCard extends HTMLElement {
       .cb-fixtimes{width:100%;box-sizing:border-box;border:1px solid rgba(255,167,38,.5);background:rgba(255,167,38,.14);color:#e65100;font-weight:600;border-radius:12px;padding:9px 12px;margin-bottom:8px;cursor:pointer;text-align:left;font-size:.86rem;}
       .cb-fixtimes:hover{background:rgba(255,167,38,.24);}
       .cb-fixtimes:disabled{opacity:.7;cursor:default;}
+      .cb-fixnutri{width:100%;box-sizing:border-box;border:1px solid rgba(var(--fp-tint-rgb,125,155,132),.55);background:rgba(var(--fp-tint-rgb,125,155,132),.14);color:var(--fp-head,#3C5343);font-weight:600;border-radius:12px;padding:9px 12px;margin-bottom:8px;cursor:pointer;text-align:left;font-size:.86rem;}
+      .cb-fixnutri:hover{background:rgba(var(--fp-tint-rgb,125,155,132),.24);}
+      .cb-fixnutri:disabled{opacity:.7;cursor:default;}
       .cb-d-tags{display:flex;gap:4px;flex-wrap:wrap;}
       .cb-tag{font-size:.68rem;background:rgba(var(--fp-tint-rgb,129,212,250),.25);color:var(--fp-head,#0277bd);border-radius:8px;padding:1px 6px;}
       .cb-d-stars{color:#f5b301;font-size:.8rem;}
