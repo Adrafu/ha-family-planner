@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.1.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
+/* Family Planner custom cards v2.1.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -1215,7 +1215,7 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v19 (Farben ueber Theme-Variablen, Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card v20 (Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Farben ueber Theme-Variablen, Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1407,6 +1407,46 @@ class ShoppingFavCard extends HTMLElement {
     return sync;
   }
   _isoDate(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  // „Bis wann?": drei feste Knöpfe plus ein vierter für ein freies Datum.
+  // Das Datumsfeld sitzt in der gleichen Reihe und trägt bis zur Auswahl die
+  // Aufschrift „Datum wählen" — ein leeres date-Feld sieht sonst aus wie ein Versehen.
+  _dueHtml() {
+    return `<div class="sf-sub">Bis wann?</div><div class="sf-dates">`
+      + `<button class="sf-q sf-q-on" data-q="none">Kein Datum</button>`
+      + `<button class="sf-q" data-q="today">Heute</button>`
+      + `<button class="sf-q" data-q="tom">Morgen</button>`
+      + `<div class="sf-datewrap sf-dempty"><input class="sf-date" type="date"></div>`
+      + `</div>`;
+  }
+  _wireDue(ov) {
+    const dateInp = ov.querySelector(".sf-date");
+    if (!dateInp) return;
+    const wrap = ov.querySelector(".sf-datewrap");
+    // Ein Tipp irgendwo ins date-Feld setzt nur den Cursor in ein Segment;
+    // aufgeklappt wird der Wähler sonst nur über das Kalendersymbol.
+    wrap.addEventListener("click", () => {
+      try { if (dateInp.showPicker) dateInp.showPicker(); else { dateInp.focus(); dateInp.click(); } }
+      catch (e) { dateInp.focus(); }
+    });
+    const paint = quickActive => {
+      const has = !!dateInp.value;
+      wrap.classList.toggle("sf-dempty", !has);
+      wrap.classList.toggle("sf-dsel", has && !quickActive);
+    };
+    ov.querySelectorAll(".sf-q").forEach(b => b.addEventListener("click", () => {
+      const q = b.dataset.q;
+      if (q === "none") { this._due = ""; dateInp.value = ""; }
+      else { const d = new Date(); if (q === "tom") d.setDate(d.getDate() + 1); this._due = this._isoDate(d); dateInp.value = this._due; }
+      ov.querySelectorAll(".sf-q").forEach(x => x.classList.toggle("sf-q-on", x === b));
+      paint(true);
+    }));
+    dateInp.addEventListener("change", () => {
+      this._due = dateInp.value;
+      ov.querySelectorAll(".sf-q").forEach(x => x.classList.remove("sf-q-on"));
+      paint(false);
+    });
+    paint(true);
+  }
   _openAssign(name) {
     this._editing = true;
     const targets = this.config.targets || [];
@@ -1414,7 +1454,7 @@ class ShoppingFavCard extends HTMLElement {
     this._sel = def; this._due = "";
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
     const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
-    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${this._emoji(name)} ${this._esc(name)}</div><div class="sf-sub">Wer?</div><div class="sf-tgts">${tbtns}</div><div class="sf-sub">Bis wann?</div><div class="sf-dates"><button class="sf-q sf-q-on" data-q="none">Kein Datum</button><button class="sf-q" data-q="today">Heute</button><button class="sf-q" data-q="tom">Morgen</button></div><input class="sf-date" type="date">${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">OK</button></div></div>`;
+    ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${this._emoji(name)} ${this._esc(name)}</div><div class="sf-sub">Wer?</div><div class="sf-tgts">${tbtns}</div>${this._dueHtml()}${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">OK</button></div></div>`;
     this.appendChild(ov);
     const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
@@ -1423,14 +1463,7 @@ class ShoppingFavCard extends HTMLElement {
       ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b));
       if (syncRep) syncRep();
     }));
-    const dateInp = ov.querySelector(".sf-date");
-    ov.querySelectorAll(".sf-q").forEach(b => b.addEventListener("click", () => {
-      const q = b.dataset.q;
-      if (q === "none") { this._due = ""; dateInp.value = ""; }
-      else { const d = new Date(); if (q === "tom") d.setDate(d.getDate() + 1); this._due = this._isoDate(d); dateInp.value = this._due; }
-      ov.querySelectorAll(".sf-q").forEach(x => x.classList.toggle("sf-q-on", x === b));
-    }));
-    dateInp.addEventListener("change", () => { this._due = dateInp.value; ov.querySelectorAll(".sf-q").forEach(x => x.classList.remove("sf-q-on")); });
+    this._wireDue(ov);
     ov.querySelector(".sf-cancel").addEventListener("click", () => this._closeAssign());
     ov.querySelector(".sf-ok").addEventListener("click", () => { this._addItem(name, this._sel || def, this._due, this._rep); this._closeAssign(); });
   }
@@ -1447,7 +1480,7 @@ class ShoppingFavCard extends HTMLElement {
     const favs = this._items();
     const favChips = favs.map(f => `<button class="sf-favpick" data-n="${this._esc(f)}">${this._emoji(f)} ${this._esc(f)}</button>`).join("");
     const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
-    const dueHtml = this.config.show_due ? `<div class="sf-sub">Bis wann?</div><div class="sf-dates"><button class="sf-q sf-q-on" data-q="none">Kein Datum</button><button class="sf-q" data-q="today">Heute</button><button class="sf-q" data-q="tom">Morgen</button></div><input class="sf-date" type="date">` : "";
+    const dueHtml = this.config.show_due ? this._dueHtml() : "";
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${CP(0x2795)} ${this._esc(this.config.add_label || "Hinzufügen")}</div><input class="sf-addtext" type="text" placeholder="Eingeben..."/>${favChips ? `<div class="sf-sub">Favoriten</div><div class="sf-favs">${favChips}</div>` : ""}${tbtns ? `<div class="sf-sub">${this._esc(this.config.target_label || "Wer?")}</div><div class="sf-tgts">${tbtns}</div>` : ""}${dueHtml}${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">Hinzufügen</button></div></div>`;
     this.appendChild(ov);
@@ -1456,16 +1489,7 @@ class ShoppingFavCard extends HTMLElement {
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
     ov.querySelectorAll(".sf-favpick").forEach(b => b.addEventListener("click", () => { txt.value = b.dataset.n; }));
     ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => { this._sel = b.dataset.e; ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b)); if (syncRep) syncRep(); }));
-    const dateInp = ov.querySelector(".sf-date");
-    if (dateInp) {
-      ov.querySelectorAll(".sf-q").forEach(b => b.addEventListener("click", () => {
-        const q = b.dataset.q;
-        if (q === "none") { this._due = ""; dateInp.value = ""; }
-        else { const d = new Date(); if (q === "tom") d.setDate(d.getDate() + 1); this._due = this._isoDate(d); dateInp.value = this._due; }
-        ov.querySelectorAll(".sf-q").forEach(x => x.classList.toggle("sf-q-on", x === b));
-      }));
-      dateInp.addEventListener("change", () => { this._due = dateInp.value; ov.querySelectorAll(".sf-q").forEach(x => x.classList.remove("sf-q-on")); });
-    }
+    this._wireDue(ov);
     const submit = () => { const t = txt.value.trim(); if (!t) { txt.focus(); return; } this._addItem(t, this._sel || def, this._due, this._rep); this._closeAssign(); };
     txt.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
     ov.querySelector(".sf-cancel").addEventListener("click", () => this._closeAssign());
@@ -1578,7 +1602,12 @@ class ShoppingFavCard extends HTMLElement {
       .sf-cust-n{width:66px;padding:8px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.95rem;}
       .sf-cus{display:flex;gap:5px;flex:1;flex-wrap:wrap;}
       .sf-cu{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:10px;padding:8px 6px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.82rem;}
-      .sf-date{width:100%;box-sizing:border-box;margin-top:8px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .sf-datewrap{position:relative;flex:1;min-width:120px;}
+      .sf-date{width:100%;height:100%;box-sizing:border-box;border:1px solid var(--divider-color);border-radius:10px;padding:9px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.9rem;}
+      /* Leeres date-Feld zeigt sonst nur "tt.mm.jjjj" auf Weiß — die Auflage
+         beschriftet es wie einen Knopf und lässt Tipps durch (pointer-events). */
+      .sf-datewrap.sf-dempty::after{content:"Datum wählen";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.9rem;pointer-events:none;}
+      .sf-datewrap.sf-dsel .sf-date{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
       .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:rgba(120,144,156,.20);color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
       .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;}
       /* Zeigt die Karte nur den Knopf, ist der Knopf die Kachel: kein Rahmen,
@@ -1682,7 +1711,7 @@ if (!customElements.get("nav-card")) {
 }
 })();
 
-/* ===== fp-todo-card v12 (Namens-Pille als Kartenkopf, Farben ueber Theme-Variablen, Änderungsdialog: eigene Wiederholungs-Intervalle) ===== */
+/* ===== fp-todo-card v13 (Datumsfeld als Knopf in der Bis-wann-Reihe, Namens-Pille als Kartenkopf, Farben ueber Theme-Variablen, Änderungsdialog: eigene Wiederholungs-Intervalle) ===== */
 (() => {
 const U = window.__fpUtils;
 class FpTodoCard extends HTMLElement {
@@ -1816,8 +1845,7 @@ class FpTodoCard extends HTMLElement {
       <input class="ft-name" type="text" value="${this._esc(item.summary || "")}">
       ${tbtns ? `<div class="ft-sub">Wer?</div><div class="ft-row">${tbtns}</div>` : ""}
       <div class="ft-sub">Bis wann?</div>
-      <div class="ft-row"><button class="ft-q" data-q="none">Kein Datum</button><button class="ft-q" data-q="today">Heute</button><button class="ft-q" data-q="tom">Morgen</button><button class="ft-q" data-q="week">In 1 Woche</button></div>
-      <input class="ft-date" type="date" value="${this._esc(due)}">
+      <div class="ft-row"><button class="ft-q" data-q="none">Kein Datum</button><button class="ft-q" data-q="today">Heute</button><button class="ft-q" data-q="tom">Morgen</button><button class="ft-q" data-q="week">In 1 Woche</button><div class="ft-datewrap${due ? "" : " ft-dempty"}"><input class="ft-date" type="date" value="${this._esc(due)}"></div></div>
       ${this._repeats.length ? `<div class="ft-sub ft-rsub">Wiederholung</div><div class="ft-row ft-reps">${rbtns}</div>`
         + `<div class="ft-cust" style="display:none"><span class="ft-cust-lbl">alle</span><input class="ft-cust-n" type="number" min="1" max="99" value="2"><div class="ft-cus">${ubtns}</div></div>` : ""}
       <div class="ft-foot"><button class="ft-btn ft-save">Speichern</button><button class="ft-btn ft-cancel">Abbrechen</button><button class="ft-btn ft-del">🗑</button></div>
@@ -1846,13 +1874,26 @@ class FpTodoCard extends HTMLElement {
       ov.querySelectorAll(".ft-tgt").forEach(x => x.classList.toggle("ft-on", x === b));
       syncRep();
     }));
+    const dateWrap = ov.querySelector(".ft-datewrap");
+    // Wie bei der Einkaufskarte: den Datumswähler von Hand aufklappen.
+    dateWrap.addEventListener("click", () => {
+      try { if (dateInp.showPicker) dateInp.showPicker(); else { dateInp.focus(); dateInp.click(); } }
+      catch (e) { dateInp.focus(); }
+    });
+    const paintDue = quickActive => {
+      const has = !!dateInp.value;
+      dateWrap.classList.toggle("ft-dempty", !has);
+      dateWrap.classList.toggle("ft-dsel", has && !quickActive);
+    };
     ov.querySelectorAll(".ft-q").forEach(b => b.addEventListener("click", () => {
       const q = b.dataset.q;
       if (q === "none") { due = ""; dateInp.value = ""; }
       else { const d = new Date(); if (q === "tom") d.setDate(d.getDate() + 1); if (q === "week") d.setDate(d.getDate() + 7); due = this._iso(d); dateInp.value = due; }
       ov.querySelectorAll(".ft-q").forEach(x => x.classList.toggle("ft-on", x === b));
+      paintDue(true);
     }));
-    dateInp.addEventListener("change", () => { due = dateInp.value; ov.querySelectorAll(".ft-q").forEach(x => x.classList.remove("ft-on")); });
+    dateInp.addEventListener("change", () => { due = dateInp.value; ov.querySelectorAll(".ft-q").forEach(x => x.classList.remove("ft-on")); paintDue(false); });
+    paintDue(false);
     ov.querySelectorAll(".ft-rep").forEach(b => b.addEventListener("click", () => {
       ov.querySelectorAll(".ft-rep").forEach(x => x.classList.toggle("ft-on", x === b));
       if (b.dataset.r === "__custom" && cust) { cust.style.display = "flex"; rep = custDue(); }
@@ -1916,7 +1957,13 @@ class FpTodoCard extends HTMLElement {
       .ft-head{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
       .ft-sub{font-weight:700;font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;color:var(--secondary-text-color);margin:14px 0 6px;}
       .ft-row{display:flex;gap:6px;flex-wrap:wrap;}
-      .ft-name,.ft-date{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;margin-top:6px;}
+      .ft-name{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;margin-top:6px;}
+      .ft-datewrap{position:relative;flex:1;min-width:110px;}
+      .ft-date{width:100%;height:100%;box-sizing:border-box;padding:9px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.85rem;}
+      /* Wie bei der Einkaufskarte: das leere date-Feld bekommt eine Aufschrift,
+         damit es in der Reihe nicht als leerer Kasten steht. */
+      .ft-datewrap.ft-dempty::after{content:"Datum wählen";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.85rem;pointer-events:none;}
+      .ft-datewrap.ft-dsel .ft-date{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
       .ft-tgt,.ft-q,.ft-rep{flex:1;min-width:78px;border:1px solid var(--divider-color);border-radius:10px;padding:9px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.85rem;}
       .ft-on{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
       .ft-cust{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;}
