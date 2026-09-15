@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.1.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
+/* Family Planner custom cards v2.2.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -2277,7 +2277,7 @@ if (!customElements.get("fp-glance-card")) {
 }
 })();
 
-/* ===== fp-cookbook-card v17 (Naehrwerte je Portion, Filter „proteinreich" aus dem Eiweisswert, Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Naehrwerte, Zutaten, Schritte) ===== */
+/* ===== fp-cookbook-card v18 (Import per Link: Rezeptseiten und Videos, Naehrwerte je Portion, Filter „proteinreich" aus dem Eiweisswert, Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Naehrwerte, Zutaten, Schritte) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2292,6 +2292,7 @@ class FpCookbookCard extends HTMLElement {
       weather_entity: "weather.home",
       base_portions: 2,
       quick_max_min: 20,            // bis hierher gilt ein Gericht als „schnell"
+      import_service: "",           // z. B. rest_command.kochbuch_import — blendet das Link-Feld ein
       protein_min_g: 25,            // ab hier gilt eine Portion als „proteinreich"
       style: "viel vegetarisch, bunt gemischt, proteinreich, schnell zu kochen",
       meals: [
@@ -2455,6 +2456,8 @@ class FpCookbookCard extends HTMLElement {
     this._toast(`Zeiten ergänzt: ${ok}${fail ? `, ${fail} fehlgeschlagen` : ""}`);
   }
 
+  // Rezeptseiten liefern oft Kalorien, aber kein Eiweiß — beides zählt als Lücke.
+  _nutriMissing(d) { return !Number(d.kcal) || !Number(d.protein_g); }
   // Nährwerte je Portion für Rezepte ohne Angabe nachtragen (Altbestand)
   async _estimateNutrition(d) {
     const bp = Number(d.portions_base) || this.config.base_portions;
@@ -2477,7 +2480,7 @@ class FpCookbookCard extends HTMLElement {
     return { kcal, protein_g: Math.round(Number(j.protein_g) || 0) };
   }
   async _fillNutrition(btn) {
-    const missing = (this._dishes || []).filter(d => !Number(d.kcal));
+    const missing = (this._dishes || []).filter(d => this._nutriMissing(d));
     if (!missing.length) { this._toast("Alle Rezepte haben schon Nährwerte"); return; }
     const prev = btn.innerHTML; btn.disabled = true;
     let ok = 0, fail = 0;
@@ -2486,7 +2489,9 @@ class FpCookbookCard extends HTMLElement {
       btn.innerHTML = `${CP(0x1F525)} ${i + 1}/${missing.length} …`;
       try {
         const n = await this._estimateNutrition(d);
-        d.kcal = n.kcal; d.protein_g = n.protein_g;
+        // Importierte Werte sind gemessen, geschätzte nur geraten — nur Lücken füllen.
+        d.kcal = Number(d.kcal) || n.kcal;
+        d.protein_g = Number(d.protein_g) || n.protein_g;
         await this._hass.callService("todo", "update_item", { entity_id: this.config.entity, item: d.uid, rename: d.name, description: this._dishJson(d) });
         ok++;
       } catch (e) { fail++; }
@@ -2609,7 +2614,7 @@ class FpCookbookCard extends HTMLElement {
     const chips = cats.map(c => `<button class="cb-chip${this._filter === c ? " cb-chip-on" : ""}" data-f="${this._esc(c)}">${this._esc(c)}</button>`).join("");
     const nNoTime = (this._dishes || []).filter(d => !Number(d.total_min)).length;
     const timeBar = nNoTime ? `<button class="cb-fixtimes">${CP(0x23F1)} Zubereitungszeit für ${nNoTime} Rezept${nNoTime === 1 ? "" : "e"} nachrechnen</button>` : "";
-    const nNoNutri = (this._dishes || []).filter(d => !Number(d.kcal)).length;
+    const nNoNutri = (this._dishes || []).filter(d => this._nutriMissing(d)).length;
     const nutriBar = nNoNutri ? `<button class="cb-fixnutri">${CP(0x1F525)} Nährwerte für ${nNoNutri} Rezept${nNoNutri === 1 ? "" : "e"} berechnen</button>` : "";
     const cards = dishes.length ? dishes.map(d => `
       <button class="cb-dish" data-uid="${this._esc(d.uid)}">
@@ -2821,6 +2826,13 @@ class FpCookbookCard extends HTMLElement {
   _openAdd() {
     const ov = this._overlay(`
       <div class="cb-m-head"><span>Neues Rezept</span><button class="cb-x">${CP(0x2715)}</button></div>
+      ${this.config.import_service ? `<div class="cb-sub">Von einer Webseite oder einem Video</div>
+      <div class="cb-imp-row">
+        <input class="cb-in cb-imp-url" type="url" inputmode="url" placeholder="Link einfügen …">
+        <button class="cb-btn cb-imp-go">${CP(0x2B07)} Holen</button>
+      </div>
+      <div class="cb-e-hint">Rezeptseiten werden ausgelesen, Reels und TikToks angeschaut. Dauert bis zu zwei Minuten.</div>
+      <div class="cb-sub">Oder selbst anlegen</div>` : ""}
       <input class="cb-in cb-name" type="text" placeholder="Gerichtname (z. B. Linsencurry)">
       <textarea class="cb-in cb-free" placeholder="Optional: Rezept-Text/Notizen einfügen …"></textarea>
       <div class="cb-m-foot">
@@ -2860,6 +2872,42 @@ class FpCookbookCard extends HTMLElement {
       const hint = (typed && typed !== (this._aiSetName || "")) ? typed : ""; // nur echten Nutzer-Text als Hinweis, nicht den KI-Namen
       run(ov.querySelector(".cb-suggest"), "💡 …", () => this._generate("", "", { suggest: true, hint }));
     });
+    const igo = ov.querySelector(".cb-imp-go");
+    if (igo) igo.addEventListener("click", () => this._import(igo, ov.querySelector(".cb-imp-url")));
+  }
+
+  // Import per Link. Der Dienst antwortet sofort und arbeitet im Hintergrund —
+  // deshalb wird hier auf das neue Rezept gewartet, statt auf eine Antwort.
+  async _import(btn, inp) {
+    const url = (inp.value || "").trim();
+    if (!/^https?:\/\/\S+$/i.test(url)) { this._toast("Bitte einen vollständigen Link einfügen"); inp.focus(); return; }
+    const [domain, service] = String(this.config.import_service).split(".");
+    const before = new Set((this._dishes || []).map(d => d.uid));
+    const prev = btn.innerHTML; btn.disabled = true; inp.disabled = true;
+    try {
+      await this._hass.callService(domain, service, { url, chat_id: "" });
+    } catch (e) {
+      btn.disabled = false; inp.disabled = false; btn.innerHTML = prev;
+      this._toast("Import-Dienst nicht erreichbar");
+      return;
+    }
+    // Bis zu zwei Minuten pollen. Der Dialog bleibt offen, damit man sieht,
+    // dass noch etwas läuft — und beim Schließen läuft der Import trotzdem weiter.
+    for (let i = 0; i < 40; i++) {
+      btn.innerHTML = `⏳ ${i * 3}s`;
+      await new Promise(r => setTimeout(r, 3000));
+      if (!this.isConnected) return;
+      await this._fetch();
+      const neu = (this._dishes || []).find(d => !before.has(d.uid));
+      if (neu) {
+        this._closeOv();
+        this._toast(`„${neu.name}" importiert`);
+        this._openDetail(neu);
+        return;
+      }
+    }
+    btn.disabled = false; inp.disabled = false; btn.innerHTML = prev;
+    this._toast("Dauert länger als erwartet — das Rezept taucht von selbst auf, wenn es fertig ist");
   }
 
   _styles() {
@@ -2887,6 +2935,10 @@ class FpCookbookCard extends HTMLElement {
       .cb-fixnutri{width:100%;box-sizing:border-box;border:1px solid rgba(var(--fp-tint-rgb,125,155,132),.55);background:rgba(var(--fp-tint-rgb,125,155,132),.14);color:var(--fp-head,#3C5343);font-weight:600;border-radius:12px;padding:9px 12px;margin-bottom:8px;cursor:pointer;text-align:left;font-size:.86rem;}
       .cb-fixnutri:hover{background:rgba(var(--fp-tint-rgb,125,155,132),.24);}
       .cb-fixnutri:disabled{opacity:.7;cursor:default;}
+      .cb-imp-row{display:flex;gap:8px;align-items:stretch;}
+      .cb-imp-row .cb-in{flex:1;margin:0;}
+      .cb-imp-go{white-space:nowrap;}
+      .cb-imp-go:disabled{opacity:.7;cursor:default;}
       .cb-d-tags{display:flex;gap:4px;flex-wrap:wrap;}
       .cb-tag{font-size:.68rem;background:rgba(var(--fp-tint-rgb,129,212,250),.25);color:var(--fp-head,#0277bd);border-radius:8px;padding:1px 6px;}
       .cb-d-stars{color:#f5b301;font-size:.8rem;}
