@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.3.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card */
+/* Family Planner custom cards v2.3.3 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -76,6 +76,43 @@
       return { path };
     };
   }
+
+  // Nachfassen fuer Symbole, die zu frueh gefragt haben.
+  //
+  // ha-icon loest den Symbolsatz nur auf, wenn sich seine icon-Eigenschaft
+  // aendert. Die Tab-Leiste des Dashboards wird aber gezeichnet, bevor die
+  // Lovelace-Ressourcen geladen sind — zu dem Zeitpunkt kennt niemand den
+  // Praefix "fp". ha-icon schaltet dann auf seinen Altpfad um und rendert ein
+  // <iron-icon>, das es in modernen Versionen gar nicht mehr gibt: leere
+  // Stelle, kein zweiter Versuch. Karten im View entstehen spaeter und sind
+  // deshalb in Ordnung — genau das Muster "Ueberschrift ja, Tab nein".
+  //
+  // Wir stupsen daher die kaputten Elemente einmal an. Erkennbar sind sie am
+  // <iron-icon> in ihrem Schattenbaum — an internen Feldnamen haengt hier
+  // nichts, die koennen minifiziert sein.
+  const nachfassen = () => {
+    const treffer = [];
+    const lauf = (n, tiefe) => {
+      if (!n || tiefe > 30) return;
+      if (n.localName === "ha-icon" && typeof n.icon === "string" && n.icon.startsWith("fp:")
+          && n.shadowRoot && n.shadowRoot.querySelector("iron-icon")) treffer.push(n);
+      const kinder = n.children ? Array.from(n.children) : [];
+      if (n.shadowRoot) kinder.push(...Array.from(n.shadowRoot.children));
+      for (const k of kinder) lauf(k, tiefe + 1);
+    };
+    try { lauf(document.body, 0); } catch (e) { return; }
+    for (const el of treffer) {
+      const wunsch = el.icon;
+      // Erst ein echtes MDI-Symbol: das nimmt den anderen Zweig in ha-icon und
+      // loescht den Altpfad-Zustand. Danach zurueck auf unseres. Zwei getrennte
+      // Durchlaeufe sind noetig, sonst fasst Lit beide Zuweisungen zusammen.
+      el.icon = "mdi:magnify";
+      Promise.resolve(el.updateComplete).then(() => { el.icon = wunsch; }).catch(() => {});
+    }
+  };
+  // Dreimal, weil die Leiste je nach Geraet unterschiedlich frueh steht.
+  // Wer schon sitzt, wird nicht angefasst — die Suche findet nur Kaputtes.
+  for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
 /* ===== meal-grid-card v25 (Heute als Ring statt Einfaerbung, Knopfleiste im Theme-Ton, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header fuer die Uebersicht, Leistenfarbe via --fp-bar-bg; „Zum Rezept" springt ins eigene Kochbuch, wenn das Gericht dort steht; sonst Web-Suche) ===== */
@@ -3026,7 +3063,7 @@ if (!customElements.get("fp-cookbook-card")) {
   window.customCards.push({ type: "fp-cookbook-card", name: "FP Cookbook Card", description: "Kochbuch mit Rezepten, KI-Generierung, in Essensplan legen, Zutaten -> Einkauf" });
 }
 
-/* ===== dobby-clock-card v7 (Einheitenleiter bis Monate, feinere Einheiten auf eigener Zeile) ===== */
+/* ===== dobby-clock-card v8 (Bestenliste mit den drei laengsten Verstecken samt Zeitraum) ===== */
 class DobbyClockCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
@@ -3036,6 +3073,9 @@ class DobbyClockCard extends HTMLElement {
         { name: "Verena", total: "input_number.dobby_gesamtzeit_verena" },
       ],
       since: "input_datetime.dobby_letzter_wechsel",
+      highscore: "input_text.dobby_highscore",   // leer lassen blendet die Bestenliste aus
+      highscore_label: "Beste Verstecke",
+      highscore_empty: "Noch keine Runde zu Ende gespielt",
       pause_label: "Pause",
       title: "Wo ist Dobby?",
       round_label: "diese Runde",
@@ -3149,6 +3189,7 @@ class DobbyClockCard extends HTMLElement {
           <div class="dc-state"></div>
           <button class="dc-pause"></button>
         </div>
+        ${this.config.highscore ? `<div class="dc-hs"><div class="dc-hs-h">${U.esc(this.config.highscore_label)}</div><div class="dc-hs-list"></div></div>` : ""}
       </ha-card>
       ${this._styles()}`;
 
@@ -3202,6 +3243,39 @@ class DobbyClockCard extends HTMLElement {
     const st = this.querySelector(".dc-state");
     st.textContent = run === P ? this.config.idle_text : `${run} hat ihn versteckt`;
     this.querySelector(".dc-pause").textContent = run === P ? "▶ Weiter" : "⏸ Pause";
+    this._paintHighscore();
+  }
+
+  // Bestenliste. Die Zeichenkette kommt kompakt aus einem input_text:
+  // „Name~Sekunden~Startzeit", Einträge durch | getrennt, schon sortiert.
+  // Ein input_text fasst 255 Zeichen — drei Einträge brauchen rund 75.
+  _paintHighscore() {
+    if (!this.config.highscore) return;
+    const el = this.querySelector(".dc-hs-list");
+    if (!el) return;
+    const st = this._hass.states[this.config.highscore];
+    const raw = st && typeof st.state === "string" ? st.state : "";
+    // Nur neu zeichnen, wenn sich wirklich etwas geändert hat — _paint läuft
+    // jede Sekunde, die Liste ändert sich aber nur beim Rundenwechsel.
+    if (raw === this._hsRaw) return;
+    this._hsRaw = raw;
+
+    const eintraege = raw.split("|").map(e => e.split("~")).filter(p => p.length === 3 && p[0] && Number(p[1]) > 0);
+    if (!eintraege.length) {
+      el.innerHTML = `<div class="dc-hs-leer">${U.esc(this.config.highscore_empty)}</div>`;
+      return;
+    }
+    const d = ts => new Date(Number(ts) * 1000).toLocaleDateString("de-AT", { day: "numeric", month: "numeric", year: "2-digit" });
+    el.innerHTML = eintraege.slice(0, 3).map(([name, sek, start], i) => {
+      const s = Number(sek), von = Number(start);
+      const zeitraum = von > 0 ? `${d(von)} – ${d(von + s)}` : "";
+      return `<div class="dc-hs-row">
+        <span class="dc-hs-rang dc-hs-r${i}">${i + 1}</span>
+        <span class="dc-hs-name">${U.esc(name)}</span>
+        <span class="dc-hs-dauer">${U.esc(this._langfmt(s))}</span>
+        <span class="dc-hs-datum">${U.esc(zeitraum)}</span>
+      </div>`;
+    }).join("");
   }
 
   _styles() {
@@ -3256,6 +3330,25 @@ class DobbyClockCard extends HTMLElement {
         background:var(--secondary-background-color);color:var(--primary-text-color);
         cursor:pointer;font-size:.82rem;font-weight:590;transition:background .2s;}
       .dc-pause:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.22);}
+
+      /* --- Bestenliste --- */
+      .dc-hs{margin-top:16px;padding-top:14px;border-top:1px solid var(--divider-color);}
+      .dc-hs-h{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+        color:var(--secondary-text-color);opacity:.7;margin-bottom:10px;}
+      .dc-hs-row{display:grid;grid-template-columns:22px 1fr auto;grid-template-areas:"r n d" "r z d";
+        align-items:center;gap:0 10px;padding:6px 0;}
+      .dc-hs-row + .dc-hs-row{border-top:1px solid var(--divider-color);}
+      .dc-hs-rang{grid-area:r;width:22px;height:22px;border-radius:50%;display:flex;
+        align-items:center;justify-content:center;font-size:.72rem;font-weight:700;
+        background:var(--secondary-background-color);color:var(--secondary-text-color);}
+      /* Nur der erste Platz bekommt Farbe — drei bunte Medaillen waeren Laerm. */
+      .dc-hs-rang.dc-hs-r0{background:rgba(var(--fp-accent-rgb,79,195,247),.9);color:var(--fp-accent-fg,#013);}
+      .dc-hs-name{grid-area:n;font-size:.92rem;font-weight:600;}
+      .dc-hs-datum{grid-area:z;font-size:.72rem;color:var(--secondary-text-color);opacity:.7;
+        font-variant-numeric:tabular-nums;}
+      .dc-hs-dauer{grid-area:d;font-size:.92rem;font-weight:700;color:var(--fp-head,var(--primary-color));
+        font-variant-numeric:tabular-nums;text-align:right;}
+      .dc-hs-leer{font-size:.82rem;color:var(--secondary-text-color);opacity:.7;}
     </style>`;
   }
   getCardSize() { return 4; }

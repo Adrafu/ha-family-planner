@@ -10,7 +10,7 @@ Neun eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Alle Optionen der nativen Karte werden durchgereicht — inklusive `due_date_period` zum Filtern nach Fälligkeit. Optional ein **eigener Änderungsdialog** (`edit_dialog`): Aufgabe umbenennen, in eine andere Liste verschieben, Fälligkeit per Schnellauswahl setzen und eine Wiederholung vergeben. Mit `pill` steht statt der Ueberschrift eine farbige Namens-Pille im Kartenkopf.
 - **`fp-glance-card`** — „Today at a glance"-Banner für die Übersicht: tageszeitabhängige Begrüßung, Datum, nächster Termin (Präfix-Personen aufgelöst) und heutiges Abendessen, mit tageszeit-adaptivem Foto-/Verlaufs-Hintergrund (via `sun.sun`). Das Wetter wird als eingebettete `clock-weather-card` (echte Animationen + Vorschau) transparent auf den Banner geblendet. Klick pro Element navigiert getrennt (Datum/Termin → Kalender, Essen → Essensplan, Wetter → eigener Wetter-Tab); das More-Info-Popup der eingebetteten Karte wird unterdrückt.
 - **`fp-cookbook-card`** — Kochbuch mit Rezepten (Zutaten, Schritt-für-Schritt-Anleitung, Portionen-Slider, Sterne-Bewertung, **Zubereitungszeit**), gespeichert in einer lokalen To-do-Liste. **KI-Rezept** aus Name/Text und **KI-Vorschlag „überrasch mich"** ohne Eingabe (berücksichtigt Jahreszeit + Wetter, erzwingt Abwechslung, meidet zuletzt Vorgeschlagenes → keine Monotonie). Rezepte lassen sich **vollständig bearbeiten** (Name, Mahlzeit, Tags, Portionen, Zeiten, **Nährwerte**, Zutaten, Schritte). **Kalorien und Eiweiß je Portion** werden mitgeschätzt und in Kachel und Detailansicht angezeigt; für Altbestand gibt es einen Knopf zum Nachrechnen. Die Filter „schnell" und „proteinreich" werden aus Gesamtzeit bzw. Eiweißwert **berechnet** statt geraten. Mit `import_service` erscheint im „＋ Neu"-Dialog ein **Link-Feld**: Rezeptseiten werden aus ihrem JSON-LD ausgelesen, Videos vom Import-Dienst angeschaut. „In Plan legen" schreibt in den Essensplan-Kalender; „Zutaten → Einkauf" öffnet ein Auswahl-Popup und legt nur die angehakten (auf die Portionen skalierten) Zutaten auf die Einkaufsliste.
-- **`dobby-clock-card`** — **Schachuhr, die hochzählt.** Für Versteckspiele zu zweit: wer den Gegenstand versteckt hat, dessen Uhr läuft. Eine Wippe als Tastenpaar oben auf dem Gehäuse, die laufende Taste steht oben; darunter zwei Anzeigen. Die Rundenzeit wechselt die Einheit mit ihrer Länge (Minuten → Stunden → Tage → Wochen → Monate), darunter der Gesamtstand. Der Stand liegt in Helfern und übersteht Neustarts; die Uhr tickt nur im Browser, damit kein Sensor im Sekundentakt die Datenbank füllt.
+- **`dobby-clock-card`** — **Schachuhr, die hochzählt.** Für Versteckspiele zu zweit: wer den Gegenstand versteckt hat, dessen Uhr läuft. Eine Wippe als Tastenpaar oben auf dem Gehäuse, die laufende Taste steht oben; darunter zwei Anzeigen. Die Rundenzeit wechselt die Einheit mit ihrer Länge (Minuten → Stunden → Tage → Wochen → Monate), darunter der Gesamtstand. Dazu eine **Bestenliste** mit den drei längsten Verstecken samt Zeitraum. Der Stand liegt in Helfern und übersteht Neustarts; die Uhr tickt nur im Browser, damit kein Sensor im Sekundentakt die Datenbank füllt.
 
 ## Installation (HACS)
 
@@ -200,9 +200,13 @@ players:
     total: input_number.dobby_gesamtzeit_tobias
   - name: Verena
     total: input_number.dobby_gesamtzeit_verena
+highscore: input_text.dobby_highscore        # leer lassen blendet die Bestenliste aus
+highscore_label: Beste Verstecke
 pause_label: Pause
 idle_text: Niemand versteckt gerade etwas
 ```
+
+Die Bestenliste steht kompakt in einem einzigen `input_text`: `Name~Sekunden~Startzeit`, Einträge durch `|` getrennt. Drei Stück brauchen rund 75 der 255 erlaubten Zeichen; das Enddatum rechnet die Karte aus Start plus Dauer. Die Automation sortiert jede abgeschlossene Runde ein und behält die drei längsten.
 
 Dazu eine Automation am `input_select`, die beim Wechsel die verstrichene Zeit dem **vorherigen** Verstecker gutschreibt und den Zeitstempel neu setzt — dort steht die Wahrheit, die Karte rechnet nur für die Anzeige.
 
