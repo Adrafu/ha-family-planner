@@ -1,6 +1,6 @@
 # Family Planner Cards
 
-Acht eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
+Neun eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
 - **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und KI-Vorschlag (`ai_task`; entschärft mit Küchen-/Grundform-Rotation, Saison- und Wetterbezug, liest getippten Wunsch aus). **Kochbuch-Kopplung:** „★ Ins Kochbuch" pro Zelle und „Woche füllen" hybrid (erst gewichtet aus dem Kochbuch, dann KI). `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
 - **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen. Jetzt-Linie (Outlook-Stil), hellblaues Heute-Highlight und ausgegraute vergangene Tage. Dazu eine **kompakte Mehrtagesansicht** (`initial_view: agenda`): eine Spalte je Tag, Termine als Kacheln mit farbiger Kante — gedacht als Ersatz fuer eine fremde Kalenderkarte in der Uebersicht.
@@ -9,7 +9,8 @@ Acht eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
 - **`fp-todo-card`** — Hüllt die native `todo-list`-Karte ein (identischer Look, volles Bearbeiten/Abhaken) und fügt **optimistisches Hinzufügen** hinzu: neue Einträge erscheinen sofort in der Liste (auch über das native Feld oder das `fp-todo-add`-Event der `shopping-fav-card`), noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Alle Optionen der nativen Karte werden durchgereicht — inklusive `due_date_period` zum Filtern nach Fälligkeit. Optional ein **eigener Änderungsdialog** (`edit_dialog`): Aufgabe umbenennen, in eine andere Liste verschieben, Fälligkeit per Schnellauswahl setzen und eine Wiederholung vergeben. Mit `pill` steht statt der Ueberschrift eine farbige Namens-Pille im Kartenkopf.
 - **`fp-glance-card`** — „Today at a glance"-Banner für die Übersicht: tageszeitabhängige Begrüßung, Datum, nächster Termin (Präfix-Personen aufgelöst) und heutiges Abendessen, mit tageszeit-adaptivem Foto-/Verlaufs-Hintergrund (via `sun.sun`). Das Wetter wird als eingebettete `clock-weather-card` (echte Animationen + Vorschau) transparent auf den Banner geblendet. Klick pro Element navigiert getrennt (Datum/Termin → Kalender, Essen → Essensplan, Wetter → eigener Wetter-Tab); das More-Info-Popup der eingebetteten Karte wird unterdrückt.
-- **`fp-cookbook-card`** — Kochbuch mit Rezepten (Zutaten, Schritt-für-Schritt-Anleitung, Portionen-Slider, Sterne-Bewertung, **Zubereitungszeit**), gespeichert in einer lokalen To-do-Liste. **KI-Rezept** aus Name/Text und **KI-Vorschlag „überrasch mich"** ohne Eingabe (berücksichtigt Jahreszeit + Wetter, erzwingt Abwechslung, meidet zuletzt Vorgeschlagenes → keine Monotonie). Rezepte lassen sich **vollständig bearbeiten** (Name, Mahlzeit, Tags, Portionen, Zeiten, **Nährwerte**, Zutaten, Schritte). **Kalorien und Eiweiß je Portion** werden mitgeschätzt und in Kachel und Detailansicht angezeigt; für Altbestand gibt es einen Knopf zum Nachrechnen. Die Filter „schnell" und „proteinreich" werden aus Gesamtzeit bzw. Eiweißwert **berechnet** statt geraten. „In Plan legen" schreibt in den Essensplan-Kalender; „Zutaten → Einkauf" öffnet ein Auswahl-Popup und legt nur die angehakten (auf die Portionen skalierten) Zutaten auf die Einkaufsliste.
+- **`fp-cookbook-card`** — Kochbuch mit Rezepten (Zutaten, Schritt-für-Schritt-Anleitung, Portionen-Slider, Sterne-Bewertung, **Zubereitungszeit**), gespeichert in einer lokalen To-do-Liste. **KI-Rezept** aus Name/Text und **KI-Vorschlag „überrasch mich"** ohne Eingabe (berücksichtigt Jahreszeit + Wetter, erzwingt Abwechslung, meidet zuletzt Vorgeschlagenes → keine Monotonie). Rezepte lassen sich **vollständig bearbeiten** (Name, Mahlzeit, Tags, Portionen, Zeiten, **Nährwerte**, Zutaten, Schritte). **Kalorien und Eiweiß je Portion** werden mitgeschätzt und in Kachel und Detailansicht angezeigt; für Altbestand gibt es einen Knopf zum Nachrechnen. Die Filter „schnell" und „proteinreich" werden aus Gesamtzeit bzw. Eiweißwert **berechnet** statt geraten. Mit `import_service` erscheint im „＋ Neu"-Dialog ein **Link-Feld**: Rezeptseiten werden aus ihrem JSON-LD ausgelesen, Videos vom Import-Dienst angeschaut. „In Plan legen" schreibt in den Essensplan-Kalender; „Zutaten → Einkauf" öffnet ein Auswahl-Popup und legt nur die angehakten (auf die Portionen skalierten) Zutaten auf die Einkaufsliste.
+- **`dobby-clock-card`** — **Schachuhr, die hochzählt.** Für Versteckspiele zu zweit: wer den Gegenstand versteckt hat, dessen Uhr läuft. Eine Wippe als Tastenpaar oben auf dem Gehäuse, die laufende Taste steht oben; darunter zwei Anzeigen. Die Rundenzeit wechselt die Einheit mit ihrer Länge (Minuten → Stunden → Tage → Wochen → Monate), darunter der Gesamtstand. Der Stand liegt in Helfern und übersteht Neustarts; die Uhr tickt nur im Browser, damit kein Sensor im Sekundentakt die Datenbank füllt.
 
 ## Installation (HACS)
 
@@ -28,6 +29,7 @@ Acht eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - `custom:fp-todo-card`
 - `custom:fp-glance-card`
 - `custom:fp-cookbook-card`
+- `custom:dobby-clock-card`
 
 ### Beispiel: meal-grid-card
 
@@ -183,8 +185,28 @@ weather_entity: weather.home            # optional, für Saison-/Wetterbezug
 base_portions: 2
 quick_max_min: 20                       # bis hierher gilt ein Gericht als „schnell"
 protein_min_g: 25                       # ab hier gilt eine Portion als „proteinreich"
+import_service: rest_command.kochbuch_import   # optional: Link-Feld im „＋ Neu"-Dialog
 style: "viel vegetarisch, bunt gemischt, proteinreich, schnell zu kochen"
 ```
+
+### Beispiel: dobby-clock-card
+
+```yaml
+type: custom:dobby-clock-card
+select: input_select.dobby_versteckt_von     # Optionen: die beiden Namen + „Pause"
+since: input_datetime.dobby_letzter_wechsel  # Beginn der laufenden Runde (Datum + Zeit)
+players:
+  - name: Tobias
+    total: input_number.dobby_gesamtzeit_tobias
+  - name: Verena
+    total: input_number.dobby_gesamtzeit_verena
+pause_label: Pause
+idle_text: Niemand versteckt gerade etwas
+```
+
+Dazu eine Automation am `input_select`, die beim Wechsel die verstrichene Zeit dem **vorherigen** Verstecker gutschreibt und den Zeitstempel neu setzt — dort steht die Wahrheit, die Karte rechnet nur für die Anzeige.
+
+> **Falle beim Anlegen:** ein frisches `input_datetime` steht auf *heute 00:00:00*, nicht auf null, und ein frisches `input_select` auf seiner ersten Option. Ohne Deckelung bekommt der erste Verstecker den halben Tag geschenkt. Die Gutschrift auf `min(seit Zeitstempel, seit dem letzten Zustandswechsel)` begrenzen.
 
 Die To-do-Liste `todo.kochbuch` muss vorab über die Integration **Local To-do** angelegt sein. Jedes Gericht wird als ein Listeneintrag gespeichert (Name = Titel, Rezeptdaten als JSON in der Beschreibung). KI-Funktionen benötigen eine eingerichtete `ai_task`-Entity (z. B. Google Generative AI). Am besten als **Panel-View** einbinden.
 

@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.2.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card */
+/* Family Planner custom cards v2.3.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -2989,5 +2989,245 @@ if (!customElements.get("fp-cookbook-card")) {
   customElements.define("fp-cookbook-card", FpCookbookCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "fp-cookbook-card", name: "FP Cookbook Card", description: "Kochbuch mit Rezepten, KI-Generierung, in Essensplan legen, Zutaten -> Einkauf" });
+}
+
+/* ===== dobby-clock-card v7 (Einheitenleiter bis Monate, feinere Einheiten auf eigener Zeile) ===== */
+class DobbyClockCard extends HTMLElement {
+  setConfig(config) {
+    this.config = Object.assign({
+      select: "input_select.dobby_versteckt_von",
+      players: [
+        { name: "Tobias", total: "input_number.dobby_gesamtzeit_tobias" },
+        { name: "Verena", total: "input_number.dobby_gesamtzeit_verena" },
+      ],
+      since: "input_datetime.dobby_letzter_wechsel",
+      pause_label: "Pause",
+      title: "Wo ist Dobby?",
+      round_label: "diese Runde",
+      idle_text: "Niemand versteckt gerade etwas",
+    }, config || {});
+    if ((this.config.players || []).length !== 2) throw new Error("dobby-clock-card braucht genau zwei players");
+    this._built = false;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._built) this._build();
+    this._paint();
+  }
+
+  connectedCallback() { this._startTicking(); }
+  disconnectedCallback() { this._stopTicking(); }
+  // Die Uhr tickt nur hier im Browser. Ein Sensor, der jede Sekunde einen neuen
+  // Zustand schreibt, wuerde die Datenbank fuellen, ohne dass jemand etwas davon hat.
+  _startTicking() { this._stopTicking(); this._timer = setInterval(() => this._paint(), 1000); }
+  _stopTicking() { if (this._timer) { clearInterval(this._timer); this._timer = null; } }
+
+  // Einheitenleiter: Minuten, Stunden, Tage, Wochen, Monate. Ein Versteck hält
+  // hier monatelang — „1465:12:07" wäre zwar korrekt, sagt aber niemandem etwas.
+  // Die große Zahl bleibt dadurch immer ein- bis zweistellig, die Einheit steht
+  // klein daneben, dazu der Rest in der nächstkleineren Einheit.
+  _parts(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const MIN = 60, STD = 3600, TAG = 86400, WOCHE = 7 * TAG, MONAT = 30 * TAG;
+    const pl = (n, ein, viele) => `${n} ${n === 1 ? ein : viele}`;
+    // Unter einer Stunde laufen die Sekunden mit — da schaut man noch zu.
+    if (s < STD) return { big: String(Math.floor(s / MIN)), unit: `:${String(s % MIN).padStart(2, "0")}`, rest: [] };
+    if (s < TAG) {
+      const h = Math.floor(s / STD), m = Math.floor((s % STD) / MIN);
+      return { big: String(h), unit: " Std", rest: m ? [`${m} Min`] : [] };
+    }
+    if (s < WOCHE) {
+      const d = Math.floor(s / TAG), h = Math.floor((s % TAG) / STD);
+      return { big: String(d), unit: d === 1 ? " Tag" : " Tage", rest: h ? [`${h} Std`] : [] };
+    }
+    if (s < MONAT) {
+      const w = Math.floor(s / WOCHE), d = Math.floor((s % WOCHE) / TAG);
+      return { big: String(w), unit: w === 1 ? " Woche" : " Wochen", rest: d ? [pl(d, "Tag", "Tage")] : [] };
+    }
+    // Ab einem Monat bleiben Wochen UND Tage stehen — „2 Monate" allein
+    // verschluckt bis zu vier Wochen, und genau die will man ja sehen.
+    // Die Reste müssen sich aufeinander stapeln: erst Monate abziehen, dann aus
+    // DEM Rest die Wochen, dann aus dessen Rest die Tage. „s % WOCHE" rechnet
+    // dagegen an den Monaten vorbei und liefert Tage, die gar nicht übrig sind.
+    const mo = Math.floor(s / MONAT);
+    const nachMonaten = s % MONAT;
+    const w = Math.floor(nachMonaten / WOCHE);
+    const d = Math.floor((nachMonaten % WOCHE) / TAG);
+    const rest = [];
+    if (w) rest.push(pl(w, "Woche", "Wochen"));
+    if (d) rest.push(pl(d, "Tag", "Tage"));
+    return { big: String(mo), unit: mo === 1 ? " Monat" : " Monate", rest };
+  }
+  // Sekunden -> "1:04:07" bzw. "4:07"
+  _fmt(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    const p = n => String(n).padStart(2, "0");
+    return h ? `${h}:${p(m)}:${p(r)}` : `${m}:${p(r)}`;
+  }
+  // Gesamtstand in derselben Sprache, aber knapper: für die kleine Zeile
+  // reichen zwei Einheiten, sonst wird sie länger als die Karte breit ist.
+  _langfmt(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    if (s < 3600) return `${Math.floor(s / 60)} Min`;
+    const t = this._parts(s);
+    return `${t.big}${t.unit}${t.rest[0] ? ` ${t.rest[0]}` : ""}`;
+  }
+
+  _running() {
+    const st = this._hass.states[this.config.select];
+    return st ? st.state : this.config.pause_label;
+  }
+  _since() {
+    const st = this._hass.states[this.config.since];
+    const t = st && st.attributes ? Number(st.attributes.timestamp) : 0;
+    return t > 0 ? t : 0;
+  }
+  _total(p) {
+    const st = this._hass.states[p.total];
+    return st ? Number(st.state) || 0 : 0;
+  }
+
+  _build() {
+    this._built = true;
+    const [a, b] = this.config.players;
+    this.innerHTML = `
+      <ha-card class="dc-card">
+        <div class="dc-rockerwrap">
+          <div class="dc-rocker">
+            <div class="dc-paddle dc-paddle0"></div>
+            <div class="dc-paddle dc-paddle1"></div>
+          </div>
+          <div class="dc-hinge"></div>
+        </div>
+        <div class="dc-body">
+          ${[a, b].map((p, i) => `
+            <button class="dc-side dc-side${i}" data-n="${U.esc(p.name)}">
+              <div class="dc-name">${U.esc(p.name)}</div>
+              <div class="dc-time"><span class="dc-big">0</span><span class="dc-sec">:00</span></div>
+              <div class="dc-rest"></div>
+              <div class="dc-total"></div>
+            </button>`).join(`<div class="dc-hair"></div>`)}
+        </div>
+        <div class="dc-bar">
+          <div class="dc-state"></div>
+          <button class="dc-pause"></button>
+        </div>
+      </ha-card>
+      ${this._styles()}`;
+
+    this.querySelectorAll(".dc-side").forEach(btn => btn.addEventListener("click", () => this._handOver(btn.dataset.n)));
+    this.querySelector(".dc-pause").addEventListener("click", () => this._togglePause());
+  }
+
+  // Tippen heisst „der hat ihn jetzt": dessen Uhr laeuft, die andere steht.
+  // Laeuft die Uhr dieser Seite schon, ist der Tipp ein Versehen — dann passiert nichts.
+  _handOver(name) {
+    if (this._running() === name) return;
+    this._hass.callService("input_select", "select_option", { entity_id: this.config.select, option: name });
+  }
+  _togglePause() {
+    const cur = this._running();
+    const P = this.config.pause_label;
+    if (cur !== P) { this._paused = cur; this._hass.callService("input_select", "select_option", { entity_id: this.config.select, option: P }); return; }
+    // Aus der Pause zurueck zu dem, der vorher dran war — sonst muesste man raten.
+    const back = this._paused && this._paused !== P ? this._paused : this.config.players[0].name;
+    this._hass.callService("input_select", "select_option", { entity_id: this.config.select, option: back });
+  }
+
+  _paint() {
+    if (!this._hass || !this._built) return;
+    const run = this._running();
+    const P = this.config.pause_label;
+    const since = this._since();
+    const laufend = run !== P && since > 0 ? Math.floor(Date.now() / 1000 - since) : 0;
+
+    this.config.players.forEach((p, i) => {
+      const side = this.querySelector(`.dc-side${i}`);
+      const aktiv = p.name === run;
+      side.classList.toggle("dc-on", aktiv);
+      this.querySelector(`.dc-paddle${i}`).classList.toggle("dc-up", aktiv);
+      // Groß steht, was gerade passiert: die laufende Runde. Der Gesamtstand
+      // ist die Statistik darunter — er ändert sich ja nur beim Wechsel.
+      const t = this._parts(aktiv ? laufend : 0);
+      side.querySelector(".dc-big").textContent = t.big;
+      side.querySelector(".dc-sec").textContent = t.unit;
+      // Die feineren Einheiten kommen auf eine eigene Zeile. Hinter der großen
+      // Zahl gedrängt würden sie umbrechen und das Zifferngitter zerreißen.
+      side.querySelector(".dc-rest").textContent = t.rest.join(" und ");
+      side.querySelector(".dc-total").textContent = `gesamt ${this._langfmt(this._total(p) + (aktiv ? laufend : 0))}`;
+    });
+
+    // Die Wippe kippt zur laufenden Seite: wessen Uhr läuft, dessen Taste steht oben.
+    const card = this.querySelector(".dc-card");
+    card.classList.toggle("dc-kipp0", run === this.config.players[0].name);
+    card.classList.toggle("dc-kipp1", run === this.config.players[1].name);
+
+    const st = this.querySelector(".dc-state");
+    st.textContent = run === P ? this.config.idle_text : `${run} hat ihn versteckt`;
+    this.querySelector(".dc-pause").textContent = run === P ? "▶ Weiter" : "⏸ Pause";
+  }
+
+  _styles() {
+    return `<style>
+      .dc-card{padding:18px 18px 14px;}
+
+      /* --- Wippe: die beiden Tasten oben auf dem Gehäuse ---
+         Ein Balken, der um die Mitte kippt. Gedrückt wird die eigene Seite,
+         dadurch hebt sich die andere — wessen Taste oben steht, dessen Uhr läuft. */
+      .dc-rockerwrap{position:relative;height:30px;margin:0 6px 14px;}
+      .dc-rocker{display:flex;gap:4px;height:22px;transform-origin:50% 50%;
+        transition:transform .55s cubic-bezier(.32,1.4,.5,1);}
+      .dc-card.dc-kipp0 .dc-rocker{transform:rotate(-2.4deg);}
+      .dc-card.dc-kipp1 .dc-rocker{transform:rotate(2.4deg);}
+      /* Nur die Farbe unterscheidet die beiden Hälften. Kein eigenes translateY,
+         sonst säße die gehobene Taste nicht mehr auf derselben Geraden wie die
+         andere und der Balken bekäme einen Knick am Scharnier. */
+      .dc-paddle{flex:1 1 0;border-radius:11px;background:var(--secondary-background-color);
+        transition:background .3s,box-shadow .3s;}
+      .dc-paddle.dc-up{background:rgba(var(--fp-accent-rgb,79,195,247),.9);
+        box-shadow:0 6px 14px rgba(var(--fp-accent-rgb,79,195,247),.32);}
+      /* Das Scharnier dreht nicht mit — daran hängt der Balken. */
+      .dc-hinge{position:absolute;left:50%;top:26px;transform:translateX(-50%);
+        width:34px;height:4px;border-radius:2px;background:var(--divider-color);}
+
+      /* --- Gehäuse: eine Fläche, zwei Anzeigen, ein Haarstrich dazwischen --- */
+      .dc-body{display:flex;align-items:stretch;border-radius:20px;overflow:hidden;
+        background:var(--secondary-background-color);}
+      .dc-hair{width:1px;background:var(--divider-color);opacity:.6;flex:none;margin:14px 0;}
+      .dc-side{flex:1 1 0;min-width:0;border:none;background:transparent;cursor:pointer;
+        display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 12px 18px;
+        color:var(--primary-text-color);transition:background .3s;}
+      .dc-side:active{background:rgba(0,0,0,.04);}
+      .dc-side.dc-on{background:rgba(var(--fp-accent-rgb,79,195,247),.10);}
+      .dc-name{font-size:.8rem;font-weight:590;letter-spacing:.04em;text-transform:uppercase;
+        color:var(--secondary-text-color);opacity:.75;}
+      .dc-time{display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;
+        font-variant-numeric:tabular-nums;color:var(--secondary-text-color);opacity:.45;
+        transition:color .3s,opacity .3s;}
+      .dc-big{font-size:3.1rem;font-weight:600;line-height:.98;letter-spacing:-.025em;}
+      .dc-sec{font-size:1.4rem;font-weight:500;letter-spacing:-.005em;margin-left:2px;opacity:.85;}
+      .dc-rest{font-size:.92rem;font-weight:590;color:var(--secondary-text-color);
+        opacity:.6;min-height:1.2em;transition:color .3s,opacity .3s;}
+      .dc-side.dc-on .dc-rest{color:var(--fp-head,var(--primary-color));opacity:.9;}
+      .dc-side.dc-on .dc-time{color:var(--fp-head,var(--primary-color));opacity:1;}
+      .dc-total{font-size:.76rem;color:var(--secondary-text-color);opacity:.7;min-height:1.1em;}
+
+      .dc-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+        margin-top:14px;padding:0 4px;}
+      .dc-state{font-size:.82rem;color:var(--secondary-text-color);opacity:.8;}
+      .dc-pause{border:none;border-radius:999px;padding:8px 16px;
+        background:var(--secondary-background-color);color:var(--primary-text-color);
+        cursor:pointer;font-size:.82rem;font-weight:590;transition:background .2s;}
+      .dc-pause:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.22);}
+    </style>`;
+  }
+  getCardSize() { return 4; }
+}
+if (!customElements.get("dobby-clock-card")) {
+  customElements.define("dobby-clock-card", DobbyClockCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "dobby-clock-card", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 })();
