@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.3.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card */
+/* Family Planner custom cards v2.3.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -40,6 +40,41 @@
     st.id = SID;
     st.textContent = "button,input,select,textarea{font-family:inherit;}";
     document.head.appendChild(st);
+  }
+})();
+
+/* ===== eigener Symbolsatz „fp" =====
+   Home Assistant kennt nur die Namen, die Material Design Icons mitliefert — und
+   eine Socke ist nicht dabei (nur Steckdosen heissen dort „socket"). Ein Name,
+   den es nicht gibt, wird stillschweigend als nichts gezeichnet.
+   Ueber window.customIconsets laesst sich ein eigener Praefix anmelden; danach
+   ist „fp:socke" ueberall dort verwendbar, wo HA ein Icon erwartet — also auch
+   als Symbol eines Dashboard-Tabs.
+   Pfade in einem 24x24-Raster, selbst gezeichnet. */
+(() => {
+  const ICONS = {
+    // Socke im Profil, Zehe nach links. Drei getrennte Flaechen statt
+    // ausgestanzter Loecher: Bundblock, Streifen, Koerper. So haengt nichts an
+    // der Fuellregel, und die beiden Luecken bleiben auch bei 18px echte Luecken
+    // — sie sind das Merkmal, an dem man eine Socke von einem Stiefel unterscheidet.
+    socke: "M12,2.6 H17.8 A1.2,1.2 0 0 1 19,3.8 V5.2 H10.8 V3.8 A1.2,1.2 0 0 1 12,2.6 Z "
+      + "M10.8,6.6 H19 V8.2 H10.8 Z "
+      + "M10.8,9.6 H19 V15.6 Q19,20.8 13.8,20.8 H9.2 Q4.8,20.8 4.8,17.3 Q4.8,13.8 9.2,13.8 C10.2,13.8 10.8,13 10.8,11.8 Z",
+  };
+  // Wie beim Utils-Block: auf dem Beta-Dashboard sind Prod- und Beta-Datei
+  // gleichzeitig geladen. Der Aufloeser darf deshalb nicht seine eigene Liste
+  // einschliessen, sonst kennt er nur die Symbole der zuerst geladenen Datei.
+  // Stattdessen alle in dasselbe Verzeichnis legen und daraus nachschlagen.
+  const REG = window.__fpIcons || (window.__fpIcons = {});
+  for (const k of Object.keys(ICONS)) if (!(k in REG)) REG[k] = ICONS[k];
+
+  const sets = window.customIconsets || (window.customIconsets = {});
+  if (!sets.fp) {
+    sets.fp = async (name) => {
+      const path = REG[name];
+      if (!path) throw new Error(`fp-Symbol "${name}" gibt es nicht`);
+      return { path };
+    };
   }
 })();
 
