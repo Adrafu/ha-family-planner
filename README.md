@@ -30,6 +30,7 @@ Neun eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - `custom:fp-glance-card`
 - `custom:fp-cookbook-card`
 - `custom:dobby-clock-card`
+- `custom:fp-feeding-card`
 
 ### Beispiel: meal-grid-card
 
@@ -64,7 +65,7 @@ persons:
   - { name: Familie, color: "#E53935", calendar: calendar.familie, match: none }
   - { name: Tobi, color: "#1E88E5", calendar: calendar.familie, prefix: "T" }
   - { name: Verena, color: "#8E24AA", calendar: calendar.familie, prefix: "V" }
-  - { name: Kind I, color: "#43A047", calendar: calendar.kind_i }
+  - { name: Finn, color: "#43A047", calendar: calendar.finn }
 ```
 
 ### Beispiel: shopping-fav-card
@@ -163,7 +164,7 @@ persons:
   - { name: Familie, color: "#E53935", calendar: calendar.familie, match: none }
   - { name: Tobi, color: "#FBC02D", calendar: calendar.familie, prefix: "T" }
   - { name: Verena, color: "#1E88E5", calendar: calendar.familie, prefix: "V" }
-  - { name: Kind I, color: "#43A047", calendar: calendar.kind_i }
+  - { name: Finn, color: "#43A047", calendar: calendar.finn }
 backgrounds:                                # optional, sonst tageszeit-Verlauf als Fallback
   morning: /local/glance/morning.jpg
   day: /local/glance/day.jpg
@@ -211,6 +212,22 @@ Die Bestenliste steht kompakt in einem einzigen `input_text`: `Name~Sekunden~Sta
 Dazu eine Automation am `input_select`, die beim Wechsel die verstrichene Zeit dem **vorherigen** Verstecker gutschreibt und den Zeitstempel neu setzt — dort steht die Wahrheit, die Karte rechnet nur für die Anzeige.
 
 > **Falle beim Anlegen:** ein frisches `input_datetime` steht auf *heute 00:00:00*, nicht auf null, und ein frisches `input_select` auf seiner ersten Option. Ohne Deckelung bekommt der erste Verstecker den halben Tag geschenkt. Die Gutschrift auf `min(seit Zeitstempel, seit dem letzten Zustandswechsel)` begrenzen.
+
+### Beispiel: fp-feeding-card
+
+```yaml
+type: custom:fp-feeding-card
+name: Finn
+calendar: calendar.stillprotokoll_finn     # Local Calendar, ein Termin pro Mahlzeit
+switch: input_boolean.stillen_finn         # an = wird gerade gestillt
+side: input_select.stillen_finn_seite      # links / rechts, vorgeschlagene nächste Seite
+start: input_datetime.stillen_finn_beginn  # Beginn der laufenden Mahlzeit
+color: "#4A7A3A"
+auto_minutes: 60                           # Markierung für automatisch beendete Mahlzeiten
+bottle_presets: [30, 60, 90, 120]          # ml-Schnellwahl im Fläschchen-Dialog
+```
+
+Tabelle Stillbeginn – Stillende – Stilldauer – Fläschchen für heute und gestern, mit Tagessummen. Der Knopf schaltet nur den Schalter; eine Automation schreibt beim Ausschalten den Kalendertermin und schaltet die Seite weiter. Dadurch funktioniert Starten und Stoppen per Sprachassistent genauso. Fläschchen schreibt die Karte direkt als eigene Zeile (`Fläschchen N ml`).
 
 Die To-do-Liste `todo.kochbuch` muss vorab über die Integration **Local To-do** angelegt sein. Jedes Gericht wird als ein Listeneintrag gespeichert (Name = Titel, Rezeptdaten als JSON in der Beschreibung). KI-Funktionen benötigen eine eingerichtete `ai_task`-Entity (z. B. Google Generative AI). Am besten als **Panel-View** einbinden.
 

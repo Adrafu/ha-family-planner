@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.3.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card */
+/* Family Planner custom cards v2.4.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -3357,5 +3357,488 @@ if (!customElements.get("dobby-clock-card")) {
   customElements.define("dobby-clock-card", DobbyClockCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "dobby-clock-card", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
+}
+
+/* ===== fp-feeding-card v4 (Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+// Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
+// auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
+// genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
+// Fläschchen und Korrekturen schreibt die Karte direkt in den Kalender.
+class FpFeedingCard extends HTMLElement {
+  setConfig(config) {
+    if (!config || !config.calendar || !config.switch) throw new Error("fp-feeding-card braucht calendar und switch");
+    this.config = Object.assign({
+      name: "",
+      side: "",            // input_select mit links/rechts
+      start: "",           // input_datetime mit dem Beginn der laufenden Mahlzeit
+      color: "",           // Akzent fürs Kind, sonst Theme-Akzent
+      auto_minutes: 60,
+      bottle_presets: [30, 60, 90, 120],
+    }, config);
+    this._built = false; this._events = null; this._sig = ""; this._ticks = 0;
+  }
+
+  set hass(hass) {
+    const prev = this._hass; this._hass = hass;
+    if (!this._built) { this._build(); this._load(); }
+    // Beim Stopp schreibt die Automation den Termin — aber nicht sofort: erst
+    // ~2 s Echo-Erkennung, bei Alexa-Stopp bis zu 30 s Rueckfrage nach der Seite.
+    // Deshalb mehrfach nachladen; der Seitenwechsel danach ist das sichere Signal.
+    const nun = hass.states[this.config.switch], vorher = prev && prev.states[this.config.switch];
+    if (vorher && nun && vorher.state === "on" && nun.state === "off") this._nachladen([3000, 6000, 12000, 25000, 40000]);
+    const sNun = this.config.side && hass.states[this.config.side], sVor = this.config.side && prev && prev.states[this.config.side];
+    if (sNun && sVor && sNun.state !== sVor.state) this._nachladen([800]);
+    this._paintControls();
+  }
+  _nachladen(zeiten) {
+    (this._nachTimer || []).forEach(clearTimeout);
+    this._nachTimer = zeiten.map(ms => setTimeout(() => this._load(), ms));
+  }
+  connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._tick(), 1000); }
+  disconnectedCallback() { clearInterval(this._timer); this._timer = null; }
+  // Die Uhr tickt im Browser, nicht als Sensor. Alle 20 s wird der Kalender
+  // neu gelesen — fuer Eintraege von anderen Geraeten oder per Sprache (Flaeschchen).
+  _tick() { this._paintControls(); if (++this._ticks % 20 === 0) this._load(); }
+
+  // ---------- Hilfen ----------
+  _p(n) { return String(n).padStart(2, "0"); }
+  _hm(d) { return `${this._p(d.getHours())}:${this._p(d.getMinutes())}`; }
+  _local(d, sep) { return `${d.getFullYear()}-${this._p(d.getMonth() + 1)}-${this._p(d.getDate())}${sep}${this._p(d.getHours())}:${this._p(d.getMinutes())}:${this._p(d.getSeconds())}`; }
+  _dur(sek) {
+    const m = Math.max(0, Math.round(sek / 60));
+    if (m < 60) return `${m} Min`;
+    const h = Math.floor(m / 60), r = m % 60;
+    return r ? `${h} Std ${r} Min` : `${h} Std`;
+  }
+  _uhr(sek) {   // laufende Mahlzeit: 12:34 bzw. 1:02:07
+    const s = Math.max(0, Math.floor(sek)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    return h ? `${h}:${this._p(m)}:${this._p(r)}` : `${m}:${this._p(r)}`;
+  }
+  _vor(ms) {
+    const m = Math.floor(ms / 60000);
+    if (m < 1) return "gerade eben";
+    if (m < 60) return `vor ${m} Min`;
+    const h = Math.floor(m / 60), r = m % 60;
+    return `vor ${h} Std${r ? ` ${r} Min` : ""}`;
+  }
+  _tag(d) { return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
+  _laeuft() { const s = this._hass && this._hass.states[this.config.switch]; return !!s && s.state === "on"; }
+  _beginn() {
+    const s = this._hass && this.config.start && this._hass.states[this.config.start];
+    const t = s && s.attributes ? Number(s.attributes.timestamp) : 0;
+    return t > 0 ? t : 0;
+  }
+  _seite() {
+    const s = this._hass && this.config.side && this._hass.states[this.config.side];
+    return s ? s.state : "";
+  }
+
+  // Termin lesen. Die Beschreibung trägt die Daten als JSON; fehlt sie (jemand
+  // hat im HA-Kalender von Hand eingetragen), wird aus der Überschrift geraten.
+  _parse(ev) {
+    const s = new Date((ev.start && (ev.start.dateTime || ev.start.date)) || ev.start);
+    const e = new Date((ev.end && (ev.end.dateTime || ev.end.date)) || ev.end);
+    let meta = {};
+    try { meta = JSON.parse(ev.description || "{}") || {}; } catch (x) { meta = {}; }
+    const sum = String(ev.summary || "");
+    const typ = meta.typ || (/fl[äa]sch/i.test(sum) ? "flasche" : "stillen");
+    let ml = Number(meta.ml) || 0;
+    if (!ml) { const m = sum.match(/(\d+)\s*ml/i); if (m) ml = Number(m[1]); }
+    const seite = meta.seite || (/rechts/i.test(sum) ? "rechts" : /links/i.test(sum) ? "links" : "");
+    return { uid: ev.uid, start: s, end: e, typ, ml, seite, auto: !!meta.auto };
+  }
+
+  async _load() {
+    if (!this._hass) return;
+    const jetzt = new Date();
+    const von = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate() - 1);
+    const bis = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate() + 1);
+    try {
+      const s = encodeURIComponent(von.toISOString()), e = encodeURIComponent(bis.toISOString());
+      const evts = await this._hass.callApi("GET", `calendars/${this.config.calendar}?start=${s}&end=${e}`);
+      this._events = (Array.isArray(evts) ? evts : []).map(x => this._parse(x)).filter(x => !isNaN(x.start));
+    } catch (err) {
+      if (this._loadedOnce) U.toast(this, "Stillprotokoll konnte nicht geladen werden");
+      this._events = this._events || [];
+    }
+    this._loadedOnce = true;   // allerersten Ladefehler (Startup-Flackern) nicht melden
+    this._paintTable();
+    this._paintControls();
+  }
+
+  // ---------- Aufbau ----------
+  _build() {
+    this._built = true;
+    const c = this.config;
+    this.innerHTML = `
+      <ha-card class="ff-card"${c.color ? ` style="--ff-akzent:${U.esc(c.color)}"` : ""}>
+        <div class="ff-head">
+          <div class="ff-name"><span class="ff-dot"></span>${U.esc(c.name)}</div>
+          ${c.side ? `<div class="ff-seite">
+            <span class="ff-seite-lbl">nächste Seite</span>
+            <div class="ff-seg"><button data-s="links">Links</button><button data-s="rechts">Rechts</button></div>
+          </div>` : ""}
+        </div>
+        <div class="ff-actions">
+          <button class="ff-main"><span class="ff-main-txt">▶ Stillen starten</span><span class="ff-main-uhr"></span></button>
+          <button class="ff-bottle">🍼 Fläschchen</button>
+          <button class="ff-bottle ff-nach" title="Vergessen zu starten? Stillen nachtragen">✎ Nachtragen</button>
+        </div>
+        <div class="ff-since"></div>
+        <div class="ff-table"></div>
+      </ha-card>
+      ${this._styles()}`;
+    this.querySelector(".ff-main").addEventListener("click", () => this._toggle());
+    this.querySelector(".ff-bottle:not(.ff-nach)").addEventListener("click", () => this._openBottle());
+    this.querySelector(".ff-nach").addEventListener("click", () => this._openNachtrag());
+    this.querySelectorAll(".ff-seg button").forEach(b => b.addEventListener("click", () => {
+      this._hass.callService("input_select", "select_option", { entity_id: c.side, option: b.dataset.s });
+    }));
+    // Ein Klick irgendwo in der Tabelle — die Zeile weiß, welcher Eintrag sie ist.
+    this.querySelector(".ff-table").addEventListener("click", ev => {
+      const tr = ev.target.closest("tr[data-uid]");
+      if (!tr) return;
+      const e = (this._events || []).find(x => x.uid === tr.dataset.uid);
+      if (e) this._openEdit(e);
+    });
+  }
+
+  _toggle() {
+    const laeuft = this._laeuft();
+    const svc = laeuft ? "turn_off" : "turn_on";
+    if (laeuft && this._beginn() && Date.now() / 1000 - this._beginn() < 30)
+      U.toast(this, "Unter 30 Sekunden – als Fehltipp verworfen, nicht protokolliert");
+    this._hass.callService("input_boolean", svc, { entity_id: this.config.switch });
+  }
+
+  _paintControls() {
+    if (!this._built || !this._hass) return;
+    const laeuft = this._laeuft();
+    const main = this.querySelector(".ff-main");
+    main.classList.toggle("ff-run", laeuft);
+    main.querySelector(".ff-main-txt").textContent = laeuft ? "■ Stoppen" : "▶ Stillen starten";
+    main.querySelector(".ff-main-uhr").textContent = laeuft && this._beginn() ? this._uhr(Date.now() / 1000 - this._beginn()) : "";
+
+    const seite = this._seite();
+    this.querySelectorAll(".ff-seg button").forEach(b => b.classList.toggle("ff-on", b.dataset.s === seite));
+    const lbl = this.querySelector(".ff-seite-lbl");
+    if (lbl) lbl.textContent = laeuft ? "Seite" : "nächste Seite";
+
+    // Hebammen zählen Abstände von Beginn zu Beginn — deshalb der Beginn der
+    // letzten Mahlzeit, nicht ihr Ende.
+    const since = this.querySelector(".ff-since");
+    const evs = this._events || [];
+    if (laeuft) { since.textContent = ""; return; }
+    if (!evs.length) { since.textContent = this._events ? "Noch keine Mahlzeit eingetragen" : ""; return; }
+    const letzte = evs.reduce((a, b) => (b.start > a.start ? b : a));
+    since.textContent = `Letzte Mahlzeit um ${this._hm(letzte.start)} — ${this._vor(Date.now() - letzte.start.getTime())}`;
+  }
+
+  _paintTable() {
+    const el = this.querySelector(".ff-table");
+    if (!el || !this._events) return;
+    // Nur neu zeichnen, wenn sich die Einträge geändert haben — _load läuft minütlich.
+    const sig = JSON.stringify(this._events.map(e => [e.uid, +e.start, +e.end, e.typ, e.ml, e.seite, e.auto]));
+    if (sig === this._sig) return;
+    this._sig = sig;
+
+    const heute = new Date(), gestern = new Date(heute.getFullYear(), heute.getMonth(), heute.getDate() - 1);
+    const tage = [["Heute", this._tag(heute)], ["Gestern", this._tag(gestern)]];
+    el.innerHTML = tage.map(([titel, key]) => this._dayHTML(titel, this._events.filter(e => this._tag(e.start) === key))).join("");
+  }
+
+  _dayHTML(titel, evs) {
+    evs = evs.slice().sort((a, b) => b.start - a.start);   // neueste oben — nachts will man die letzte sehen
+    const stillen = evs.filter(e => e.typ === "stillen"), flaschen = evs.filter(e => e.typ === "flasche");
+    const minuten = stillen.reduce((s, e) => s + Math.max(0, (e.end - e.start) / 1000), 0);
+    const ml = flaschen.reduce((s, e) => s + (e.ml || 0), 0);
+    const zeilen = evs.map(e => {
+      if (e.typ === "flasche") {
+        return `<tr data-uid="${U.esc(e.uid)}" class="ff-r-flasche">
+          <td>${this._hm(e.start)}</td><td class="ff-leer">–</td><td class="ff-leer">–</td><td class="ff-leer">–</td>
+          <td class="ff-ml">${e.ml ? `${e.ml} ml` : "–"}</td></tr>`;
+      }
+      return `<tr data-uid="${U.esc(e.uid)}">
+        <td>${this._hm(e.start)}</td>
+        <td>${this._hm(e.end)}${e.auto ? `<span class="ff-auto" title="Automatisch nach ${this.config.auto_minutes} Minuten beendet">auto</span>` : ""}</td>
+        <td>${this._dur((e.end - e.start) / 1000)}</td>
+        <td>${U.esc(e.seite || "–")}</td>
+        <td class="ff-leer">–</td></tr>`;
+    }).join("");
+    const leer = `<tr class="ff-nichts"><td colspan="5">Noch nichts eingetragen</td></tr>`;
+    const summe = evs.length ? `<tfoot><tr>
+        <td colspan="2">${stillen.length} × gestillt${flaschen.length ? ` · ${flaschen.length} × Flasche` : ""}</td>
+        <td>${stillen.length ? this._dur(minuten) : "–"}</td><td></td>
+        <td class="ff-ml">${ml ? `${ml} ml` : "–"}</td></tr></tfoot>` : "";
+    return `<div class="ff-day">
+      <div class="ff-dayhead">${titel}</div>
+      <table class="ff-tab">
+        <thead><tr><th>Beginn</th><th>Ende</th><th>Dauer</th><th>Seite</th><th>Fläschchen</th></tr></thead>
+        <tbody>${zeilen || leer}</tbody>${summe}
+      </table></div>`;
+  }
+
+  // ---------- Schreiben ----------
+  _eventData(typ, seite, ml) {
+    if (typ === "flasche") return { summary: `Fläschchen ${ml} ml`, description: JSON.stringify({ typ: "flasche", ml }) };
+    // Wer einen Eintrag von Hand korrigiert, macht ihn genau — die Markierung
+    // „automatisch beendet" fällt dann weg.
+    return { summary: `Stillen ${seite}`, description: JSON.stringify({ typ: "stillen", seite, auto: false }) };
+  }
+  async _create(typ, start, end, seite, ml) {
+    const d = this._eventData(typ, seite, ml);
+    try {
+      await this._hass.callService("calendar", "create_event", {
+        entity_id: this.config.calendar, summary: d.summary, description: d.description,
+        start_date_time: this._local(start, " "), end_date_time: this._local(end, " "),
+      });
+      return true;
+    } catch (e) { U.toast(this, "Eintrag konnte nicht gespeichert werden"); return false; }
+  }
+  async _delete(uid, leise) {
+    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this.config.calendar, uid }); return true; }
+    catch (e) { if (!leise) U.toast(this, "Eintrag konnte nicht gelöscht werden"); return false; }
+  }
+  async _update(ev, typ, start, end, seite, ml) {
+    const d = this._eventData(typ, seite, ml);
+    const msg = { type: "calendar/event/update", entity_id: this.config.calendar, uid: ev.uid,
+      event: { summary: d.summary, description: d.description, dtstart: this._local(start, "T"), dtend: this._local(end, "T") } };
+    try { await this._hass.callWS(msg); return true; }
+    catch (e) {
+      // Rückfall: neu anlegen, dann alt löschen. Bleibt der alte stehen, sagen
+      // wir es laut statt still ein Duplikat zu hinterlassen.
+      if (!(await this._create(typ, start, end, seite, ml))) return false;
+      if (!(await this._delete(ev.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
+      return true;
+    }
+  }
+
+  // ---------- Dialoge ----------
+  _overlay(html) {
+    this._closeOv();
+    const ov = document.createElement("div");
+    ov.className = "ff-ov";
+    ov.innerHTML = `<div class="ff-modal">${html}</div>`;
+    ov.addEventListener("click", e => { if (e.target === ov) this._closeOv(); });
+    this.appendChild(ov); this._ov = ov;
+    return ov;
+  }
+  _closeOv() { if (this._ov) { this._ov.remove(); this._ov = null; } }
+
+  _mlField(start) {
+    const presets = (this.config.bottle_presets || []).map(v => `<button class="ff-chip" data-ml="${Number(v)}">${Number(v)} ml</button>`).join("");
+    return `<div class="ff-lbl">Menge</div>
+      <div class="ff-chips">${presets}</div>
+      <div class="ff-mlrow">
+        <button class="ff-step" data-d="-10">−</button>
+        <input class="ff-in ff-ml-in" type="number" inputmode="numeric" min="0" max="400" step="5" value="${Number(start) || ""}" placeholder="ml">
+        <button class="ff-step" data-d="10">＋</button>
+      </div>`;
+  }
+  _wireMl(ov) {
+    const inp = ov.querySelector(".ff-ml-in");
+    const mark = () => ov.querySelectorAll(".ff-chip").forEach(c => c.classList.toggle("ff-on", Number(c.dataset.ml) === Number(inp.value)));
+    ov.querySelectorAll(".ff-chip").forEach(c => c.addEventListener("click", () => { inp.value = c.dataset.ml; mark(); }));
+    ov.querySelectorAll(".ff-step").forEach(b => b.addEventListener("click", () => {
+      inp.value = Math.max(0, (Number(inp.value) || 0) + Number(b.dataset.d)); mark();
+    }));
+    inp.addEventListener("input", mark);
+    mark();
+    return () => Math.round(Number(inp.value) || 0);
+  }
+  // Uhrzeit auf das Datum eines Bezugstags setzen
+  _at(basis, hhmm) {
+    const [h, m] = String(hhmm || "").split(":").map(Number);
+    const d = new Date(basis); d.setHours(h || 0, m || 0, 0, 0);
+    return d;
+  }
+
+  _openBottle() {
+    const jetzt = new Date();
+    const ov = this._overlay(`
+      <div class="ff-mhead">🍼 Fläschchen${this.config.name ? ` für ${U.esc(this.config.name)}` : ""}</div>
+      ${this._mlField("")}
+      <div class="ff-lbl">Uhrzeit</div>
+      <input class="ff-in ff-zeit" type="time" value="${this._hm(jetzt)}">
+      <div class="ff-foot"><button class="ff-btn ff-cancel">Abbrechen</button><button class="ff-btn ff-ok">Eintragen</button></div>`);
+    const ml = this._wireMl(ov);
+    ov.querySelector(".ff-cancel").addEventListener("click", () => this._closeOv());
+    ov.querySelector(".ff-ok").addEventListener("click", async () => {
+      const menge = ml();
+      if (!menge) { U.toast(this, "Bitte eine Menge angeben"); return; }
+      let start = this._at(jetzt, ov.querySelector(".ff-zeit").value);
+      // Eine Uhrzeit nach „jetzt" meint gestern Abend — nachts trägt man nach.
+      if (start - jetzt > 5 * 60000) start.setDate(start.getDate() - 1);
+      const end = new Date(start.getTime() + 60000);
+      this._closeOv();
+      if (await this._create("flasche", start, end, "", menge)) this._load();
+    });
+  }
+
+  // Vergessen zu starten: Stillen mit Beginn/Ende von Hand eintragen.
+  _openNachtrag() {
+    const jetzt = new Date();
+    const evs = (this._events || []).filter(x => x.typ === "stillen");
+    const letzteEnde = evs.length ? Math.max(...evs.map(x => +x.end)) : 0;
+    let tag = "heute", seite = this._seite() || "links";
+    const vorschlagBis = this._hm(jetzt), vorschlagVon = this._hm(new Date(jetzt.getTime() - 15 * 60000));
+    const ov = this._overlay(`
+      <div class="ff-mhead">Stillen nachtragen${this.config.name ? ` für ${U.esc(this.config.name)}` : ""}</div>
+      <div class="ff-lbl">Tag</div>
+      <div class="ff-seg ff-seg-edit ff-seg-tag"><button data-t="heute">Heute</button><button data-t="gestern">Gestern</button></div>
+      <div class="ff-zeiten">
+        <label><span class="ff-lbl">Beginn</span><input class="ff-in ff-von" type="time" value="${vorschlagVon}"></label>
+        <label><span class="ff-lbl">Ende</span><input class="ff-in ff-bis" type="time" value="${vorschlagBis}"></label>
+      </div>
+      <div class="ff-lbl">Seite</div>
+      <div class="ff-seg ff-seg-edit ff-seg-seite"><button data-s="links">Links</button><button data-s="rechts">Rechts</button></div>
+      <div class="ff-foot"><span class="ff-flex"></span><button class="ff-btn ff-cancel">Abbrechen</button><button class="ff-btn ff-ok">Eintragen</button></div>`);
+    const mark = () => {
+      ov.querySelectorAll(".ff-seg-tag button").forEach(b => b.classList.toggle("ff-on", b.dataset.t === tag));
+      ov.querySelectorAll(".ff-seg-seite button").forEach(b => b.classList.toggle("ff-on", b.dataset.s === seite));
+    };
+    ov.querySelectorAll(".ff-seg-tag button").forEach(b => b.addEventListener("click", () => { tag = b.dataset.t; mark(); }));
+    ov.querySelectorAll(".ff-seg-seite button").forEach(b => b.addEventListener("click", () => { seite = b.dataset.s; mark(); }));
+    mark();
+    ov.querySelector(".ff-cancel").addEventListener("click", () => this._closeOv());
+    ov.querySelector(".ff-ok").addEventListener("click", async () => {
+      const basis = new Date(jetzt); if (tag === "gestern") basis.setDate(basis.getDate() - 1);
+      const start = this._at(basis, ov.querySelector(".ff-von").value);
+      const end = this._at(basis, ov.querySelector(".ff-bis").value);
+      // Über Mitternacht: ein Ende vor dem Beginn liegt am Folgetag.
+      if (end <= start) end.setDate(end.getDate() + 1);
+      if (start - jetzt > 5 * 60000) { U.toast(this, "Der Beginn liegt in der Zukunft – Tag prüfen"); return; }
+      if (end - start > 3 * 3600000) { U.toast(this, "Länger als 3 Stunden – Zeiten prüfen"); return; }
+      if (end - jetzt > 5 * 60000) end.setTime(Math.max(start.getTime() + 60000, jetzt.getTime()));
+      this._closeOv();
+      if (!(await this._create("stillen", start, end, seite, 0))) return;
+      // Ist das die jüngste Mahlzeit, gilt für das nächste Mal die andere Seite.
+      if (this.config.side && +end >= letzteEnde)
+        this._hass.callService("input_select", "select_option", { entity_id: this.config.side, option: seite === "links" ? "rechts" : "links" });
+      this._load();
+    });
+  }
+
+  _openEdit(e) {
+    const flasche = e.typ === "flasche";
+    const ov = this._overlay(`
+      <div class="ff-mhead">${flasche ? "🍼 Fläschchen" : "Stillen"} bearbeiten</div>
+      ${flasche ? `
+        ${this._mlField(e.ml)}
+        <div class="ff-lbl">Uhrzeit</div>
+        <input class="ff-in ff-zeit" type="time" value="${this._hm(e.start)}">`
+      : `
+        <div class="ff-zeiten">
+          <label><span class="ff-lbl">Beginn</span><input class="ff-in ff-von" type="time" value="${this._hm(e.start)}"></label>
+          <label><span class="ff-lbl">Ende</span><input class="ff-in ff-bis" type="time" value="${this._hm(e.end)}"></label>
+        </div>
+        <div class="ff-lbl">Seite</div>
+        <div class="ff-seg ff-seg-edit"><button data-s="links">Links</button><button data-s="rechts">Rechts</button></div>`}
+      <div class="ff-foot">
+        <button class="ff-btn ff-del">Löschen</button>
+        <span class="ff-flex"></span>
+        <button class="ff-btn ff-cancel">Abbrechen</button><button class="ff-btn ff-ok">Speichern</button>
+      </div>`);
+    let seite = e.seite || "links";
+    const mark = () => ov.querySelectorAll(".ff-seg-edit button").forEach(b => b.classList.toggle("ff-on", b.dataset.s === seite));
+    ov.querySelectorAll(".ff-seg-edit button").forEach(b => b.addEventListener("click", () => { seite = b.dataset.s; mark(); }));
+    mark();
+    const ml = flasche ? this._wireMl(ov) : null;
+    ov.querySelector(".ff-cancel").addEventListener("click", () => this._closeOv());
+    ov.querySelector(".ff-del").addEventListener("click", async () => {
+      if (!window.confirm("Diesen Eintrag löschen?")) return;
+      this._closeOv();
+      if (await this._delete(e.uid)) this._load();
+    });
+    ov.querySelector(".ff-ok").addEventListener("click", async () => {
+      let start, end;
+      if (flasche) {
+        if (!ml()) { U.toast(this, "Bitte eine Menge angeben"); return; }
+        start = this._at(e.start, ov.querySelector(".ff-zeit").value);
+        end = new Date(start.getTime() + 60000);
+      } else {
+        start = this._at(e.start, ov.querySelector(".ff-von").value);
+        end = this._at(e.start, ov.querySelector(".ff-bis").value);
+        // Über Mitternacht: ein Ende vor dem Beginn liegt am Folgetag.
+        if (end <= start) end.setDate(end.getDate() + 1);
+      }
+      this._closeOv();
+      if (await this._update(e, e.typ, start, end, seite, flasche ? ml() : 0)) this._load();
+    });
+  }
+
+  _styles() {
+    return `<style>
+      .ff-card{padding:16px 16px 12px;--ff-a:var(--ff-akzent,var(--fp-head,var(--primary-color)));}
+      .ff-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;}
+      .ff-name{display:flex;align-items:center;gap:9px;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
+      .ff-dot{width:12px;height:12px;border-radius:50%;background:var(--ff-a);flex:none;}
+      .ff-seite{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
+      .ff-seite-lbl{font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--secondary-text-color);opacity:.75;}
+      .ff-seg{display:inline-flex;background:var(--secondary-background-color);border-radius:10px;padding:3px;gap:2px;}
+      .ff-seg button{border:none;background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;
+        padding:7px 13px;border-radius:8px;cursor:pointer;min-width:62px;}
+      .ff-seg button.ff-on{background:var(--card-background-color,#fff);color:var(--ff-a);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+
+      .ff-actions{display:flex;gap:10px;}
+      .ff-main{flex:1 1 auto;min-height:56px;border:none;border-radius:14px;cursor:pointer;font-size:1.05rem;font-weight:700;
+        display:flex;align-items:center;justify-content:center;gap:12px;padding:0 16px;
+        background:rgba(var(--fp-accent-rgb,79,195,247),.14);color:var(--ff-a);transition:background .2s,color .2s;}
+      .ff-main.ff-run{background:var(--ff-a);color:#fff;}
+      .ff-main-uhr{font-variant-numeric:tabular-nums;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
+      .ff-nach{padding:0 12px !important;font-size:.88rem !important;}
+      .ff-bottle{flex:0 0 auto;min-height:56px;border:1px solid var(--divider-color);border-radius:14px;cursor:pointer;
+        background:var(--card-background-color,#fff);color:var(--primary-text-color);font-size:.95rem;font-weight:600;padding:0 16px;}
+      .ff-since{font-size:.82rem;color:var(--secondary-text-color);margin:10px 2px 4px;min-height:1.2em;}
+
+      .ff-day{margin-top:14px;}
+      .ff-dayhead{font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--secondary-text-color);
+        opacity:.8;margin:0 2px 6px;}
+      .ff-tab{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums;}
+      .ff-tab th{font-size:.7rem;font-weight:600;color:var(--secondary-text-color);text-align:left;padding:4px 6px;
+        border-bottom:1px solid var(--divider-color);}
+      .ff-tab td{padding:9px 6px;border-bottom:1px solid var(--divider-color);}
+      .ff-tab tbody tr[data-uid]{cursor:pointer;}
+      .ff-tab tbody tr[data-uid]:active{background:var(--secondary-background-color);}
+      .ff-tab th:last-child,.ff-tab td:last-child{text-align:right;}
+      .ff-leer{color:var(--secondary-text-color);opacity:.5;}
+      .ff-ml{font-weight:600;}
+      .ff-r-flasche td:first-child{color:var(--ff-a);font-weight:600;}
+      .ff-auto{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:.62rem;font-weight:700;
+        letter-spacing:.04em;text-transform:uppercase;background:rgba(217,154,11,.18);color:#8a6100;vertical-align:1px;}
+      .ff-nichts td{color:var(--secondary-text-color);opacity:.7;font-size:.82rem;text-align:left !important;}
+      .ff-tab tfoot td{border-bottom:none;font-weight:700;font-size:.82rem;color:var(--secondary-text-color);padding-top:8px;}
+
+      .ff-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
+      .ff-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:18px;padding:18px;
+        width:100%;max-width:380px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
+      .ff-mhead{font-size:1.1rem;font-weight:700;margin-bottom:12px;}
+      .ff-lbl{display:block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+        color:var(--secondary-text-color);margin:12px 0 6px;}
+      .ff-chips{display:flex;gap:6px;flex-wrap:wrap;}
+      .ff-chip{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:10px;padding:10px 6px;
+        background:var(--secondary-background-color);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
+      .ff-chip.ff-on{background:var(--ff-a);color:#fff;border-color:transparent;}
+      .ff-mlrow{display:flex;gap:8px;margin-top:8px;}
+      .ff-step{width:48px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);
+        color:var(--primary-text-color);font-size:1.2rem;cursor:pointer;}
+      .ff-in{flex:1;width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
+        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .ff-zeiten{display:flex;gap:10px;} .ff-zeiten label{flex:1;}
+      .ff-seg-edit{display:flex;} .ff-seg-edit button{flex:1;}
+      .ff-foot{display:flex;gap:8px;margin-top:18px;align-items:center;}
+      .ff-flex{flex:1;}
+      .ff-btn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;
+        background:var(--secondary-background-color);color:var(--primary-text-color);}
+      .ff-ok{background:var(--ff-a);color:#fff;}
+      .ff-del{background:transparent;color:var(--error-color,#c0392b);padding-left:4px;padding-right:4px;}
+    </style>`;
+  }
+  getCardSize() { return 8; }
+}
+if (!customElements.get("fp-feeding-card")) {
+  customElements.define("fp-feeding-card", FpFeedingCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "fp-feeding-card", name: "FP Feeding Card", description: "Stillprotokoll je Kind: Start/Stopp, Seite, Fläschchen in ml, Heute/Gestern mit Summen" });
 }
 })();
