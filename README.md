@@ -31,6 +31,7 @@ Neun eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - `custom:fp-cookbook-card`
 - `custom:dobby-clock-card`
 - `custom:fp-feeding-card`
+- `custom:fp-weight-card`
 
 ### Beispiel: meal-grid-card
 
@@ -228,6 +229,19 @@ bottle_presets: [30, 60, 90, 120]          # ml-Schnellwahl im Fläschchen-Dialo
 ```
 
 Tabelle Stillbeginn – Stillende – Stilldauer – Fläschchen für heute und gestern, mit Tagessummen. Der Knopf schaltet nur den Schalter; eine Automation schreibt beim Ausschalten den Kalendertermin und schaltet die Seite weiter. Dadurch funktioniert Starten und Stoppen per Sprachassistent genauso. Fläschchen schreibt die Karte direkt als eigene Zeile (`Fläschchen N ml`).
+
+### Beispiel: fp-weight-card
+
+```yaml
+type: custom:fp-weight-card
+title: Gewicht
+calendar: calendar.gewicht_zwillinge     # Local Calendar, ein Ganztagstermin pro Messung
+kids:
+  - { key: finn,  name: Finn,  color: "#4A7A3A" }
+  - { key: oskar, name: Oskar, color: "#7A4A78" }
+```
+
+Gewichtsverlauf mehrerer Kinder auf einer gemeinsamen Zeitachse. „＋ Eintragen“ öffnet einen Dialog mit Kind, Datum und Gewicht (Gramm oder Kilo). Ein Tipp auf einen Punkt öffnet Bearbeiten oder Löschen. Pro Kind und Tag wird höchstens ein Wert gespeichert.
 
 Die To-do-Liste `todo.kochbuch` muss vorab über die Integration **Local To-do** angelegt sein. Jedes Gericht wird als ein Listeneintrag gespeichert (Name = Titel, Rezeptdaten als JSON in der Beschreibung). KI-Funktionen benötigen eine eingerichtete `ai_task`-Entity (z. B. Google Generative AI). Am besten als **Panel-View** einbinden.
 

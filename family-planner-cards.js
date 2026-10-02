@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.4.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card */
+/* Family Planner custom cards v2.4.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -3840,5 +3840,317 @@ if (!customElements.get("fp-feeding-card")) {
   customElements.define("fp-feeding-card", FpFeedingCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "fp-feeding-card", name: "FP Feeding Card", description: "Stillprotokoll je Kind: Start/Stopp, Seite, Fläschchen in ml, Heute/Gestern mit Summen" });
+}
+})();
+
+/* ===== fp-weight-card v2 (Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
+// Ein Eintrag = ein Ganztagstermin im Kalender: Titel "Finn 3450 g",
+// Beschreibung {"typ":"gewicht","kind":"finn","g":3450}. Pro Kind und Tag gibt
+// es höchstens einen Wert — wer denselben Tag nochmal einträgt, korrigiert ihn.
+(() => {
+const U = window.__fpUtils;
+class FpWeightCard extends HTMLElement {
+  setConfig(config) {
+    if (!config || !config.calendar) throw new Error("fp-weight-card braucht calendar");
+    this.config = Object.assign({
+      title: "Gewicht",
+      kids: [{ key: "finn", name: "Finn", color: "#4A7A3A" }, { key: "oskar", name: "Oskar", color: "#7A4A78" }],
+      height: 230,
+    }, config);
+    this._built = false; this._data = null; this._sig = "";
+  }
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._built) { this._build(); this._load(); }
+  }
+  connectedCallback() {
+    if (!this._timer) this._timer = setInterval(() => this._load(), 5 * 60000);
+    if (!this._ro && window.ResizeObserver) {
+      this._ro = new ResizeObserver(() => { const w = this._chartW(); if (w && w !== this._lastW) this._paint(true); });
+      this._ro.observe(this);
+    }
+  }
+  disconnectedCallback() {
+    clearInterval(this._timer); this._timer = null;
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+  }
+
+  // ---------- Hilfen ----------
+  _p(n) { return String(n).padStart(2, "0"); }
+  _iso(d) { return `${d.getFullYear()}-${this._p(d.getMonth() + 1)}-${this._p(d.getDate())}`; }
+  _dm(d) { return `${d.getDate()}.${d.getMonth() + 1}.`; }
+  _dmy(d) { return `${d.getDate()}.${d.getMonth() + 1}.${String(d.getFullYear()).slice(2)}`; }
+  _day(s) { const [y, m, d] = String(s).slice(0, 10).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1, 12); }
+  _kg(g) { return (g / 1000).toLocaleString("de-AT", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + " kg"; }
+  _kid(key) { return this.config.kids.find(k => k.key === key) || { key, name: key, color: "var(--primary-color)" }; }
+  _chartW() { const el = this.querySelector(".fw-chart"); return el ? Math.round(el.clientWidth) : 0; }
+  // Eingabe in Gramm oder Kilo: "3450", "3,45", "3.45 kg" → 3450
+  _gramm(v) {
+    const s = String(v || "").trim().toLowerCase().replace(/\s*(kg|g)$/, "").replace(",", ".");
+    const n = Number(s);
+    if (!isFinite(n) || n <= 0) return 0;
+    return Math.round(n < 30 ? n * 1000 : n);
+  }
+
+  _parse(ev) {
+    let meta = {};
+    try { meta = JSON.parse(ev.description || "{}") || {}; } catch (x) { meta = {}; }
+    const sum = String(ev.summary || "");
+    const kidByName = this.config.kids.find(k => sum.toLowerCase().startsWith(k.name.toLowerCase()));
+    const kind = meta.kind || (kidByName ? kidByName.key : "");
+    let g = Number(meta.g) || 0;
+    if (!g) { const m = sum.match(/([\d.,]+)\s*(kg|g)/i); if (m) g = this._gramm(m[1] + m[2]); }
+    const start = (ev.start && (ev.start.date || ev.start.dateTime)) || ev.start;
+    return { uid: ev.uid, kind, g, date: this._day(start) };
+  }
+
+  async _load() {
+    if (!this._hass) return;
+    const bis = new Date(); bis.setDate(bis.getDate() + 2);
+    try {
+      const s = encodeURIComponent(new Date(2020, 0, 1).toISOString()), e = encodeURIComponent(bis.toISOString());
+      const evts = await this._hass.callApi("GET", `calendars/${this.config.calendar}?start=${s}&end=${e}`);
+      this._data = (Array.isArray(evts) ? evts : []).map(x => this._parse(x)).filter(x => x.kind && x.g > 0 && !isNaN(x.date));
+    } catch (err) {
+      if (this._loadedOnce) U.toast(this, "Gewichte konnten nicht geladen werden");
+      this._data = this._data || [];
+    }
+    this._loadedOnce = true;
+    this._paint();
+  }
+
+  // ---------- Aufbau ----------
+  _build() {
+    this._built = true;
+    this.innerHTML = `
+      <ha-card class="fw-card">
+        <div class="fw-head">
+          <div class="fw-title">${U.esc(this.config.title)}</div>
+          <button class="fw-add">＋ Eintragen</button>
+        </div>
+        <div class="fw-sum"></div>
+        <div class="fw-chart"></div>
+      </ha-card>${this._styles()}`;
+    this.querySelector(".fw-add").addEventListener("click", () => this._openDialog(null));
+    this.querySelector(".fw-chart").addEventListener("click", ev => {
+      const hit = ev.target.closest("[data-uid]");
+      if (!hit) return;
+      const e = (this._data || []).find(x => x.uid === hit.getAttribute("data-uid"));
+      if (e) this._openDialog(e);
+    });
+  }
+
+  _paint(force) {
+    if (!this._built || !this._data) return;
+    const sig = JSON.stringify(this._data.map(e => [e.uid, e.kind, e.g, +e.date]));
+    if (!force && sig === this._sig && this._lastW === this._chartW()) return;
+    this._sig = sig;
+    this._paintSummary();
+    this._paintChart();
+  }
+
+  _reihen() {
+    return this.config.kids.map(k => ({ kid: k, pts: this._data.filter(e => e.kind === k.key).sort((a, b) => a.date - b.date) }));
+  }
+
+  _paintSummary() {
+    const el = this.querySelector(".fw-sum");
+    el.innerHTML = this._reihen().map(({ kid, pts }) => {
+      if (!pts.length) return `<div class="fw-chip"><span class="fw-dot" style="background:${U.esc(kid.color)}"></span>${U.esc(kid.name)} <span class="fw-muted">noch kein Wert</span></div>`;
+      const last = pts[pts.length - 1], prev = pts.length > 1 ? pts[pts.length - 2] : null;
+      let delta = "";
+      if (prev) {
+        const d = last.g - prev.g, tage = Math.max(1, Math.round((last.date - prev.date) / 86400000));
+        delta = `<span class="fw-delta ${d >= 0 ? "fw-up" : "fw-down"}">${d >= 0 ? "+" : "−"}${Math.abs(d)} g</span><span class="fw-muted"> in ${tage} ${tage === 1 ? "Tag" : "Tagen"}</span>`;
+      }
+      return `<div class="fw-chip"><span class="fw-dot" style="background:${U.esc(kid.color)}"></span><b>${U.esc(kid.name)}</b> ${this._kg(last.g)} <span class="fw-muted">(${this._dm(last.date)})</span> ${delta}</div>`;
+    }).join("");
+  }
+
+  _paintChart() {
+    const box = this.querySelector(".fw-chart");
+    const W = this._chartW() || 600, H = Number(this.config.height) || 230;
+    this._lastW = W;
+    const reihen = this._reihen(), alle = reihen.flatMap(r => r.pts);
+    if (!alle.length) {
+      box.innerHTML = `<div class="fw-empty">Noch kein Gewicht eingetragen.<br>Tipp auf „＋ Eintragen“ — zum Beispiel das Geburtsgewicht.</div>`;
+      return;
+    }
+    const L = 52, R = 14, T = 12, B = 28;
+    // Zeitachse: erster Eintrag bis heute; ein einzelner Tag bekommt Luft links und rechts.
+    let t0 = Math.min(...alle.map(e => +e.date)), t1 = Math.max(Date.now(), ...alle.map(e => +e.date));
+    if (t1 - t0 < 4 * 86400000) { const mid = (t0 + t1) / 2; t0 = mid - 3 * 86400000; t1 = mid + 3 * 86400000; }
+    // Gewichtsachse auf „runde" Schritte, damit die Beschriftung lesbar bleibt.
+    let g0 = Math.min(...alle.map(e => e.g)), g1 = Math.max(...alle.map(e => e.g));
+    const span = Math.max(g1 - g0, 200);
+    const step = [50, 100, 200, 250, 500, 1000, 2000].find(s => span / s <= 5) || 2000;
+    g0 = Math.floor((g0 - span * 0.08) / step) * step; g1 = Math.ceil((g1 + span * 0.08) / step) * step;
+    const x = t => L + (t - t0) / (t1 - t0) * (W - L - R);
+    const y = g => T + (1 - (g - g0) / (g1 - g0)) * (H - T - B);
+
+    let grid = "";
+    for (let g = g0; g <= g1 + 0.5; g += step) {
+      grid += `<line x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}" class="fw-grid"/>` +
+        `<text x="${L - 6}" y="${y(g) + 4}" class="fw-ylab">${(g / 1000).toLocaleString("de-AT", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</text>`;
+    }
+    // Datumsmarken: etwa alle 90 px eine, auf ganze Tage gerundet.
+    const n = Math.max(2, Math.floor((W - L - R) / 90)), tage = (t1 - t0) / 86400000;
+    const dStep = Math.max(1, Math.ceil(tage / n));
+    let xl = "";
+    const start = new Date(t0); start.setHours(12, 0, 0, 0);
+    for (let d = new Date(start); +d <= t1; d.setDate(d.getDate() + dStep)) {
+      xl += `<text x="${x(+d)}" y="${H - 8}" class="fw-xlab">${this._dm(d)}</text>`;
+    }
+    const heute = x(Date.now());
+    let linien = "", punkte = "";
+    reihen.forEach(({ kid, pts }) => {
+      if (!pts.length) return;
+      const c = U.esc(kid.color);
+      if (pts.length > 1) linien += `<polyline points="${pts.map(p => `${x(+p.date)},${y(p.g)}`).join(" ")}" fill="none" stroke="${c}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+      pts.forEach(p => {
+        const tip = `${kid.name}: ${this._kg(p.g)} am ${this._dmy(p.date)}`;
+        punkte += `<g data-uid="${U.esc(p.uid)}" class="fw-pt"><title>${U.esc(tip)}</title>` +
+          `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="14" fill="transparent"/>` +
+          `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="4.5" fill="${c}" stroke="var(--card-background-color,#fff)" stroke-width="2"/></g>`;
+      });
+    });
+    box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gewichtsverlauf">
+      ${grid}<text x="6" y="${T + 4}" class="fw-ylab fw-unit" text-anchor="start">kg</text>
+      <line x1="${heute}" x2="${heute}" y1="${T}" y2="${H - B}" class="fw-today"/>
+      ${xl}${linien}${punkte}</svg>`;
+  }
+
+  // ---------- Schreiben ----------
+  _ev(kind, g) {
+    const k = this._kid(kind);
+    return { summary: `${k.name} ${g} g`, description: JSON.stringify({ typ: "gewicht", kind, g }) };
+  }
+  async _create(kind, date, g) {
+    const d = this._ev(kind, g), nach = new Date(date); nach.setDate(nach.getDate() + 1);
+    try {
+      await this._hass.callService("calendar", "create_event", {
+        entity_id: this.config.calendar, summary: d.summary, description: d.description,
+        start_date: this._iso(date), end_date: this._iso(nach),
+      });
+      return true;
+    } catch (e) { U.toast(this, "Gewicht konnte nicht gespeichert werden"); return false; }
+  }
+  async _delete(uid, leise) {
+    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this.config.calendar, uid }); return true; }
+    catch (e) { if (!leise) U.toast(this, "Eintrag konnte nicht gelöscht werden"); return false; }
+  }
+  async _update(alt, kind, date, g) {
+    const d = this._ev(kind, g), nach = new Date(date); nach.setDate(nach.getDate() + 1);
+    try {
+      await this._hass.callWS({ type: "calendar/event/update", entity_id: this.config.calendar, uid: alt.uid,
+        event: { summary: d.summary, description: d.description, dtstart: this._iso(date), dtend: this._iso(nach) } });
+      return true;
+    } catch (e) {
+      // Rückfall wie im Stillprotokoll: neu anlegen, dann alt löschen — und laut sagen, falls der alte bleibt.
+      if (!(await this._create(kind, date, g))) return false;
+      if (!(await this._delete(alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
+      return true;
+    }
+  }
+
+  // ---------- Dialog ----------
+  _closeOv() { if (this._ov) { this._ov.remove(); this._ov = null; } }
+  _openDialog(e) {
+    this._closeOv();
+    const kids = this.config.kids;
+    let kind = e ? e.kind : kids[0].key;
+    const ov = document.createElement("div");
+    ov.className = "fw-ov";
+    ov.innerHTML = `<div class="fw-modal">
+      <div class="fw-mhead">${e ? "Gewicht bearbeiten" : "Gewicht eintragen"}</div>
+      <span class="fw-lbl">Kind</span>
+      <div class="fw-seg">${kids.map(k => `<button data-k="${U.esc(k.key)}"><span class="fw-dot" style="background:${U.esc(k.color)}"></span>${U.esc(k.name)}</button>`).join("")}</div>
+      <div class="fw-row">
+        <label><span class="fw-lbl">Datum</span><input class="fw-in fw-datum" type="date" value="${this._iso(e ? e.date : new Date())}" max="${this._iso(new Date())}"></label>
+        <label><span class="fw-lbl">Gewicht (g)</span><input class="fw-in fw-g" type="text" inputmode="decimal" placeholder="z. B. 3450" value="${e ? e.g : ""}"></label>
+      </div>
+      <div class="fw-hint">Gramm oder Kilo — „3450“ und „3,45“ ergeben dasselbe.</div>
+      <div class="fw-foot">
+        ${e ? `<button class="fw-btn fw-del">Löschen</button>` : ""}
+        <span class="fw-flex"></span>
+        <button class="fw-btn fw-cancel">Abbrechen</button><button class="fw-btn fw-ok">Speichern</button>
+      </div></div>`;
+    ov.addEventListener("click", ev => { if (ev.target === ov) this._closeOv(); });
+    this.appendChild(ov); this._ov = ov;
+    const mark = () => ov.querySelectorAll(".fw-seg button").forEach(b => b.classList.toggle("fw-on", b.dataset.k === kind));
+    ov.querySelectorAll(".fw-seg button").forEach(b => b.addEventListener("click", () => { kind = b.dataset.k; mark(); }));
+    mark();
+    if (!e) setTimeout(() => ov.querySelector(".fw-g").focus(), 50);
+    ov.querySelector(".fw-cancel").addEventListener("click", () => this._closeOv());
+    if (e) ov.querySelector(".fw-del").addEventListener("click", async () => {
+      if (!window.confirm(`${this._kid(e.kind).name}: ${this._kg(e.g)} vom ${this._dmy(e.date)} löschen?`)) return;
+      this._closeOv();
+      if (await this._delete(e.uid)) this._load();
+    });
+    ov.querySelector(".fw-ok").addEventListener("click", async () => {
+      const g = this._gramm(ov.querySelector(".fw-g").value);
+      const ds = ov.querySelector(".fw-datum").value;
+      if (!ds) { U.toast(this, "Bitte ein Datum wählen"); return; }
+      if (g < 500 || g > 30000) { U.toast(this, "Das Gewicht sieht nicht richtig aus – bitte prüfen"); return; }
+      const date = this._day(ds);
+      if (date - new Date() > 86400000) { U.toast(this, "Das Datum liegt in der Zukunft"); return; }
+      // Gleiches Kind am gleichen Tag gibt es nur einmal: dann wird korrigiert, nicht verdoppelt.
+      const gleich = (this._data || []).find(x => x.kind === kind && this._iso(x.date) === ds && (!e || x.uid !== e.uid));
+      this._closeOv();
+      let ok;
+      if (e) ok = await this._update(e, kind, date, g);
+      else if (gleich) { ok = await this._update(gleich, kind, date, g); if (ok) U.toast(this, `Wert vom ${this._dmy(date)} ersetzt`); }
+      else ok = await this._create(kind, date, g);
+      if (ok) this._load();
+    });
+  }
+
+  _styles() {
+    return `<style>
+      .fw-card{padding:16px 16px 10px;}
+      .fw-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+      .fw-title{font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
+      .fw-add{border:none;border-radius:12px;padding:10px 16px;font-size:.95rem;font-weight:700;cursor:pointer;
+        background:rgba(var(--fp-accent-rgb,79,195,247),.14);color:var(--fp-head,var(--primary-color));}
+      .fw-sum{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.9rem;margin:0 2px 8px;font-variant-numeric:tabular-nums;}
+      .fw-chip{display:flex;align-items:center;gap:6px;}
+      .fw-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none;}
+      .fw-muted{color:var(--secondary-text-color);font-size:.82rem;}
+      .fw-delta{font-weight:700;font-size:.85rem;} .fw-up{color:#3c7a3c;} .fw-down{color:var(--error-color,#c0392b);}
+      .fw-chart{width:100%;min-height:60px;}
+      .fw-chart svg{display:block;overflow:visible;}
+      .fw-grid{stroke:var(--divider-color);stroke-width:1;}
+      .fw-today{stroke:var(--secondary-text-color);stroke-width:1;stroke-dasharray:3 4;opacity:.5;}
+      .fw-ylab{font-size:11px;fill:var(--secondary-text-color);text-anchor:end;font-variant-numeric:tabular-nums;}
+      .fw-unit{font-weight:700;}
+      .fw-xlab{font-size:11px;fill:var(--secondary-text-color);text-anchor:middle;}
+      .fw-pt{cursor:pointer;}
+      .fw-empty{padding:26px 8px;text-align:center;color:var(--secondary-text-color);font-size:.9rem;line-height:1.5;}
+      .fw-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
+      .fw-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:18px;padding:18px;
+        width:100%;max-width:400px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
+      .fw-mhead{font-size:1.1rem;font-weight:700;margin-bottom:6px;}
+      .fw-lbl{display:block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--secondary-text-color);margin:12px 0 6px;}
+      .fw-seg{display:flex;background:var(--secondary-background-color);border-radius:10px;padding:3px;gap:2px;}
+      .fw-seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:none;background:transparent;
+        color:var(--secondary-text-color);font-size:.95rem;font-weight:600;padding:9px 12px;border-radius:8px;cursor:pointer;}
+      .fw-seg button.fw-on{background:var(--card-background-color,#fff);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+      .fw-row{display:flex;gap:10px;} .fw-row label{flex:1;min-width:0;}
+      .fw-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
+        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .fw-hint{font-size:.78rem;color:var(--secondary-text-color);margin-top:6px;}
+      .fw-foot{display:flex;gap:8px;margin-top:18px;align-items:center;} .fw-flex{flex:1;}
+      .fw-btn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;
+        background:var(--secondary-background-color);color:var(--primary-text-color);}
+      .fw-ok{background:var(--fp-head,var(--primary-color));color:#fff;}
+      .fw-del{background:transparent;color:var(--error-color,#c0392b);padding-left:4px;padding-right:4px;}
+    </style>`;
+  }
+  getCardSize() { return 6; }
+}
+if (!customElements.get("fp-weight-card")) {
+  customElements.define("fp-weight-card", FpWeightCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "fp-weight-card", name: "FP Weight Card", description: "Gewichtsverlauf mehrerer Kinder auf einer Zeitachse" });
 }
 })();
