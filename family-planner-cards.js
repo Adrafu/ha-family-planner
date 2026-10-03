@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.5.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card */
+/* Family Planner custom cards v2.5.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -3360,7 +3360,7 @@ if (!customElements.get("dobby-clock-card")) {
   window.customCards.push({ type: "dobby-clock-card", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card v6 (Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card v7 (Mahlzeit = alles bis meal_gap_minutes nach ihrem Beginn, nicht nach dem vorigen Eintrag; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -3377,7 +3377,7 @@ class FpFeedingCard extends HTMLElement {
       bottle_presets: [30, 60, 90, 120],
       diaper_calendar: "",  // optional für den Bericht: Kalender der fp-diaper-card
       reminder_hours: 3,    // wie die Automation „Erinnerung nach 3 Stunden"
-      meal_gap_minutes: 45, // beginnt ein Eintrag kürzer nach dem vorigen, ist es dieselbe Mahlzeit
+      meal_gap_minutes: 45, // beginnt ein Eintrag kürzer nach dem Beginn der Mahlzeit, gehört er noch dazu
       weight_calendar: "",  // optional für den Bericht: Kalender der fp-weight-card
       weight_key: "",       // und der Schlüssel dieses Kinds dort (kids[].key)
     }, config);
@@ -3463,14 +3463,14 @@ class FpFeedingCard extends HTMLElement {
   }
 
   // Wie die Automation „Erinnerung nach 3 Stunden": beginnt ein Eintrag weniger als
-  // meal_gap_minutes nach dem vorigen, gehört er zur selben Mahlzeit (Fläschchen nach dem Stillen).
+  // meal_gap_minutes nach dem Beginn der Mahlzeit, gehört er noch dazu (Fläschchen nach
+  // dem Stillen). Gemessen ab dem Beginn, nicht ab dem vorigen Eintrag — sonst ketten sich
+  // häufige kleine Mahlzeiten zu einer, die nie endet.
   _mahlzeiten(evs) {
     const gap = this.config.meal_gap_minutes * 60000, out = [];
-    let prev = 0;
     evs.filter(e => e.typ !== "windel").sort((a, b) => a.start - b.start).forEach(e => {
-      if (!out.length || e.start - prev > gap) out.push({ start: e.start, evs: [] });
+      if (!out.length || e.start - out[out.length - 1].start > gap) out.push({ start: e.start, evs: [] });
       out[out.length - 1].evs.push(e);
-      prev = e.start;
     });
     return out;
   }
@@ -3758,7 +3758,7 @@ ${gew}
 <h2>Einträge</h2>
 <div class="tage">${zeilen.map(z => `<div class="tag"><h3>${datum(z.d)}</h3>${z.log.length
   ? `<table><tbody>${z.log.map(x => `<tr>${logZeile(x)}</tr>`).join("")}</tbody></table>` : "<div class='sub'>keine Einträge</div>"}</div>`).join("")}</div>
-<p class="hinweis">Mahlzeiten: Einträge, die weniger als ${this.config.meal_gap_minutes} Minuten nach dem vorigen beginnen, zählen zusammen (z. B. Fläschchen nach dem Stillen). Abstände von Beginn zu Beginn; der Durchschnitt lässt Pausen über 8 Stunden weg. Der heutige Tag ist unvollständig.</p>
+<p class="hinweis">Mahlzeiten: Einträge, die weniger als ${this.config.meal_gap_minutes} Minuten nach dem Beginn einer Mahlzeit beginnen, zählen zu ihr (z. B. Fläschchen nach dem Stillen). Abstände von Beginn zu Beginn; der Durchschnitt lässt Pausen über 8 Stunden weg. Der heutige Tag ist unvollständig.</p>
 </body></html>`;
   }
 

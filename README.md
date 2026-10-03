@@ -231,7 +231,7 @@ color: "#4A7A3A"
 auto_minutes: 60                           # Markierung für automatisch beendete Mahlzeiten
 bottle_presets: [30, 60, 90, 120]          # ml-Schnellwahl im Fläschchen-Dialog
 reminder_hours: 3                          # Balken „seit der letzten Mahlzeit" bis zu dieser Marke
-meal_gap_minutes: 45                       # kürzer nach dem vorigen Eintrag = dieselbe Mahlzeit
+meal_gap_minutes: 45                       # bis so lange nach ihrem Beginn gehört ein Eintrag zur Mahlzeit
 diaper_calendar: calendar.windeln_kind_a   # optional, nur für den Bericht (Kalender der fp-diaper-card)
 weight_calendar: calendar.gewicht_zwillinge # optional, nur für den Bericht (Kalender der fp-weight-card)
 weight_key: kind_a                         # Schlüssel dieses Kinds in der fp-weight-card
@@ -239,7 +239,7 @@ weight_key: kind_a                         # Schlüssel dieses Kinds in der fp-w
 
 Tabelle Stillbeginn – Stillende – Stilldauer – Fläschchen für heute und gestern, mit Tagessummen. Der Knopf schaltet nur den Schalter; eine Automation schreibt beim Ausschalten den Kalendertermin und schaltet die Seite weiter. Dadurch funktioniert Starten und Stoppen per Sprachassistent genauso. Fläschchen schreibt die Karte direkt als eigene Zeile (`Fläschchen N ml`).
 
-Über der Tabelle steht groß die Zeit seit **Beginn** der letzten Mahlzeit, darunter ein Balken bis `reminder_hours` (gelb kurz davor, rot danach). Einträge, die weniger als `meal_gap_minutes` nach dem vorigen beginnen, zählen zur selben Mahlzeit, etwa ein Fläschchen nach dem Stillen. „Letzte 7 Tage" klappt einen Rückblick auf, „🖨 Bericht" öffnet eine druckfertige Seite mit Übersicht, Gewichten, Windeln und allen Einträgen; „Als PDF sichern" bietet der Druckdialog an.
+Über der Tabelle steht groß die Zeit seit **Beginn** der letzten Mahlzeit, darunter ein Balken bis `reminder_hours` (gelb kurz davor, rot danach). Einträge, die weniger als `meal_gap_minutes` nach dem Beginn einer Mahlzeit beginnen, zählen noch zu ihr, etwa ein Fläschchen nach dem Stillen. Gemessen wird ab dem Beginn der Mahlzeit, nicht ab dem vorigen Eintrag, damit sich häufige kleine Mahlzeiten nicht zu einer endlosen verketten. „Letzte 7 Tage" klappt einen Rückblick auf, „🖨 Bericht" öffnet eine druckfertige Seite mit Übersicht, Gewichten, Windeln und allen Einträgen; „Als PDF sichern" bietet der Druckdialog an.
 
 ### Beispiel: fp-weight-card
 
