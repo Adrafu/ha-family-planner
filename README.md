@@ -1,6 +1,6 @@
 # Family Planner Cards
 
-Neun eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
+Zwölf eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
 - **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und KI-Vorschlag (`ai_task`; entschärft mit Küchen-/Grundform-Rotation, Saison- und Wetterbezug, liest getippten Wunsch aus). **Kochbuch-Kopplung:** „★ Ins Kochbuch" pro Zelle und „Woche füllen" hybrid (erst gewichtet aus dem Kochbuch, dann KI). `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
 - **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen. Jetzt-Linie (Outlook-Stil), hellblaues Heute-Highlight und ausgegraute vergangene Tage. Dazu eine **kompakte Mehrtagesansicht** (`initial_view: agenda`): eine Spalte je Tag, Termine als Kacheln mit farbiger Kante — gedacht als Ersatz fuer eine fremde Kalenderkarte in der Uebersicht.
@@ -11,6 +11,9 @@ Neun eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - **`fp-glance-card`** — „Today at a glance"-Banner für die Übersicht: tageszeitabhängige Begrüßung, Datum, nächster Termin (Präfix-Personen aufgelöst) und heutiges Abendessen, mit tageszeit-adaptivem Foto-/Verlaufs-Hintergrund (via `sun.sun`). Das Wetter wird als eingebettete `clock-weather-card` (echte Animationen + Vorschau) transparent auf den Banner geblendet. Klick pro Element navigiert getrennt (Datum/Termin → Kalender, Essen → Essensplan, Wetter → eigener Wetter-Tab); das More-Info-Popup der eingebetteten Karte wird unterdrückt.
 - **`fp-cookbook-card`** — Kochbuch mit Rezepten (Zutaten, Schritt-für-Schritt-Anleitung, Portionen-Slider, Sterne-Bewertung, **Zubereitungszeit**), gespeichert in einer lokalen To-do-Liste. **KI-Rezept** aus Name/Text und **KI-Vorschlag „überrasch mich"** ohne Eingabe (berücksichtigt Jahreszeit + Wetter, erzwingt Abwechslung, meidet zuletzt Vorgeschlagenes → keine Monotonie). Rezepte lassen sich **vollständig bearbeiten** (Name, Mahlzeit, Tags, Portionen, Zeiten, **Nährwerte**, Zutaten, Schritte). **Kalorien und Eiweiß je Portion** werden mitgeschätzt und in Kachel und Detailansicht angezeigt; für Altbestand gibt es einen Knopf zum Nachrechnen. Die Filter „schnell" und „proteinreich" werden aus Gesamtzeit bzw. Eiweißwert **berechnet** statt geraten. Mit `import_service` erscheint im „＋ Neu"-Dialog ein **Link-Feld**: Rezeptseiten werden aus ihrem JSON-LD ausgelesen, Videos vom Import-Dienst angeschaut. „In Plan legen" schreibt in den Essensplan-Kalender; „Zutaten → Einkauf" öffnet ein Auswahl-Popup und legt nur die angehakten (auf die Portionen skalierten) Zutaten auf die Einkaufsliste.
 - **`dobby-clock-card`** — **Schachuhr, die hochzählt.** Für Versteckspiele zu zweit: wer den Gegenstand versteckt hat, dessen Uhr läuft. Eine Wippe als Tastenpaar oben auf dem Gehäuse, die laufende Taste steht oben; darunter zwei Anzeigen. Die Rundenzeit wechselt die Einheit mit ihrer Länge (Minuten → Stunden → Tage → Wochen → Monate), darunter der Gesamtstand. Dazu eine **Bestenliste** mit den drei längsten Verstecken samt Zeitraum. Der Stand liegt in Helfern und übersteht Neustarts; die Uhr tickt nur im Browser, damit kein Sensor im Sekundentakt die Datenbank füllt.
+- **`fp-feeding-card`** — **Stillprotokoll** je Kind: Start/Stopp mit laufender Uhr, Seitenvorschlag, Fläschchen in ml, Nachtragen, Tabelle für heute und gestern mit Tagessummen. Groß die **Zeit seit der letzten Mahlzeit** mit Balken bis zur Erinnerung, aufklappbar ein **Rückblick über 7 Tage** (Mahlzeiten, Ø Abstand, Fläschchen) und ein **Bericht** der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht.
+- **`fp-weight-card`** — **Gewichtsverlauf** mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog, Punkt antippen zum Bearbeiten. Optional mit **Perzentilkurven** aus einer eigenen Datendatei, auch für Frühgeborene nach korrigiertem Alter.
+- **`fp-diaper-card`** — **Windelprotokoll** je Kind: nass, voll oder beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, heute und gestern mit Summen, Rückblick über 7 Tage.
 
 ## Installation (HACS)
 
@@ -32,6 +35,7 @@ Neun eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - `custom:dobby-clock-card`
 - `custom:fp-feeding-card`
 - `custom:fp-weight-card`
+- `custom:fp-diaper-card`
 
 ### Beispiel: meal-grid-card
 
@@ -226,9 +230,16 @@ start: input_datetime.stillen_kind_a_beginn # Beginn der laufenden Mahlzeit
 color: "#4A7A3A"
 auto_minutes: 60                           # Markierung für automatisch beendete Mahlzeiten
 bottle_presets: [30, 60, 90, 120]          # ml-Schnellwahl im Fläschchen-Dialog
+reminder_hours: 3                          # Balken „seit der letzten Mahlzeit" bis zu dieser Marke
+meal_gap_minutes: 45                       # kürzer nach dem vorigen Eintrag = dieselbe Mahlzeit
+diaper_calendar: calendar.windeln_kind_a   # optional, nur für den Bericht (Kalender der fp-diaper-card)
+weight_calendar: calendar.gewicht_zwillinge # optional, nur für den Bericht (Kalender der fp-weight-card)
+weight_key: kind_a                         # Schlüssel dieses Kinds in der fp-weight-card
 ```
 
 Tabelle Stillbeginn – Stillende – Stilldauer – Fläschchen für heute und gestern, mit Tagessummen. Der Knopf schaltet nur den Schalter; eine Automation schreibt beim Ausschalten den Kalendertermin und schaltet die Seite weiter. Dadurch funktioniert Starten und Stoppen per Sprachassistent genauso. Fläschchen schreibt die Karte direkt als eigene Zeile (`Fläschchen N ml`).
+
+Über der Tabelle steht groß die Zeit seit **Beginn** der letzten Mahlzeit, darunter ein Balken bis `reminder_hours` (gelb kurz davor, rot danach). Einträge, die weniger als `meal_gap_minutes` nach dem vorigen beginnen, zählen zur selben Mahlzeit, etwa ein Fläschchen nach dem Stillen. „Letzte 7 Tage" klappt einen Rückblick auf, „🖨 Bericht" öffnet eine druckfertige Seite mit Übersicht, Gewichten, Windeln und allen Einträgen; „Als PDF sichern" bietet der Druckdialog an.
 
 ### Beispiel: fp-weight-card
 
@@ -242,6 +253,37 @@ kids:
 ```
 
 Gewichtsverlauf mehrerer Kinder auf einer gemeinsamen Zeitachse. „＋ Eintragen“ öffnet einen Dialog mit Kind, Datum und Gewicht (Gramm oder Kilo). Ein Tipp auf einen Punkt öffnet Bearbeiten oder Löschen. Pro Kind und Tag wird höchstens ein Wert gespeichert.
+
+**Perzentilkurven (optional).** Mit `growth_data` und je Kind Geburtsdatum, Gestationsalter und Geschlecht zeichnet die Karte die Bänder P3–P97 und P10–P90 sowie P50 und zeigt neben dem letzten Wert die ungefähre Perzentile. Kinder mit gleichen Angaben (Zwillinge) teilen sich eine Kurvenschar.
+
+```yaml
+growth_data: /local/fp-growth-data.json
+kids:
+  - { key: kind_a, name: Kind A, color: "#4A7A3A", birth: "2026-01-15", ga: "34+5", sex: m }
+```
+
+Die Referenzdaten sind **nicht Teil dieses Repos**, weil sie eigenen Lizenzen unterliegen. Die JSON-Datei baut man sich aus den öffentlichen Tabellen selbst:
+
+```json
+{
+  "who":     { "m": { "w": [[Woche, L, M, S], ...], "mo": [[Monat, L, M, S], ...] }, "f": { ... } },
+  "preterm": { "m": [[Woche, P3, P10, P50, P90, P97], ...], "f": [ ... ] }
+}
+```
+
+- `who`: WHO Child Growth Standards, Gewicht nach Alter, L/M/S-Werte je Woche (0–13) und je Monat (0–60). Gilt ab dem errechneten Termin nach korrigiertem Alter.
+- `preterm` (optional): Gewicht in kg je Woche ab Beginn der Schwangerschaft, etwa aus den INTERGROWTH-21st-Standards für Frühgeborene (27–64 Wochen). Solange ein Kind in diesem Bereich liegt, gelten diese Werte, danach WHO.
+
+### Beispiel: fp-diaper-card
+
+```yaml
+type: custom:fp-diaper-card
+name: Kind A
+calendar: calendar.windeln_kind_a   # Local Calendar, ein kurzer Termin pro Windel
+color: "#4A7A3A"
+```
+
+Drei Knöpfe (nass, voll, beides) tragen sofort ein; ein Doppeltipp erzeugt keinen zweiten Eintrag. Darunter die Zeit seit der letzten Windel und dem letzten Stuhl, die Einträge von heute und gestern mit Summen (antippen zum Ändern oder Löschen) und aufklappbar die letzten 7 Tage. „Beides" zählt bei nass und bei voll mit. Einen eigenen Kalender verwenden, nicht den des Stillprotokolls, sonst zählt eine Erinnerung „seit der letzten Mahlzeit" auch Windeln mit.
 
 Die To-do-Liste `todo.kochbuch` muss vorab über die Integration **Local To-do** angelegt sein. Jedes Gericht wird als ein Listeneintrag gespeichert (Name = Titel, Rezeptdaten als JSON in der Beschreibung). KI-Funktionen benötigen eine eingerichtete `ai_task`-Entity (z. B. Google Generative AI). Am besten als **Panel-View** einbinden.
 
