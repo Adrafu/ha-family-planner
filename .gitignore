@@ -1,0 +1,10 @@
+# Dieser Projektordner ist gleichzeitig die Arbeitskopie von
+# github.com/Adrafu/ha-family-planner (öffentlich).
+# Allowlist: Git sieht NUR die Dateien, die unten freigegeben sind.
+# Alles andere (Agents, Geheimnisse, Übergaben, Release Notes, Beta) bleibt lokal.
+
+/*
+!/.gitignore
+!/README.md
+!/hacs.json
+!/family-planner-cards.js

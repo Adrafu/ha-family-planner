@@ -64,9 +64,9 @@ day_start: 6
 day_end: 23
 persons:
   - { name: Familie, color: "#E53935", calendar: calendar.familie, match: none }
-  - { name: Tobi, color: "#1E88E5", calendar: calendar.familie, prefix: "T" }
-  - { name: Verena, color: "#8E24AA", calendar: calendar.familie, prefix: "V" }
-  - { name: Finn, color: "#43A047", calendar: calendar.finn }
+  - { name: Person A, color: "#1E88E5", calendar: calendar.familie, prefix: "A" }
+  - { name: Person B, color: "#8E24AA", calendar: calendar.familie, prefix: "B" }
+  - { name: Kind A, color: "#43A047", calendar: calendar.kind_a }
 ```
 
 ### Beispiel: shopping-fav-card
@@ -93,8 +93,8 @@ default_target: todo.haushalt # Ziel bei OK ohne Auswahl
 fallback: "📋"               # Emoji für unbekannte Einträge
 targets:
   - { label: Gemeinsam, entity: todo.haushalt }
-  - { label: Tobi, entity: todo.tobi }
-  - { label: Verena, entity: todo.verena }
+  - { label: Person A, entity: todo.person_a }
+  - { label: Person B, entity: todo.person_b }
 ```
 
 Optional **Serienaufgaben**. Home Assistant reicht bei `todo.add_item` kein Wiederholungsmuster durch, deshalb legt die Karte solche Aufgaben direkt über die Todoist-Schnittstelle an — dafür braucht jedes Ziel eine `project_id` und es muss ein passender `rest_command` existieren:
@@ -107,7 +107,7 @@ repeat_options:
   - { label: "alle 6 Monate", due_string: "every! 6 months" }
 todoist_service: rest_command.todoist_add_task
 targets:
-  - { label: Tobi, entity: todo.tobi, project_id: "PROJEKT-ID" }
+  - { label: Person A, entity: todo.person_a, project_id: "PROJEKT-ID" }
 ```
 
 Zusätzlich zu den Voreinstellungen erscheint **„Eigene …"** für freie Intervalle wie „alle 2 Wochen". Das Rufzeichen in `every!` ist entscheidend: damit rechnet Todoist ab dem **Erledigungsdatum** statt ab der Fälligkeit — bei Haushaltsaufgaben fast immer das Gewollte.
@@ -139,7 +139,7 @@ due_date_period:            # optional: nur bald Fälliges zeigen
 edit_dialog: true           # optional: eigener Änderungsdialog statt des nativen
 edit_targets:               # Ziele zum Verschieben (project_id nur für Todoist)
   - { label: Allgemein, entity: todo.allgemein, project_id: "PROJEKT-ID" }
-  - { label: Tobi,      entity: todo.tobi,      project_id: "PROJEKT-ID" }
+  - { label: Person A,  entity: todo.person_a,  project_id: "PROJEKT-ID" }
 repeat_options:             # optional, nur mit project_id wirksam
   - { label: "alle 6 Monate", due_string: "every! 6 months" }
                             # „Eigene …" (freies Intervall) kommt automatisch dazu
@@ -163,9 +163,9 @@ meals_path: /familien-planer/essensplan     # Klick auf Abendessen
 weather_path: /familien-planer/wetter       # Klick aufs Wetter
 persons:
   - { name: Familie, color: "#E53935", calendar: calendar.familie, match: none }
-  - { name: Tobi, color: "#FBC02D", calendar: calendar.familie, prefix: "T" }
-  - { name: Verena, color: "#1E88E5", calendar: calendar.familie, prefix: "V" }
-  - { name: Finn, color: "#43A047", calendar: calendar.finn }
+  - { name: Person A, color: "#FBC02D", calendar: calendar.familie, prefix: "A" }
+  - { name: Person B, color: "#1E88E5", calendar: calendar.familie, prefix: "B" }
+  - { name: Kind A, color: "#43A047", calendar: calendar.kind_a }
 backgrounds:                                # optional, sonst tageszeit-Verlauf als Fallback
   morning: /local/glance/morning.jpg
   day: /local/glance/day.jpg
@@ -198,10 +198,10 @@ type: custom:dobby-clock-card
 select: input_select.dobby_versteckt_von     # Optionen: die beiden Namen + „Pause"
 since: input_datetime.dobby_letzter_wechsel  # Beginn der laufenden Runde (Datum + Zeit)
 players:
-  - name: Tobias
-    total: input_number.dobby_gesamtzeit_tobias
-  - name: Verena
-    total: input_number.dobby_gesamtzeit_verena
+  - name: Person A
+    total: input_number.dobby_gesamtzeit_person_a
+  - name: Person B
+    total: input_number.dobby_gesamtzeit_person_b
 highscore: input_text.dobby_highscore        # leer lassen blendet die Bestenliste aus
 highscore_label: Beste Verstecke
 pause_label: Pause
@@ -218,11 +218,11 @@ Dazu eine Automation am `input_select`, die beim Wechsel die verstrichene Zeit d
 
 ```yaml
 type: custom:fp-feeding-card
-name: Finn
-calendar: calendar.stillprotokoll_finn     # Local Calendar, ein Termin pro Mahlzeit
-switch: input_boolean.stillen_finn         # an = wird gerade gestillt
-side: input_select.stillen_finn_seite      # links / rechts, vorgeschlagene nächste Seite
-start: input_datetime.stillen_finn_beginn  # Beginn der laufenden Mahlzeit
+name: Kind A
+calendar: calendar.stillprotokoll_kind_a     # Local Calendar, ein Termin pro Mahlzeit
+switch: input_boolean.stillen_kind_a         # an = wird gerade gestillt
+side: input_select.stillen_kind_a_seite     # links / rechts, vorgeschlagene nächste Seite
+start: input_datetime.stillen_kind_a_beginn # Beginn der laufenden Mahlzeit
 color: "#4A7A3A"
 auto_minutes: 60                           # Markierung für automatisch beendete Mahlzeiten
 bottle_presets: [30, 60, 90, 120]          # ml-Schnellwahl im Fläschchen-Dialog
@@ -237,8 +237,8 @@ type: custom:fp-weight-card
 title: Gewicht
 calendar: calendar.gewicht_zwillinge     # Local Calendar, ein Ganztagstermin pro Messung
 kids:
-  - { key: finn,  name: Finn,  color: "#4A7A3A" }
-  - { key: oskar, name: Oskar, color: "#7A4A78" }
+  - { key: kind_a, name: Kind A, color: "#4A7A3A" }
+  - { key: kind_b, name: Kind B, color: "#7A4A78" }
 ```
 
 Gewichtsverlauf mehrerer Kinder auf einer gemeinsamen Zeitachse. „＋ Eintragen“ öffnet einen Dialog mit Kind, Datum und Gewicht (Gramm oder Kilo). Ein Tipp auf einen Punkt öffnet Bearbeiten oder Löschen. Pro Kind und Tag wird höchstens ein Wert gespeichert.

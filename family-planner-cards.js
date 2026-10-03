@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.4.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card */
+/* Family Planner custom cards v2.4.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -3063,14 +3063,14 @@ if (!customElements.get("fp-cookbook-card")) {
   window.customCards.push({ type: "fp-cookbook-card", name: "FP Cookbook Card", description: "Kochbuch mit Rezepten, KI-Generierung, in Essensplan legen, Zutaten -> Einkauf" });
 }
 
-/* ===== dobby-clock-card v8 (Bestenliste mit den drei laengsten Verstecken samt Zeitraum) ===== */
+/* ===== dobby-clock-card v9 (neutrale Vorgabe-Spieler, echte Namen gehoeren in die Dashboard-Config; Bestenliste mit den drei laengsten Verstecken samt Zeitraum) ===== */
 class DobbyClockCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
       select: "input_select.dobby_versteckt_von",
       players: [
-        { name: "Tobias", total: "input_number.dobby_gesamtzeit_tobias" },
-        { name: "Verena", total: "input_number.dobby_gesamtzeit_verena" },
+        { name: "Person A", total: "input_number.dobby_gesamtzeit_person_a" },
+        { name: "Person B", total: "input_number.dobby_gesamtzeit_person_b" },
       ],
       since: "input_datetime.dobby_letzter_wechsel",
       highscore: "input_text.dobby_highscore",   // leer lassen blendet die Bestenliste aus
@@ -3843,9 +3843,9 @@ if (!customElements.get("fp-feeding-card")) {
 }
 })();
 
-/* ===== fp-weight-card v2 (Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
-// Ein Eintrag = ein Ganztagstermin im Kalender: Titel "Finn 3450 g",
-// Beschreibung {"typ":"gewicht","kind":"finn","g":3450}. Pro Kind und Tag gibt
+/* ===== fp-weight-card v3 (neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
+// Ein Eintrag = ein Ganztagstermin im Kalender: Titel "Kind A 3450 g",
+// Beschreibung {"typ":"gewicht","kind":"kind_a","g":3450}. Pro Kind und Tag gibt
 // es höchstens einen Wert — wer denselben Tag nochmal einträgt, korrigiert ihn.
 (() => {
 const U = window.__fpUtils;
@@ -3854,7 +3854,7 @@ class FpWeightCard extends HTMLElement {
     if (!config || !config.calendar) throw new Error("fp-weight-card braucht calendar");
     this.config = Object.assign({
       title: "Gewicht",
-      kids: [{ key: "finn", name: "Finn", color: "#4A7A3A" }, { key: "oskar", name: "Oskar", color: "#7A4A78" }],
+      kids: [{ key: "kind_a", name: "Kind A", color: "#4A7A3A" }, { key: "kind_b", name: "Kind B", color: "#7A4A78" }],
       height: 230,
     }, config);
     this._built = false; this._data = null; this._sig = "";
