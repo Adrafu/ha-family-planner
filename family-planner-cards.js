@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.6.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card */
+/* Family Planner custom cards v2.6.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -3476,7 +3476,7 @@ if (!customElements.get("dobby-clock-card")) {
   window.customCards.push({ type: "dobby-clock-card", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card v8 (Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card v9 (Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -3691,7 +3691,7 @@ class FpFeedingCard extends HTMLElement {
       try { localStorage.setItem(this._wkKey, this._woche ? "1" : "0"); } catch (e) { /* nur Komfort */ }
       this._paintTable();
     });
-    this.querySelectorAll(".ff-seg button").forEach(b => b.addEventListener("click", () => {
+    this.querySelectorAll(".ff-head .ff-seg button").forEach(b => b.addEventListener("click", () => {
       this._hass.callService("input_select", "select_option", { entity_id: c.side, option: b.dataset.s });
     }));
     // Ein Klick irgendwo in der Tabelle — die Zeile weiß, welcher Eintrag sie ist.
@@ -3720,7 +3720,8 @@ class FpFeedingCard extends HTMLElement {
     main.querySelector(".ff-main-uhr").textContent = laeuft && this._beginn() ? this._uhr(Date.now() / 1000 - this._beginn()) : "";
 
     const seite = this._seite();
-    this.querySelectorAll(".ff-seg button").forEach(b => b.classList.toggle("ff-on", b.dataset.s === seite));
+    // Nur der Kartenkopf — sonst trifft es die Knöpfe im offenen Dialog (Tag, Seite) mit.
+    this.querySelectorAll(".ff-head .ff-seg button").forEach(b => b.classList.toggle("ff-on", b.dataset.s === seite));
     const lbl = this.querySelector(".ff-seite-lbl");
     if (lbl) lbl.textContent = laeuft ? "Seite" : "nächste Seite";
 
