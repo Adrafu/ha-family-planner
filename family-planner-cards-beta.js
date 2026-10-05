@@ -1318,7 +1318,7 @@ if (!customElements.get("kids-routine-card-beta")) {
 }
 })();
 
-/* ===== shopping-fav-card-beta v21 (Datumsfeld passt aufs iPhone; Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Farben ueber Theme-Variablen, Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card-beta v22 (add_bg/add_fg: eigene Farbe für den Hinzufügen-Knopf; Datumsfeld passt aufs iPhone; Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Farben ueber Theme-Variablen, Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1621,7 +1621,9 @@ class ShoppingFavCard extends HTMLElement {
     }
     if (this.config.add_button) {
       // gleiche Leiste wie „Favoriten bearbeiten" -> identische Breite und Abstand
-      body += `<div class="sf-addbar"><button class="sf-addbig">${CP(0x2795)} ${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</button></div>`;
+      // add_bg / add_fg: eigene Knopffarbe für diesen einen Knopf (sonst Theme-Akzent)
+      const abStyle = (this.config.add_bg ? `background:${this._esc(this.config.add_bg)};` : "") + (this.config.add_fg ? `color:${this._esc(this.config.add_fg)};` : "");
+      body += `<div class="sf-addbar"><button class="sf-addbig"${abStyle ? ` style="${abStyle}"` : ""}>${CP(0x2795)} ${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</button></div>`;
     }
     this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${head}${body}</ha-card>${this._styles()}`;
 
