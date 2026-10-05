@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.5.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card */
+/* Family Planner custom cards v2.6.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -115,7 +115,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card v26 (Speichern-Knopf mit Theme-Textfarbe, vorher im hellen Modus kaum lesbar; Heute als Ring statt Einfaerbung, Knopfleiste im Theme-Ton, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header fuer die Uebersicht, Leistenfarbe via --fp-bar-bg; „Zum Rezept" springt ins eigene Kochbuch, wenn das Gericht dort steht; sonst Web-Suche) ===== */
+/* ===== meal-grid-card v27 (auf schmalen Karten gedreht: Tage als Zeilen, Mahlzeiten als Spalten; Speichern-Knopf mit Theme-Textfarbe, vorher im hellen Modus kaum lesbar; Heute als Ring statt Einfaerbung, Knopfleiste im Theme-Ton, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header fuer die Uebersicht, Leistenfarbe via --fp-bar-bg; „Zum Rezept" springt ins eigene Kochbuch, wenn das Gericht dort steht; sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -140,6 +140,18 @@ class MealGridCard extends HTMLElement {
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
   }
   set hass(hass) { this._hass = hass; this._maybeFetch(); }
+  // Unter 560 px (Handy) wird das Raster gedreht: sieben Spalten wären dort zu schmal
+  // für die Gerichte. Neu zeichnen nur, wenn die Breite die Schwelle überschreitet.
+  _istSchmal() { return this.config.mode !== "compact" && this.clientWidth > 0 && this.clientWidth < 560; }
+  connectedCallback() {
+    // Als Block, sonst ist das Element inline: Breite 0 und kein ResizeObserver-Signal.
+    if (!this.style.display) this.style.display = "block";
+    if (!this._ro && window.ResizeObserver) {
+      this._ro = new ResizeObserver(() => { if (this._istSchmal() !== !!this._quer) this._render(); });
+      this._ro.observe(this);
+    }
+  }
+  disconnectedCallback() { if (this._ro) { this._ro.disconnect(); this._ro = null; } }
 
   _range() {
     const now = new Date();
@@ -533,27 +545,38 @@ class MealGridCard extends HTMLElement {
       head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
     }
 
-    let html = `<ha-card class="mg-card">${head}${(!compact && this.config.ai_suggest) ? `<div class="mg-fillrow"><button class="mg-fill">${CP(0x2728)} Woche f&uuml;llen</button><button class="mg-clear">${CP(0x1F5D1)} Woche leeren</button></div>` : ""}<div class="mg-wrap"><table class="mg"><thead><tr><th class="mg-corner"></th>`;
-    cols.forEach((d, i) => {
-      html += `<th class="${isToday(d) ? "mg-today" : ""}"><div class="mg-day">${colLabel(d, i)}</div><div class="mg-date">${d.getDate()}.${d.getMonth() + 1}.</div></th>`;
-    });
-    html += "</tr></thead><tbody>";
-    meals.forEach((m, mi) => {
+    const quer = this._quer = this._istSchmal();
+    const kopfMahlzeit = (m, cls) => {
       const ic = this.config.meal_icons ? `<div class="mg-meal-ic">${this._mealIcon(m.label)}</div>` : "";
       const tx = this.config.meal_labels ? `<div class="mg-meal-tx">${this._esc(m.label)}</div>` : "";
-      // Zeilenklasse: jede Mahlzeit darf eine eigene Feldfarbe bekommen
-      html += `<tr class="mg-r${mi}"><th class="mg-meal">${ic}${tx}</th>`;
-      cols.forEach((d, ci) => {
-        const items = cells[mi][ci].filter(o => o.summary).map(o => {
-          const em = this.config.show_emojis ? this._food(o.summary) : "";
-          return (em ? `<span class="mg-em">${em}</span>` : "") + this._esc(o.summary);
-        });
-        const inner = items.length ? `<span>${items.join("<br>")}</span>`
-          : `<span class="mg-plus">${this._esc(this.config.empty_text)}</span>`;
-        html += `<td class="mg-cell ${isToday(d) ? "mg-today" : ""}" data-mi="${mi}" data-ci="${ci}">${inner}</td>`;
+      return `<th class="${cls}">${ic}${tx}</th>`;
+    };
+    const kopfTag = (d, i, cls) => `<th class="${cls} ${isToday(d) ? "mg-today" : ""}"><div class="mg-day">${colLabel(d, i)}</div><div class="mg-date">${d.getDate()}.${d.getMonth() + 1}.</div></th>`;
+    const zelle = (mi, ci, d) => {
+      const items = cells[mi][ci].filter(o => o.summary).map(o => {
+        const em = this.config.show_emojis ? this._food(o.summary) : "";
+        return (em ? `<span class="mg-em">${em}</span>` : "") + this._esc(o.summary);
       });
-      html += "</tr>";
-    });
+      const inner = items.length ? `<span>${items.join("<br>")}</span>`
+        : `<span class="mg-plus">${this._esc(this.config.empty_text)}</span>`;
+      // mg-m<mi>: Feldfarbe je Mahlzeit, auch wenn die Mahlzeiten Spalten sind
+      return `<td class="mg-cell mg-m${mi} ${isToday(d) ? "mg-today" : ""}" data-mi="${mi}" data-ci="${ci}">${inner}</td>`;
+    };
+    let html = `<ha-card class="mg-card">${head}${(!compact && this.config.ai_suggest) ? `<div class="mg-fillrow"><button class="mg-fill">${CP(0x2728)} Woche f&uuml;llen</button><button class="mg-clear">${CP(0x1F5D1)} Woche leeren</button></div>` : ""}<div class="mg-wrap"><table class="mg${quer ? " mg-quer" : ""}"><thead><tr><th class="mg-corner"></th>`;
+    if (quer) {
+      meals.forEach(m => { html += kopfMahlzeit(m, "mg-meal-h"); });
+      html += "</tr></thead><tbody>";
+      cols.forEach((d, ci) => {
+        html += `<tr>${kopfTag(d, ci, "mg-dayh")}${meals.map((m, mi) => zelle(mi, ci, d)).join("")}</tr>`;
+      });
+    } else {
+      cols.forEach((d, i) => { html += kopfTag(d, i, ""); });
+      html += "</tr></thead><tbody>";
+      meals.forEach((m, mi) => {
+        // Zeilenklasse: jede Mahlzeit darf eine eigene Feldfarbe bekommen
+        html += `<tr class="mg-r${mi}">${kopfMahlzeit(m, "mg-meal")}${cols.map((d, ci) => zelle(mi, ci, d)).join("")}</tr>`;
+      });
+    }
     html += "</tbody></table></div></ha-card>";
 
     let bgImg = "";
@@ -583,13 +606,20 @@ class MealGridCard extends HTMLElement {
       table.mg thead .mg-day{font-weight:700;color:var(--primary-text-color);}
       table.mg thead .mg-date{font-size:.7rem;}
       th.mg-meal{width:54px;}
+      /* Gedrehte Ansicht (Handy): links der Tag, oben die Mahlzeiten */
+      table.mg-quer{border-spacing:6px;}
+      table.mg-quer th.mg-corner{width:44px;}
+      table.mg-quer tbody th.mg-dayh{font-size:.8rem;color:var(--secondary-text-color);padding:2px;}
+      table.mg-quer tbody th.mg-dayh .mg-day{font-weight:700;color:var(--primary-text-color);}
+      table.mg-quer tbody th.mg-dayh .mg-date{font-size:.7rem;}
+      table.mg-quer tbody th.mg-dayh.mg-today .mg-day,table.mg-quer tbody th.mg-dayh.mg-today .mg-date{color:var(--fp-head,var(--primary-color));}
       .mg-meal-ic{font-size:1.15rem;line-height:1.2;}
       .mg-meal-tx{font-size:.6rem;color:var(--secondary-text-color);text-transform:uppercase;letter-spacing:.03em;}
       /* Feldfarbe je Mahlzeit: das Theme setzt fp-meal0/1/2-bg, ohne Theme
          bleiben alle drei Zeilen wie bisher. */
-      tr.mg-r0{--mg-cell-bg:var(--fp-meal0-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
-      tr.mg-r1{--mg-cell-bg:var(--fp-meal1-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
-      tr.mg-r2{--mg-cell-bg:var(--fp-meal2-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
+      tr.mg-r0,td.mg-m0{--mg-cell-bg:var(--fp-meal0-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
+      tr.mg-r1,td.mg-m1{--mg-cell-bg:var(--fp-meal1-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
+      tr.mg-r2,td.mg-m2{--mg-cell-bg:var(--fp-meal2-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
       td.mg-cell{background:var(--mg-cell-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));border:1px solid var(--fp-meal-border,var(--divider-color));border-radius:var(--fp-meal-radius,14px);min-height:var(--fp-meal-h,48px);height:var(--fp-meal-h,48px);padding:6px;font-size:.82rem;line-height:1.2;color:var(--primary-text-color);cursor:pointer;vertical-align:middle;transition:background .15s,transform .1s;}
       td.mg-cell:hover{background:var(--mg-cell-bg-hover,rgba(var(--fp-tint-rgb,129,212,250),0.20));transform:translateY(-1px);}
       td.mg-cell span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
@@ -651,7 +681,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v2.7 (Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
+/* ===== family-calendar-card v2.8 (Datums- und Uhrzeitfelder passen aufs iPhone; Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1164,6 +1194,7 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-modal-t{font-size:1.1rem;font-weight:700;margin-bottom:10px;}
     .fcc-lab{display:block;font-size:.72rem;color:var(--secondary-text-color);margin:8px 0 2px;}
     .fcc-in{width:100%;box-sizing:border-box;padding:9px 10px;font-size:1rem;border:1px solid var(--divider-color,#ccc);border-radius:10px;background:var(--secondary-background-color,#f3f3f3);color:var(--primary-text-color);}
+    .fcc-in[type=date],.fcc-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fcc-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
     .fcc-row2{display:flex;gap:10px;}
     .fcc-row2>div{flex:1;}
     .fcc-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
@@ -1287,7 +1318,7 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v20 (Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Farben ueber Theme-Variablen, Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card v21 (Datumsfeld passt aufs iPhone; Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Farben ueber Theme-Variablen, Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1676,6 +1707,7 @@ class ShoppingFavCard extends HTMLElement {
       .sf-cu{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:10px;padding:8px 6px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;font-size:.82rem;}
       .sf-datewrap{position:relative;flex:1;min-width:120px;}
       .sf-date{width:100%;height:100%;box-sizing:border-box;border:1px solid var(--divider-color);border-radius:10px;padding:9px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.9rem;}
+      .sf-date[type=date],.sf-date[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;} .sf-date::-webkit-date-and-time-value{text-align:center;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
       /* Leeres date-Feld zeigt sonst nur "tt.mm.jjjj" auf Weiß — die Auflage
          beschriftet es wie einen Knopf und lässt Tipps durch (pointer-events). */
       .sf-datewrap.sf-dempty::after{content:"Datum wählen";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.9rem;pointer-events:none;}
@@ -1783,7 +1815,7 @@ if (!customElements.get("nav-card")) {
 }
 })();
 
-/* ===== fp-todo-card v13 (Datumsfeld als Knopf in der Bis-wann-Reihe, Namens-Pille als Kartenkopf, Farben ueber Theme-Variablen, Änderungsdialog: eigene Wiederholungs-Intervalle) ===== */
+/* ===== fp-todo-card v14 (Datumsfeld passt aufs iPhone; Datumsfeld als Knopf in der Bis-wann-Reihe, Namens-Pille als Kartenkopf, Farben ueber Theme-Variablen, Änderungsdialog: eigene Wiederholungs-Intervalle) ===== */
 (() => {
 const U = window.__fpUtils;
 class FpTodoCard extends HTMLElement {
@@ -2032,6 +2064,7 @@ class FpTodoCard extends HTMLElement {
       .ft-name{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;margin-top:6px;}
       .ft-datewrap{position:relative;flex:1;min-width:110px;}
       .ft-date{width:100%;height:100%;box-sizing:border-box;padding:9px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.85rem;}
+      .ft-date[type=date],.ft-date[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;} .ft-date::-webkit-date-and-time-value{text-align:center;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
       /* Wie bei der Einkaufskarte: das leere date-Feld bekommt eine Aufschrift,
          damit es in der Reihe nicht als leerer Kasten steht. */
       .ft-datewrap.ft-dempty::after{content:"Datum wählen";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.85rem;pointer-events:none;}
@@ -2349,7 +2382,7 @@ if (!customElements.get("fp-glance-card")) {
 }
 })();
 
-/* ===== fp-cookbook-card v19 (Dialogknoepfe in Theme-Farben statt festem Hellblau, Abbrechen zurueckhaltend; Import per Link: Rezeptseiten und Videos, Naehrwerte je Portion, Filter „proteinreich" aus dem Eiweisswert, Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Naehrwerte, Zutaten, Schritte) ===== */
+/* ===== fp-cookbook-card v20 (Mengen mit Dezimalkomma; Zutaten → Einkauf fasst Mengen mit offenen Eintraegen gleichen Namens zusammen, g/kg und ml/l umgerechnet; Dialogknoepfe in Theme-Farben statt festem Hellblau, Abbrechen zurueckhaltend; Import per Link: Rezeptseiten und Videos, Naehrwerte je Portion, Filter „proteinreich" aus dem Eiweisswert, Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Naehrwerte, Zutaten, Schritte) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2588,7 +2621,8 @@ class FpCookbookCard extends HTMLElement {
     } catch (e) { this._toast("Konnte nicht in den Essensplan legen"); return false; }
   }
   _scale(q, factor) { const v = (Number(q) || 0) * factor; if (v >= 10) return Math.round(v); if (v >= 1) return Math.round(v * 2) / 2; return Math.round(v * 10) / 10; }
-  _ingLine(i, factor) { return `${this._scale(i.qty, factor) || ""} ${i.unit || ""} ${i.item || ""}`.trim(); }
+  _zahl(v) { return v ? String(v).replace(".", ",") : ""; }   // 1.5 → „1,5"
+  _ingLine(i, factor) { return `${this._zahl(this._scale(i.qty, factor))} ${i.unit || ""} ${i.item || ""}`.trim(); }
   _openShopping(d, portions) {
     const factor = portions / (d.portions_base || this.config.base_portions);
     const ings = d.ingredients || [];
@@ -2608,9 +2642,91 @@ class FpCookbookCard extends HTMLElement {
       if (!chosen.length) { this._toast("Nichts ausgewählt"); return; }
       const btn = e.currentTarget; btn.disabled = true;
       const lines = chosen.map(idx => this._ingLine(ings[idx], factor)).filter(Boolean);
-      try { for (const l of lines) await this._hass.callService("todo", "add_item", { entity_id: this.config.shopping_entity, item: l }); this._toast(`${lines.length} Zutaten auf die Einkaufsliste`); this._closeOv(); }
+      try {
+        const { neu, zus } = await this._addShopping(lines);
+        this._toast(zus ? `${neu + zus} Zutaten auf die Einkaufsliste, ${zus} davon zu vorhandenen addiert` : `${neu} Zutaten auf die Einkaufsliste`);
+        this._closeOv();
+      }
       catch (err) { this._toast("Zutaten konnten nicht hinzugefügt werden"); btn.disabled = false; }
     });
+  }
+
+  // ---------- Einkaufsliste: Mengen zusammenfassen ----------
+  // Einheiten, die als solche erkannt werden. Gewicht und Volumen rechnen in eine
+  // Grundeinheit (g bzw. ml) um, alles andere zählt nur mit derselben Einheit zusammen.
+  _einheit(t) {
+    const k = String(t || "").toLowerCase().replace(/\.$/, "");
+    const metrisch = { g: ["g", 1], gramm: ["g", 1], kg: ["g", 1000], mg: ["g", 0.001],
+      ml: ["ml", 1], l: ["ml", 1000], liter: ["ml", 1000], cl: ["ml", 10], dl: ["ml", 100] };
+    if (metrisch[k]) return { dim: metrisch[k][0], f: metrisch[k][1] };
+    const sonst = { el: "el", tl: "tl", stk: "stück", "stück": "stück", prise: "prise", prisen: "prise", bund: "bund",
+      dose: "dose", dosen: "dose", pkg: "packung", pck: "packung", packung: "packung", packungen: "packung",
+      zehe: "zehe", zehen: "zehe", becher: "becher", scheibe: "scheibe", scheiben: "scheibe", glas: "glas", "gläser": "glas",
+      tasse: "tasse", tassen: "tasse", handvoll: "handvoll", msp: "msp", "würfel": "würfel", blatt: "blatt", "blätter": "blatt",
+      zweig: "zweig", zweige: "zweig", stange: "stange", stangen: "stange", kopf: "kopf", "köpfe": "kopf" };
+    return sonst[k] ? { dim: sonst[k], f: 1 } : null;
+  }
+  // „200 g Butter", „200g Butter", „1.5 kg Mehl", „2 Eier" → Menge, Einheit, Name. Ohne Zahl vorne: null.
+  _parseZeile(s) {
+    const m = String(s || "").trim().match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/);
+    if (!m || !m[2].trim()) return null;
+    const q = Number(m[1].replace(",", ".")); let rest = m[2].trim(), label = "", e = { dim: "", f: 1 };
+    const w = rest.match(/^(\S+)\s+(.+)$/), eh = w && this._einheit(w[1]);
+    if (eh) { e = eh; label = w[1]; rest = w[2]; }
+    return { menge: q * e.f, dim: e.dim, label, name: rest, key: rest.toLowerCase().replace(/\s+/g, " ") };
+  }
+  // Bring-Art: Name im Titel, Menge in der Beschreibung („200 g", „4").
+  _parseMenge(s) {
+    const m = String(s || "").trim().match(/^(\d+(?:[.,]\d+)?)\s*(\S*)$/);
+    if (!m) return null;
+    const e = m[2] ? this._einheit(m[2]) : { dim: "", f: 1 };
+    return e ? { menge: Number(m[1].replace(",", ".")) * e.f, dim: e.dim, label: m[2] } : null;
+  }
+  _fmtMenge(dim, menge, label) {
+    const r = v => (v >= 10 ? Math.round(v) : Math.round(v * 10) / 10);
+    if (dim === "g") return menge >= 1000 ? `${this._zahl(Math.round(menge / 10) / 100)} kg` : `${this._zahl(r(menge))} g`;
+    if (dim === "ml") return menge >= 1000 ? `${this._zahl(Math.round(menge / 10) / 100)} l` : `${this._zahl(r(menge))} ml`;
+    return `${this._zahl(r(menge))}${label ? ` ${label}` : ""}`;
+  }
+  // Neue Zeilen erst untereinander, dann mit offenen Einträgen gleichen Namens und
+  // verträglicher Einheit zusammenfassen. Erledigte Einträge bleiben unberührt; was
+  // nicht passt, kommt wie bisher als eigene Zeile dazu.
+  async _addShopping(lines) {
+    const ent = this.config.shopping_entity, gruppen = [], einzeln = [];
+    lines.forEach(l => {
+      const p = this._parseZeile(l);
+      if (!p) { einzeln.push(l); return; }
+      const g = gruppen.find(x => x.key === p.key && x.dim === p.dim);
+      if (g) g.menge += p.menge; else gruppen.push(p);
+    });
+    let ziele = [];
+    try {
+      const res = await this._hass.callWS({ type: "todo/item/list", entity_id: ent });
+      ziele = (res.items || []).filter(x => x.status === "needs_action").map(x => {
+        const p = this._parseZeile(x.summary);
+        if (p) return Object.assign(p, { uid: x.uid, art: "titel" });
+        const d = this._parseMenge(x.description);
+        return d ? Object.assign(d, { uid: x.uid, art: "beschreibung", name: x.summary, key: String(x.summary).trim().toLowerCase().replace(/\s+/g, " ") }) : null;
+      }).filter(Boolean);
+    } catch (e) { ziele = []; }   // Liste nicht lesbar: einfach wie bisher anhängen
+    let neu = 0, zus = 0;
+    for (const g of gruppen) {
+      const z = ziele.find(x => x.key === g.key && x.dim === g.dim);
+      if (z) {
+        const menge = this._fmtMenge(z.dim, z.menge + g.menge, z.label || g.label);
+        try {
+          await this._hass.callService("todo", "update_item", z.art === "titel"
+            ? { entity_id: ent, item: z.uid, rename: `${menge} ${z.name}` }
+            : { entity_id: ent, item: z.uid, description: menge });
+          z.menge += g.menge; zus++;
+          continue;
+        } catch (e) { /* Ändern fehlgeschlagen: als eigene Zeile anlegen, damit nichts verloren geht */ }
+      }
+      await this._hass.callService("todo", "add_item", { entity_id: ent, item: `${this._fmtMenge(g.dim, g.menge, g.label)} ${g.name}` });
+      neu++;
+    }
+    for (const l of einzeln) { await this._hass.callService("todo", "add_item", { entity_id: ent, item: l }); neu++; }
+    return { neu, zus };
   }
 
   // ---------- UI ----------
@@ -2762,7 +2878,7 @@ class FpCookbookCard extends HTMLElement {
       </div>`);
     const renderIng = () => {
       const factor = portions / (d.portions_base || this.config.base_portions);
-      ov.querySelector(".cb-ing").innerHTML = (d.ingredients || []).map(i => `<li>${this._esc(String(this._scale(i.qty, factor) || ""))} ${this._esc(i.unit || "")} ${this._esc(i.item || "")}</li>`).join("") || "<li>—</li>";
+      ov.querySelector(".cb-ing").innerHTML = (d.ingredients || []).map(i => `<li>${this._esc(this._zahl(this._scale(i.qty, factor)))} ${this._esc(i.unit || "")} ${this._esc(i.item || "")}</li>`).join("") || "<li>—</li>";
       ov.querySelector(".cb-port-val").textContent = portions;
     };
     renderIng();
@@ -3360,7 +3476,7 @@ if (!customElements.get("dobby-clock-card")) {
   window.customCards.push({ type: "dobby-clock-card", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card v7 (Mahlzeit = alles bis meal_gap_minutes nach ihrem Beginn, nicht nach dem vorigen Eintrag; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card v8 (Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -3374,10 +3490,15 @@ class FpFeedingCard extends HTMLElement {
       start: "",           // input_datetime mit dem Beginn der laufenden Mahlzeit
       color: "",           // Akzent fürs Kind, sonst Theme-Akzent
       auto_minutes: 60,
-      bottle_presets: [30, 60, 90, 120],
+      bottle_presets: [40, 60, 90, 120],   // die erste Menge ist im Fläschchen-Dialog vorausgewählt
       diaper_calendar: "",  // optional für den Bericht: Kalender der fp-diaper-card
-      reminder_hours: 3,    // wie die Automation „Erinnerung nach 3 Stunden"
-      meal_gap_minutes: 45, // beginnt ein Eintrag kürzer nach dem Beginn der Mahlzeit, gehört er noch dazu
+      reminder_hours: 3,           // Grenze bis zur Erinnerung, falls keine Helfer angegeben sind
+      reminder_entity: "",         // optional: input_number (Stunden) für tagsüber, wie in der Erinnerungs-Automation
+      reminder_night_entity: "",   // optional: input_number (Stunden) für nachts
+      night_start: 22, night_end: 6,
+      meal_pause_minutes: 45,      // höchstens so viel Pause zwischen zwei Einträgen derselben Mahlzeit
+      meal_pause_entity: "",       // optional: input_number (Minuten), überschreibt meal_pause_minutes
+      bottle_minutes: 15,          // Fläschchen werden nach dem Trinken eingetragen: geschätzte Trinkdauer davor
       weight_calendar: "",  // optional für den Bericht: Kalender der fp-weight-card
       weight_key: "",       // und der Schlüssel dieses Kinds dort (kids[].key)
     }, config);
@@ -3462,17 +3583,46 @@ class FpFeedingCard extends HTMLElement {
     return { uid: ev.uid, cal, start: s, end: e, typ, ml, seite, art, auto: !!meta.auto };
   }
 
-  // Wie die Automation „Erinnerung nach 3 Stunden": beginnt ein Eintrag weniger als
-  // meal_gap_minutes nach dem Beginn der Mahlzeit, gehört er noch dazu (Fläschchen nach
-  // dem Stillen). Gemessen ab dem Beginn, nicht ab dem vorigen Eintrag — sonst ketten sich
-  // häufige kleine Mahlzeiten zu einer, die nie endet.
+  // Zahl aus einem input_number, sonst der Vorgabewert.
+  _zahl(entity, vorgabe) {
+    const st = entity && this._hass && this._hass.states[entity];
+    const v = st ? parseFloat(st.state) : NaN;
+    return isFinite(v) && v > 0 ? v : vorgabe;
+  }
+  // Wie die Erinnerungs-Automation: Eine Mahlzeit umfasst alle Einträge, zwischen denen
+  // höchstens meal_pause_minutes Pause liegt, gemessen vom Ende des vorigen zum Beginn des
+  // nächsten. So bleibt eine Fütterung über eine Stunde (Stillen, Fläschchen, nochmal
+  // Stillen) eine Mahlzeit; gezählt wird ab ihrem Beginn.
+  // Fläschchen stehen mit der Uhrzeit, zu der sie fertig waren; ihr Beginn liegt geschätzt
+  // bottle_minutes davor. Beginnt eine Mahlzeit mit einem Fläschchen, ist ihr Start geschätzt.
   _mahlzeiten(evs) {
-    const gap = this.config.meal_gap_minutes * 60000, out = [];
-    evs.filter(e => e.typ !== "windel").sort((a, b) => a.start - b.start).forEach(e => {
-      if (!out.length || e.start - out[out.length - 1].start > gap) out.push({ start: e.start, evs: [] });
-      out[out.length - 1].evs.push(e);
-    });
+    const pause = this._zahl(this.config.meal_pause_entity, this.config.meal_pause_minutes) * 60000, out = [];
+    const flasche = (Number(this.config.bottle_minutes) || 0) * 60000;
+    let ende = 0;
+    evs.filter(e => e.typ !== "windel")
+      .map(e => ({ e, ab: e.typ === "flasche" ? +e.start - flasche : +e.start }))
+      .sort((a, b) => a.ab - b.ab)
+      .forEach(({ e, ab }) => {
+        if (!out.length || ab - ende > pause) out.push({ start: new Date(ab), geschaetzt: e.typ === "flasche", evs: [] });
+        out[out.length - 1].evs.push(e);
+        ende = Math.max(ende, +e.end);
+      });
     return out;
+  }
+  // Grenze in Stunden, die zu einem Zeitpunkt gilt (nachts eine eigene).
+  _grenze(t) {
+    const h = new Date(t).getHours(), c = this.config;
+    const nacht = c.night_start > c.night_end ? (h >= c.night_start || h < c.night_end) : (h >= c.night_start && h < c.night_end);
+    const tag = this._zahl(c.reminder_entity, c.reminder_hours);
+    return nacht ? this._zahl(c.reminder_night_entity, tag) : tag;
+  }
+  // Erste Minute, in der die Erinnerung auslöst — so prüft es die Automation jede Minute.
+  _erinnerungAb(start) {
+    for (let i = 0; i <= 12 * 60; i++) {
+      const t = start + i * 60000;
+      if (t - start >= this._grenze(t) * 3600000) return t;
+    }
+    return start + this._grenze(start) * 3600000;
   }
 
   async _load() {
@@ -3587,9 +3737,9 @@ class FpFeedingCard extends HTMLElement {
       since.classList.remove("ff-bald", "ff-faellig");
       return;
     }
-    const letzte = meals[meals.length - 1].start;
-    const ms = Date.now() - letzte.getTime(), ziel = this.config.reminder_hours * 3600000;
-    const um = `${this._tag(letzte) === this._tag(new Date()) ? "" : `${letzte.getDate()}.${letzte.getMonth() + 1}. `}${this._hm(letzte)}`;
+    const letzte = meals[meals.length - 1].start, ca = meals[meals.length - 1].geschaetzt ? "ca. " : "";
+    const ms = Date.now() - letzte.getTime(), ziel = this._erinnerungAb(letzte.getTime()) - letzte.getTime();
+    const um = `${ca}${this._tag(letzte) === this._tag(new Date()) ? "" : `${letzte.getDate()}.${letzte.getMonth() + 1}. `}${this._hm(letzte)}`;
     // Über 8 Stunden erinnert auch die Automation nicht mehr — dann nur noch die Zeit.
     const lang = ms > 8 * 3600000, faellig = !lang && ms >= ziel;
     big.textContent = this._hmDauer(ms);
@@ -3680,13 +3830,11 @@ class FpFeedingCard extends HTMLElement {
   }
 
   // ---------- Bericht ----------
-  // Eigenes Fenster mit einer druckfertigen Seite; „Als PDF sichern" bietet der
-  // Druckdialog von Browser bzw. iPad selbst an.
+  // Fenster über der Karte mit der druckfertigen Seite in einem iframe. Kein Pop-up:
+  // die Home-Assistant-App auf dem Handy öffnet keine neuen Fenster. Gedruckt wird nur
+  // das iframe; „Als PDF sichern" bietet der Druckdialog an. Wo das Gerät Dateien teilen
+  // kann, gibt es zusätzlich „Teilen" mit dem Bericht als HTML-Datei.
   async _bericht() {
-    // Das Fenster muss noch im Klick aufgehen, sonst blockt der Browser das Pop-up.
-    const w = window.open("", "_blank");
-    if (!w) { U.toast(this, "Pop-up blockiert – bitte Pop-ups für Home Assistant erlauben"); return; }
-    w.document.write("<p style='font-family:sans-serif;padding:24px'>Bericht wird erstellt …</p>");
     let gewichte = [];
     const wc = this.config.weight_calendar;
     if (wc) {
@@ -3702,63 +3850,140 @@ class FpFeedingCard extends HTMLElement {
         }).filter(Boolean).sort((a, b) => a.d - b.d);
       } catch (e) { gewichte = []; }
     }
-    w.document.open(); w.document.write(this._berichtHTML(gewichte)); w.document.close();
+    this._berichtZeigen(gewichte);
   }
 
-  _berichtHTML(gewichte) {
+  _berichtZeigen(gewichte) {
+    this._closeOv();
+    const name = this.config.name || "", heute = new Date();
+    const datei = `Stillprotokoll ${name} ${heute.getFullYear()}-${this._p(heute.getMonth() + 1)}-${this._p(heute.getDate())}.html`.replace(/\s+/g, " ");
+    const ov = document.createElement("div");
+    ov.className = "ff-ov ff-rep-ov";
+    ov.innerHTML = `<div class="ff-rep-box">
+      <div class="ff-rep-bar">
+        <button class="ff-btn ff-ok ff-rep-print">🖨 Drucken / PDF</button>
+        <button class="ff-btn ff-rep-share" hidden>Teilen</button>
+        <span class="ff-flex"></span>
+        <button class="ff-btn ff-rep-close">Schließen</button>
+      </div>
+      <iframe class="ff-rep-frame" title="Bericht"></iframe>
+    </div>`;
+    ov.addEventListener("click", e => { if (e.target === ov) this._closeOv(); });
+    this.appendChild(ov); this._ov = ov;
+    const fr = ov.querySelector(".ff-rep-frame");
+    fr.srcdoc = this._berichtHTML(gewichte, false);
+    ov.querySelector(".ff-rep-close").addEventListener("click", () => this._closeOv());
+    ov.querySelector(".ff-rep-print").addEventListener("click", () => {
+      try { fr.contentWindow.focus(); fr.contentWindow.print(); }
+      catch (e) { U.toast(this, "Drucken geht auf diesem Gerät nicht – bitte „Teilen“ verwenden"); }
+    });
+    // Teilen nur anbieten, wenn das Gerät Dateien teilen kann (iPhone, Android, manche Desktops).
+    let file = null;
+    try { file = new File([this._berichtHTML(gewichte, true)], datei, { type: "text/html" }); } catch (e) { file = null; }
+    const share = ov.querySelector(".ff-rep-share");
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      share.hidden = false;
+      share.addEventListener("click", async () => {
+        try { await navigator.share({ files: [file], title: datei.replace(/\.html$/, "") }); }
+        catch (e) { if (e && e.name !== "AbortError") U.toast(this, "Teilen hat nicht geklappt"); }
+      });
+    }
+  }
+
+  // knopf: eigener Drucken-Knopf in der Seite, nur für die geteilte Datei (im Fenster
+  // über der Karte gibt es die Leiste darüber).
+  _berichtHTML(gewichte, knopf) {
     const evs = this._events || [], win = this._windeln || [], meals = this._mahlzeiten(evs), dc = !!this.config.diaper_calendar;
-    const wt = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"], datum = d => `${wt[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
-    const kg = g => `${(g / 1000).toFixed(3).replace(".", ",")} kg`;
-    const heute = new Date(), tage = [];
-    for (let i = 6; i >= 0; i--) tage.push(new Date(heute.getFullYear(), heute.getMonth(), heute.getDate() - i));
-    const amTag = (arr, key) => arr.filter(e => this._tag(e.start) === key);
-    const zeilen = tage.map(d => {
-      const key = this._tag(d), e = amTag(evs, key), w = amTag(win, key);
+    const wt = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    const kurz = d => `${wt[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`, lang = d => `${kurz(d)}${d.getFullYear()}`;
+    const kg = g => `${(g / 1000).toFixed(3).replace(".", ",")} kg`, zahl = v => String(Math.round(v * 10) / 10).replace(".", ",");
+    const hm = sek => { const m = Math.round(sek / 60); return m < 60 ? `${m} Min` : `${Math.floor(m / 60)}:${this._p(m % 60)} h`; };
+    const heute = new Date(), amTag = (arr, key) => arr.filter(e => this._tag(e.start) === key);
+    // Nur Tage mit Einträgen: vor Beginn des Protokolls stünden sonst lauter Striche da.
+    const tage = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(heute.getFullYear(), heute.getMonth(), heute.getDate() - i), key = this._tag(d);
+      const e = amTag(evs, key), w = amTag(win, key);
+      if (!e.length && !w.length) continue;
       const still = e.filter(x => x.typ === "stillen"), fl = e.filter(x => x.typ === "flasche");
       const idx = meals.map((m, j) => j).filter(j => this._tag(meals[j].start) === key);
-      const abst = idx.filter(j => j > 0).map(j => meals[j].start - meals[j - 1].start);
-      const kurz = abst.filter(x => x <= 8 * 3600000);
-      return { d, n: idx.length, still: still.length, min: still.reduce((t, x) => t + Math.max(0, (x.end - x.start) / 1000), 0),
+      const abst = idx.filter(j => j > 0).map(j => meals[j].start - meals[j - 1].start), kurzAbst = abst.filter(x => x <= 8 * 3600000);
+      tage.push({ d, voll: i > 0, n: idx.length, still: still.length,
+        min: still.reduce((t, x) => t + Math.max(0, (x.end - x.start) / 1000), 0),
         fl: fl.length, ml: fl.reduce((t, x) => t + (x.ml || 0), 0),
-        avg: kurz.length ? kurz.reduce((a, b) => a + b, 0) / kurz.length : 0, max: abst.length ? Math.max(...abst) : 0,
-        nass: w.filter(x => x.art !== "voll").length, voll: w.filter(x => x.art !== "nass").length,
-        log: e.concat(w).sort((a, b) => a.start - b.start) };
-    });
-    const logZeile = x => x.typ === "windel" ? `<td>${this._hm(x.start)}</td><td>Windel</td><td colspan="2">${this._artText(x.art)}</td>`
-      : x.typ === "flasche" ? `<td>${this._hm(x.start)}</td><td>Fläschchen</td><td>${x.ml ? `${x.ml} ml` : "–"}</td><td></td>`
-      : `<td>${this._hm(x.start)}–${this._hm(x.end)}</td><td>Stillen</td><td>${this._dur((x.end - x.start) / 1000)}</td><td>${U.esc(x.seite || "")}</td>`;
-    const gew = gewichte.length ? `<h2>Gewicht</h2><table><thead><tr><th>Datum</th><th>Gewicht</th><th>Änderung</th></tr></thead><tbody>${
+        avg: kurzAbst.length ? kurzAbst.reduce((p, q) => p + q, 0) / kurzAbst.length : 0, max: abst.length ? Math.max(...abst) : 0,
+        nass: w.filter(x => x.art !== "voll").length, stuhl: w.filter(x => x.art !== "nass").length,
+        essen: e.slice().sort((p, q) => p.start - q.start), windeln: w.slice().sort((p, q) => p.start - q.start) });
+    }
+    // Kennzahlen aus den vollständigen Tagen (heute läuft noch); gibt es keinen, dann aus allen.
+    const basis = tage.filter(t => t.voll).length ? tage.filter(t => t.voll) : tage;
+    const schnitt = f => basis.length ? basis.reduce((t, x) => t + f(x), 0) / basis.length : 0;
+    const mitAbst = basis.filter(t => t.avg), avgAbst = mitAbst.length ? mitAbst.reduce((t, x) => t + x.avg, 0) / mitAbst.length : 0;
+    let zunahme = "";
+    if (gewichte.length > 1) {
+      const a = gewichte[0], z = gewichte[gewichte.length - 1], tg = (z.d - a.d) / 86400000;
+      if (tg >= 1) zunahme = `${Math.round(((z.g - a.g) / tg) * 7)} g pro Woche`;
+    }
+    const kachel = (wert, text) => `<div class="k"><b>${wert}</b><span>${text}</span></div>`;
+    const kacheln = [
+      kachel(zahl(schnitt(t => t.n)), "Mahlzeiten pro Tag"),
+      kachel(avgAbst ? hm(avgAbst / 1000) : "–", "Ø Abstand"),
+      kachel(hm(schnitt(t => t.min)), "Stillzeit pro Tag"),
+      kachel(`${Math.round(schnitt(t => t.ml))} ml`, "Fläschchen pro Tag"),
+      ...(dc ? [kachel(`${zahl(schnitt(t => t.nass))} / ${zahl(schnitt(t => t.stuhl))}`, "Windeln nass / voll pro Tag")] : []),
+      ...(gewichte.length ? [kachel(kg(gewichte[gewichte.length - 1].g), zunahme || `am ${kurz(gewichte[gewichte.length - 1].d)}`)] : []),
+    ].join("");
+    // Auf schmalen Bildschirmen werden Tabellenzeilen zu Karten; data-l liefert die Beschriftung.
+    const td = (l, v) => `<td data-l="${l}"><span>${v}</span></td>`;
+    const essenTab = `<table class="t"><thead><tr><th>Tag</th><th>Mahlzeiten</th><th>Stillzeit</th><th>Fläschchen</th><th>Ø Abstand</th><th>Längste Pause</th></tr></thead><tbody>${
+      tage.map(t => `<tr><td class="tag">${kurz(t.d)}${t.voll ? "" : " <i>(läuft)</i>"}</td>${td("Mahlzeiten", t.n)}${td("Stillzeit", t.still ? hm(t.min) : "–")}${
+        td("Fläschchen", t.fl ? `${t.ml} ml <small>(${t.fl}×)</small>` : "–")}${td("Ø Abstand", t.avg ? hm(t.avg / 1000) : "–")}${td("Längste Pause", t.max ? hm(t.max / 1000) : "–")}</tr>`).join("")}</tbody></table>`;
+    const windelTab = dc ? `<h2>Windeln</h2><table class="t"><thead><tr><th>Tag</th><th>Nass</th><th>Voll</th><th>Zeiten</th></tr></thead><tbody>${
+      tage.map(t => `<tr><td class="tag">${kurz(t.d)}</td>${td("Nass", t.nass)}${td("Voll", t.stuhl)}${
+        td("Zeiten", t.windeln.map(w => `${this._hm(w.start)} ${w.art === "beides" ? "💧💩" : w.art === "voll" ? "💩" : "💧"}`).join(", ") || "–")}</tr>`).join("")}</tbody></table>` : "";
+    const gew = gewichte.length ? `<h2>Gewicht</h2><table class="t"><thead><tr><th>Datum</th><th>Gewicht</th><th>Änderung</th></tr></thead><tbody>${
       gewichte.map((x, i) => {
         const v = i ? gewichte[i - 1] : null, diff = v ? x.g - v.g : 0, tg = v ? Math.round((x.d - v.d) / 86400000) : 0;
-        return `<tr><td>${datum(x.d)}</td><td>${kg(x.g)}</td><td>${v ? `${diff >= 0 ? "+" : "−"}${Math.abs(diff)} g in ${tg} ${tg === 1 ? "Tag" : "Tagen"}` : "–"}</td></tr>`;
+        return `<tr><td class="tag">${lang(x.d)}</td>${td("Gewicht", kg(x.g))}${td("Änderung", v ? `${diff >= 0 ? "+" : "−"}${Math.abs(diff)} g in ${tg} ${tg === 1 ? "Tag" : "Tagen"}` : "–")}</tr>`;
       }).join("")}</tbody></table>` : "";
-    const name = U.esc(this.config.name || "");
+    const zeile = x => x.typ === "flasche"
+      ? `<tr><td class="z">${this._hm(x.start)}</td><td>🍼 Fläschchen ${x.ml ? `${x.ml} ml` : ""}</td></tr>`
+      : `<tr><td class="z">${this._hm(x.start)}–${this._hm(x.end)}</td><td>Stillen ${U.esc(x.seite || "")} · ${this._dur((x.end - x.start) / 1000)}</td></tr>`;
+    const eintraege = tage.filter(t => t.essen.length).map(t => `<div class="tagbox"><h3>${lang(t.d)}</h3><table class="e"><tbody>${t.essen.map(zeile).join("")}</tbody></table></div>`).join("");
+    const name = U.esc(this.config.name || ""), von = tage.length ? tage[0].d : heute;
     return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stillprotokoll ${name} ${datum(tage[0])} – ${datum(tage[6])}</title>
+<title>Stillprotokoll ${name} ${lang(von)} – ${lang(heute)}</title>
 <style>
-  body{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;color:#222;margin:24px;font-size:13px;}
-  h1{font-size:20px;margin:0 0 2px;} h2{font-size:15px;margin:22px 0 6px;} .sub{color:#666;margin-bottom:14px;}
+  body{font-family:-apple-system,"Segoe UI",Roboto,sans-serif;color:#222;margin:20px;font-size:14px;line-height:1.35;}
+  h1{font-size:22px;margin:0 0 2px;} h2{font-size:16px;margin:24px 0 8px;} h3{font-size:14px;margin:14px 0 4px;}
+  .sub{color:#666;font-size:13px;} i{color:#888;font-style:normal;font-size:12px;} small{color:#777;}
+  .kacheln{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:16px;}
+  .k{background:#f3f1ec;border-radius:10px;padding:10px 12px;} .k b{display:block;font-size:20px;} .k span{color:#555;font-size:12px;}
   table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;}
-  th,td{border-bottom:1px solid #ddd;padding:5px 6px;text-align:left;vertical-align:top;} th{font-size:11px;color:#555;}
-  .tage{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;} .tag{break-inside:avoid;} .tag h3{font-size:13px;margin:12px 0 4px;}
-  .tag td{padding:3px 6px;font-size:12px;} .hinweis{color:#666;font-size:11px;margin-top:18px;}
+  th,td{border-bottom:1px solid #e3e0d8;padding:6px 8px;text-align:left;vertical-align:top;} th{font-size:12px;color:#666;font-weight:600;}
+  td.tag{font-weight:600;white-space:nowrap;}
+  .tage{display:grid;grid-template-columns:1fr 1fr;gap:0 28px;} .tagbox{break-inside:avoid;}
+  .e td{padding:3px 6px;font-size:13px;} .e td.z{white-space:nowrap;color:#555;width:92px;}
+  .hinweis{color:#777;font-size:12px;margin-top:20px;}
   .knopf{position:fixed;top:16px;right:16px;padding:10px 16px;border:0;border-radius:10px;background:#3C5343;color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
-  @media print{.knopf{display:none;} body{margin:12mm;} @page{size:A4;margin:0;}}
-  @media (max-width:640px){.tage{grid-template-columns:1fr;}}
+  @media print{.knopf{display:none;} body{margin:12mm;font-size:12px;} @page{size:A4;margin:0;} .k{border:1px solid #ddd;background:none;}}
+  @media (max-width:560px){
+    body{margin:14px;} .tage{grid-template-columns:1fr;}
+    table.t thead{display:none;}
+    table.t tr{display:grid;grid-template-columns:1fr 1fr;column-gap:18px;border-bottom:1px solid #e3e0d8;padding:8px 0;}
+    table.t td{display:flex;justify-content:space-between;gap:8px;border:0;padding:2px;}
+    table.t td.tag{grid-column:1 / -1;display:block;padding-bottom:4px;}
+    table.t td[data-l]::before{content:attr(data-l);color:#666;}
+    table.t td[data-l="Zeiten"]{grid-column:1 / -1;display:block;} table.t td[data-l="Zeiten"]::before{display:block;font-size:12px;}
+  }
 </style></head><body>
-<button class="knopf" onclick="window.print()">Drucken / als PDF</button>
+${knopf ? `<button class="knopf" onclick="window.print()">Drucken / als PDF</button>` : ""}
 <h1>Stillprotokoll ${name}</h1>
-<div class="sub">${datum(tage[0])} bis ${datum(tage[6])} · erstellt am ${datum(heute)} um ${this._hm(heute)}</div>
-<h2>Übersicht</h2>
-<table><thead><tr><th>Tag</th><th>Mahlzeiten</th><th>Stillen</th><th>Stillzeit</th><th>Fläschchen</th><th>Ø Abstand</th><th>Längste Pause</th>${dc ? "<th>Windeln nass / voll</th>" : ""}</tr></thead>
-<tbody>${zeilen.map(z => `<tr><td>${datum(z.d)}</td><td>${z.n}</td><td>${z.still}</td><td>${z.still ? this._dur(z.min) : "–"}</td>
-  <td>${z.fl ? `${z.fl} × · ${z.ml} ml` : "–"}</td><td>${z.avg ? this._hmDauer(z.avg) : "–"}</td><td>${z.max ? this._hmDauer(z.max) : "–"}</td>
-  ${dc ? `<td>${z.nass} / ${z.voll}</td>` : ""}</tr>`).join("")}</tbody></table>
-${gew}
-<h2>Einträge</h2>
-<div class="tage">${zeilen.map(z => `<div class="tag"><h3>${datum(z.d)}</h3>${z.log.length
-  ? `<table><tbody>${z.log.map(x => `<tr>${logZeile(x)}</tr>`).join("")}</tbody></table>` : "<div class='sub'>keine Einträge</div>"}</div>`).join("")}</div>
-<p class="hinweis">Mahlzeiten: Einträge, die weniger als ${this.config.meal_gap_minutes} Minuten nach dem Beginn einer Mahlzeit beginnen, zählen zu ihr (z. B. Fläschchen nach dem Stillen). Abstände von Beginn zu Beginn; der Durchschnitt lässt Pausen über 8 Stunden weg. Der heutige Tag ist unvollständig.</p>
+<div class="sub">${lang(von)} bis ${lang(heute)} · erstellt am ${lang(heute)} um ${this._hm(heute)}</div>
+${tage.length ? `<div class="kacheln">${kacheln}</div>
+<h2>Mahlzeiten</h2>${essenTab}${windelTab}${gew}
+<h2>Einträge</h2><div class="tage">${eintraege}</div>` : `<p>In den letzten 7 Tagen ist nichts eingetragen.</p>${gew}`}
+<p class="hinweis">Durchschnitte über die vollständigen Tage (heute läuft noch). Fläschchen werden nach dem Trinken eingetragen; ihr Beginn ist ${Number(this.config.bottle_minutes) || 0} Minuten früher geschätzt. Eine Mahlzeit umfasst alle Einträge, zwischen denen höchstens ${this._zahl(this.config.meal_pause_entity, this.config.meal_pause_minutes)} Minuten Pause liegen (vom Ende des einen bis zum Beginn des nächsten), auch wenn die Fütterung über eine Stunde dauert. Abstände von Beginn zu Beginn; Pausen über 8 Stunden zählen nicht zum Durchschnitt.</p>
 </body></html>`;
   }
 
@@ -3841,8 +4066,8 @@ ${gew}
     const jetzt = new Date();
     const ov = this._overlay(`
       <div class="ff-mhead">🍼 Fläschchen${this.config.name ? ` für ${U.esc(this.config.name)}` : ""}</div>
-      ${this._mlField("")}
-      <div class="ff-lbl">Uhrzeit</div>
+      ${this._mlField((this.config.bottle_presets || [])[0] || "")}
+      <div class="ff-lbl">Fertig um</div>
       <input class="ff-in ff-zeit" type="time" value="${this._hm(jetzt)}">
       <div class="ff-foot"><button class="ff-btn ff-cancel">Abbrechen</button><button class="ff-btn ff-ok">Eintragen</button></div>`);
     const ml = this._wireMl(ov);
@@ -3909,7 +4134,7 @@ ${gew}
       <div class="ff-mhead">${flasche ? "🍼 Fläschchen" : "Stillen"} bearbeiten</div>
       ${flasche ? `
         ${this._mlField(e.ml)}
-        <div class="ff-lbl">Uhrzeit</div>
+        <div class="ff-lbl">Fertig um</div>
         <input class="ff-in ff-zeit" type="time" value="${this._hm(e.start)}">`
       : `
         <div class="ff-zeiten">
@@ -3954,7 +4179,7 @@ ${gew}
   _styles() {
     return `<style>
       .ff-card,.ff-ov{--ff-a:var(--ff-akzent,var(--fp-head,var(--primary-color)));}
-      .ff-card{padding:16px 16px 12px;}
+      .ff-card{padding:16px 16px 12px;container-type:inline-size;}
       .ff-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;}
       .ff-name{display:flex;align-items:center;gap:9px;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
       .ff-dot{width:12px;height:12px;border-radius:50%;background:var(--ff-a);flex:none;}
@@ -3990,7 +4215,10 @@ ${gew}
       .ff-tab{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums;}
       .ff-tab th{font-size:.7rem;font-weight:600;color:var(--secondary-text-color);text-align:left;padding:4px 6px;
         border-bottom:1px solid var(--divider-color);}
-      .ff-tab td{padding:9px 6px;border-bottom:1px solid var(--divider-color);}
+      .ff-tab td{padding:9px 6px;border-bottom:1px solid var(--divider-color);white-space:nowrap;}
+      .ff-tab tfoot td{white-space:normal;}
+      /* Schmale Karte (Handy): Start/Stopp über die ganze Breite, darunter Fläschchen und Nachtragen. */
+      @container (max-width: 440px){ .ff-actions{flex-wrap:wrap;} .ff-main{flex:1 1 100%;} .ff-bottle{flex:1 1 0;padding:0 10px;} .ff-tab th,.ff-tab td{padding-left:4px;padding-right:4px;} }
       .ff-tab tbody tr[data-uid]{cursor:pointer;}
       .ff-tab tbody tr[data-uid]:active{background:var(--secondary-background-color);}
       .ff-tab th:last-child,.ff-tab td:last-child{text-align:right;}
@@ -4025,6 +4253,7 @@ ${gew}
         color:var(--primary-text-color);font-size:1.2rem;cursor:pointer;}
       .ff-in{flex:1;width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
         background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .ff-in[type=date],.ff-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .ff-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
       .ff-zeiten{display:flex;gap:10px;} .ff-zeiten label{flex:1;}
       .ff-seg-edit{display:flex;} .ff-seg-edit button{flex:1;}
       .ff-foot{display:flex;gap:8px;margin-top:18px;align-items:center;}
@@ -4033,6 +4262,13 @@ ${gew}
         background:var(--secondary-background-color);color:var(--primary-text-color);}
       .ff-ok{background:var(--ff-a);color:#fff;}
       .ff-del{background:transparent;color:var(--error-color,#c0392b);padding-left:4px;padding-right:4px;}
+      .ff-rep-ov{padding:12px;}
+      .ff-rep-box{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:16px;
+        width:min(900px,100%);height:min(92vh,1100px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.3);}
+      .ff-rep-bar{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--divider-color);}
+      .ff-rep-frame{flex:1;width:100%;border:0;background:#fff;}
+      @media (max-width:600px){.ff-rep-ov{padding:0;} .ff-rep-box{border-radius:0;height:100%;width:100%;}
+        .ff-rep-bar{padding-top:max(10px, env(safe-area-inset-top));}}   /* iPhone: nicht unter die Statusleiste */
     </style>`;
   }
   getCardSize() { return 9; }
@@ -4044,7 +4280,7 @@ if (!customElements.get("fp-feeding-card")) {
 }
 })();
 
-/* ===== fp-weight-card v5 (Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
+/* ===== fp-weight-card v6 (Datumsfeld passt aufs iPhone, Kopfzeile bricht nur ganze Werte um; Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
 // Ein Eintrag = ein Ganztagstermin im Kalender: Titel "Kind A 3450 g",
 // Beschreibung {"typ":"gewicht","kind":"kind_a","g":3450}. Pro Kind und Tag gibt
 // es höchstens einen Wert — wer denselben Tag nochmal einträgt, korrigiert ihn.
@@ -4217,10 +4453,10 @@ class FpWeightCard extends HTMLElement {
       let delta = "";
       if (prev) {
         const d = last.g - prev.g, tage = Math.max(1, Math.round((last.date - prev.date) / 86400000));
-        delta = `<span class="fw-delta ${d >= 0 ? "fw-up" : "fw-down"}">${d >= 0 ? "+" : "−"}${Math.abs(d)} g</span><span class="fw-muted"> in ${tage} ${tage === 1 ? "Tag" : "Tagen"}</span>`;
+        delta = `<span class="fw-delta ${d >= 0 ? "fw-up" : "fw-down"}">${d >= 0 ? "+" : "−"}${Math.abs(d)} g</span><span class="fw-muted"> in ${tage} ${tage === 1 ? "Tag" : "Tagen"}</span>`;   // bleibt als Ganzes zusammen
       }
       const pz = this._perzentil(kid, last);
-      return `<div class="fw-chip"><span class="fw-dot" style="background:${U.esc(kid.color)}"></span><b>${U.esc(kid.name)}</b> ${this._kg(last.g)} <span class="fw-muted">(${this._dm(last.date)})</span> ${delta}${pz ? ` <span class="fw-pz">${pz}</span>` : ""}</div>`;
+      return `<div class="fw-chip"><span class="fw-dot" style="background:${U.esc(kid.color)}"></span><b>${U.esc(kid.name)}</b><span>${this._kg(last.g)}</span><span class="fw-muted">(${this._dm(last.date)})</span><span>${delta}</span>${pz ? `<span class="fw-pz">${pz}</span>` : ""}</div>`;
     }).join("");
   }
 
@@ -4396,7 +4632,9 @@ class FpWeightCard extends HTMLElement {
       .fw-add{border:none;border-radius:12px;padding:10px 16px;font-size:.95rem;font-weight:700;cursor:pointer;
         background:rgba(var(--fp-accent-rgb,79,195,247),.14);color:var(--fp-head,var(--primary-color));}
       .fw-sum{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.9rem;margin:0 2px 8px;font-variant-numeric:tabular-nums;}
-      .fw-chip{display:flex;align-items:center;gap:6px;}
+      .fw-chip{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;}
+      .fw-chip>*{white-space:nowrap;}   /* Wert, Änderung und Perzentile brechen nur als Ganzes um */
+      .fw-chip .fw-dot{align-self:center;}
       .fw-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none;}
       .fw-muted{color:var(--secondary-text-color);font-size:.82rem;}
       .fw-delta{font-weight:700;font-size:.85rem;} .fw-up{color:#3c7a3c;} .fw-down{color:var(--error-color,#c0392b);}
@@ -4424,6 +4662,7 @@ class FpWeightCard extends HTMLElement {
       .fw-row{display:flex;gap:10px;} .fw-row label{flex:1;min-width:0;}
       .fw-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
         background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .fw-in[type=date],.fw-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fw-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
       .fw-hint{font-size:.78rem;color:var(--secondary-text-color);margin-top:6px;}
       .fw-foot{display:flex;gap:8px;margin-top:18px;align-items:center;} .fw-flex{flex:1;}
       .fw-btn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;
@@ -4441,7 +4680,7 @@ if (!customElements.get("fp-weight-card")) {
 }
 })();
 
-/* ===== fp-diaper-card v1 (Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
+/* ===== fp-diaper-card v2 (Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
 // Ein Eintrag = ein kurzer Termin im eigenen Kalender: Titel "Windel nass",
 // Beschreibung {"typ":"windel","art":"nass|voll|beides"}. Nicht in den
 // Stillkalender schreiben: die 3-h-Erinnerung zählt dort jeden Eintrag als Mahlzeit.
@@ -4650,12 +4889,13 @@ class FpDiaperCard extends HTMLElement {
   _styles() {
     return `<style>
       .fd-card,.fd-ov{--fd-a:var(--fd-akzent,var(--fp-head,var(--primary-color)));}
-      .fd-card{padding:16px 16px 12px;}
+      .fd-card{padding:16px 16px 12px;container-type:inline-size;}
       .fd-name{display:flex;align-items:center;gap:9px;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;margin-bottom:14px;}
       .fd-dot{width:12px;height:12px;border-radius:50%;background:var(--fd-a);flex:none;}
       .fd-actions{display:flex;gap:10px;}
       .fd-btn{flex:1 1 0;min-height:56px;border:1px solid var(--divider-color);border-radius:14px;cursor:pointer;padding:0 6px;
         background:var(--card-background-color,#fff);color:var(--primary-text-color);font-size:1rem;font-weight:600;}
+      @container (max-width: 400px){ .fd-btn{font-size:.86rem;padding:0 4px;white-space:nowrap;} }
       .fd-btn:active{background:var(--secondary-background-color);}
       .fd-since{display:flex;gap:22px;flex-wrap:wrap;margin:14px 2px 4px;}
       .fd-since>div{display:flex;flex-direction:column;}
@@ -4691,6 +4931,7 @@ class FpDiaperCard extends HTMLElement {
       .fd-seg button.fd-on{background:var(--card-background-color,#fff);color:var(--fd-a);box-shadow:0 1px 3px rgba(0,0,0,.12);}
       .fd-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
         background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .fd-in[type=date],.fd-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fd-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
       .fd-mfoot{display:flex;gap:8px;margin-top:18px;align-items:center;}
       .fd-flex{flex:1;}
       .fd-mbtn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;background:var(--secondary-background-color);color:var(--primary-text-color);}
