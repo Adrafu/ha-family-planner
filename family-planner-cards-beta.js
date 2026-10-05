@@ -4681,7 +4681,7 @@ if (!customElements.get("fp-weight-card-beta")) {
 }
 })();
 
-/* ===== fp-diaper-card-beta v2 (Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
+/* ===== fp-diaper-card-beta v3 (liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
 // Ein Eintrag = ein kurzer Termin im eigenen Kalender: Titel "Windel nass",
 // Beschreibung {"typ":"windel","art":"nass|voll|beides"}. Nicht in den
 // Stillkalender schreiben: die 3-h-Erinnerung zählt dort jeden Eintrag als Mahlzeit.
@@ -4701,8 +4701,8 @@ class FpDiaperCard extends HTMLElement {
   }
   connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._tick(), 20000); }
   disconnectedCallback() { clearInterval(this._timer); this._timer = null; }
-  // „vor …" läuft alle 20 s mit, der Kalender wird jede Minute neu gelesen.
-  _tick() { this._paintSince(); if (++this._ticks % 3 === 0) this._load(); }
+  // Alle 20 s Kalender neu lesen — Einträge kommen auch von außen (Hue-Schalter, andere Geräte).
+  _tick() { this._load(); }
 
   _p(n) { return String(n).padStart(2, "0"); }
   _hm(d) { return `${this._p(d.getHours())}:${this._p(d.getMinutes())}`; }
