@@ -681,7 +681,7 @@ if (!customElements.get("meal-grid-card-beta")) {
 }
 })();
 
-/* ===== family-calendar-card-beta v2.9 (Tagesansicht day: Datumsleiste, eine Spalte je Person mit Avatar und Plus, grosse Terminkarten; Datums- und Uhrzeitfelder passen aufs iPhone; Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
+/* ===== family-calendar-card-beta v2.9 (Tagesansicht day: Datumsleiste, am Tablet eine Spalte je Person mit Avatar und Plus, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Datums- und Uhrzeitfelder passen aufs iPhone; Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -700,8 +700,20 @@ class FamilyCalendarCard extends HTMLElement {
     this._hidden = this._loadHidden();
   }
   set hass(hass) { this._hass = hass; this._maybeFetch(); }
-  connectedCallback() { if (!this._clock) this._clock = setInterval(() => this._tickNow(), 60000); }
-  disconnectedCallback() { if (this._clock) { clearInterval(this._clock); this._clock = null; } }
+  _istSchmal() { return this.clientWidth > 0 && this.clientWidth < 560; }
+  connectedCallback() {
+    if (!this._clock) this._clock = setInterval(() => this._tickNow(), 60000);
+    // Als Block, sonst ist das Element inline: Breite 0 und kein ResizeObserver-Signal.
+    this.style.display = "block";
+    if (!this._ro && window.ResizeObserver) {
+      this._ro = new ResizeObserver(() => { if (this._view === "day" && this._istSchmal() !== !!this._schmal) this._render(); });
+      this._ro.observe(this);
+    }
+  }
+  disconnectedCallback() {
+    if (this._clock) { clearInterval(this._clock); this._clock = null; }
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+  }
   _tickNow() {
     if (this._view !== "week") return;
     const line = this.querySelector(".fcc-now"), past = this.querySelector(".fcc-nowpast");
@@ -954,8 +966,16 @@ class FamilyCalendarCard extends HTMLElement {
     }
 
     const ds = `${sel.getFullYear()}-${this._pad(sel.getMonth() + 1)}-${this._pad(sel.getDate())}`;
+    const zeitVon = it => {
+      const ab = it.start >= sel, bis = it.end <= selEnd;
+      if (it.allDay || (!ab && !bis)) return "ganztägig";
+      if (ab && bis) return it.end - it.start > 0 ? `${hhmm(it.start)} – ${hhmm(it.end)}` : hhmm(it.start);
+      return ab ? "ab " + hhmm(it.start) : "bis " + hhmm(it.end);
+    };
+    const leute = this.config.persons.filter(p => !p.no_create && !this._hidden.has(p.name));
+    if (this._schmal = this._istSchmal()) return { label, html: `<div class="fcc-dy fcc-dy-mob">${html}${this._dayListHTML(amTag.filter(it => !it.person.no_create), leute, sel, ds, zeitVon)}</div>` };
     html += '<div class="fcc-dy-cols">';
-    this.config.persons.filter(p => !p.no_create && !this._hidden.has(p.name)).forEach(p => {
+    leute.forEach(p => {
       const c = p.color || "#888888";
       const list = amTag.filter(it => it.person === p);
       html += `<div class="fcc-dy-col"><div class="fcc-dy-h" style="border-bottom-color:${c}">${this._avatar(p)}<span class="fcc-dy-name">${this._esc(p.name)}</span>`
@@ -963,12 +983,7 @@ class FamilyCalendarCard extends HTMLElement {
         + "</div>";
       if (!list.length) html += '<div class="fcc-dy-free">frei</div>';
       list.forEach(it => {
-        let zeit;
-        const ab = it.start >= sel, bis = it.end <= selEnd;
-        if (it.allDay || (!ab && !bis)) zeit = "ganztägig";
-        else if (ab && bis) zeit = it.end - it.start > 0 ? `${hhmm(it.start)} – ${hhmm(it.end)}` : hhmm(it.start);
-        else if (ab) zeit = "ab " + hhmm(it.start);
-        else zeit = "bis " + hhmm(it.end);
+        const zeit = zeitVon(it);
         const vorbei = it.allDay ? it.end <= heute : it.end <= now;
         const laeuft = !it.allDay && it.start <= now && it.end > now;
         html += `<div class="fcc-dy-ev${vorbei ? " fcc-dy-done" : ""}${laeuft ? " fcc-dy-now" : ""}" data-key="${this._esc(it.key)}" data-ent="${it.entity}" style="background:${this._rgba(c, 0.22)};--c:${c}">`
@@ -980,6 +995,59 @@ class FamilyCalendarCard extends HTMLElement {
     });
     html += "</div>";
     return { label, html: `<div class="fcc-dy">${html}</div>` };
+  }
+
+  // Handy: eine Zeitliste statt Spalten. Oben die Personen als Filter
+  // (antippen zeigt nur diese Person), jeder Termin traegt Farbe und Namen.
+  _dayListHTML(amTag, leute, sel, ds, zeitVon) {
+    if (this._fokus && !leute.some(p => p.name === this._fokus)) this._fokus = null;
+    const now = new Date();
+    const heute = new Date(now); heute.setHours(0, 0, 0, 0);
+    const hhmm = t => `${this._pad(t.getHours())}:${this._pad(t.getMinutes())}`;
+    let h = '<div class="fcc-dy-who">';
+    leute.forEach(p => {
+      const n = amTag.filter(it => it.person === p).length;
+      const cls = this._fokus === p.name ? " fcc-dy-fok" : this._fokus ? " fcc-dy-aus" : "";
+      h += `<button class="fcc-dy-p${cls}" data-person="${this._esc(p.name)}">${this._avatar(p)}${n ? `<span class="fcc-dy-cnt" style="background:${p.color};color:${this._textOn(p.color)}">${n}</span>` : ""}<span class="fcc-dy-pn">${this._esc(p.name)}</span></button>`;
+    });
+    if (leute.some(p => p.calendar)) h += `<button class="fcc-dy-add fcc-dy-add-m" data-person="${this._esc(this._fokus || "")}" data-date="${ds}" aria-label="Neuer Termin">+</button>`;
+    h += "</div>";
+
+    const liste = amTag.filter(it => leute.includes(it.person) && (!this._fokus || it.person.name === this._fokus));
+    const ganz = liste.filter(it => zeitVon(it) === "ganztägig");
+    const zeit = liste.filter(it => zeitVon(it) !== "ganztägig");
+    const marke = it => `<span class="fcc-dy-who1"><span class="fcc-dot" style="background:${it.person.color}"></span>${this._esc(it.person.name)}</span>`;
+
+    h += '<div class="fcc-dy-list">';
+    if (!liste.length) h += `<div class="fcc-dy-none">${this._fokus ? this._esc(this._fokus) + " hat" : "Ihr habt"} an diesem Tag keine Termine.</div>`;
+    ganz.forEach(it => {
+      const c = it.person.color || "#888888";
+      h += `<div class="fcc-dy-ev fcc-dy-ganz${(it.end <= heute) ? " fcc-dy-done" : ""}" data-key="${this._esc(it.key)}" data-ent="${it.entity}" style="background:${this._rgba(c, 0.22)};border-left-color:${c};--c:${c}">`
+        + `<div class="fcc-dy-s">${this._esc(it.display)}</div><div class="fcc-dy-meta">${marke(it)}<span>ganztägig</span></div></div>`;
+    });
+    const istHeute = this._sameDay(sel, heute);
+    let jetztGesetzt = !istHeute;
+    const jetzt = `<div class="fcc-dy-jetzt"><span>${hhmm(now)}</span></div>`;
+    zeit.forEach(it => {
+      const c = it.person.color || "#888888";
+      if (!jetztGesetzt && it.start > now) { h += jetzt; jetztGesetzt = true; }
+      const vorbei = it.end <= now, laeuft = it.start <= now && it.end > now;
+      // Linke Spalte: Beginn gross, Ende klein; laeuft der Termin ueber den Tag hinaus, steht dort wann
+      const selEnd = new Date(sel); selEnd.setDate(selEnd.getDate() + 1);
+      const morgenEnde = new Date(selEnd); morgenEnde.setDate(morgenEnde.getDate() + 1);
+      let z1, z2;
+      if (it.start < sel) { z1 = hhmm(it.end); z2 = "Ende"; }
+      else if (it.end > selEnd) { z1 = hhmm(it.start); z2 = it.end <= morgenEnde ? "bis morgen" : `bis ${it.end.getDate()}.${it.end.getMonth() + 1}.`; }
+      else { z1 = hhmm(it.start); z2 = it.end - it.start > 0 ? hhmm(it.end) : ""; }
+      h += `<div class="fcc-dy-row${vorbei ? " fcc-dy-done" : ""}"><div class="fcc-dy-zeit"><b>${this._esc(z1)}</b>${z2 ? `<span>${this._esc(z2)}</span>` : ""}</div>`
+        + `<div class="fcc-dy-ev${laeuft ? " fcc-dy-now" : ""}" data-key="${this._esc(it.key)}" data-ent="${it.entity}" style="background:${this._rgba(c, 0.22)};border-left-color:${c};--c:${c}">`
+        + `<div class="fcc-dy-s">${this._esc(it.display)}</div><div class="fcc-dy-meta">${marke(it)}${laeuft ? '<span class="fcc-dy-live">läuft</span>' : ""}</div>`
+        + (vorbei ? `<span class="fcc-dy-ok" style="background:${c};color:${this._textOn(c)}">${CP(0x2713)}</span>` : "")
+        + "</div></div>";
+    });
+    if (!jetztGesetzt && zeit.length) h += jetzt;
+    h += "</div>";
+    return h;
   }
 
   _weekHTML() {
@@ -1199,7 +1267,8 @@ class FamilyCalendarCard extends HTMLElement {
     const altCols = this.querySelector(".fcc-dy-cols"); const scrollX = altCols ? altCols.scrollLeft : 0;
     const css = this._css();
     const kopf = this.config.hide_header ? "" : this._headerHTML(view.label);
-    const legende = this.config.hide_legend ? "" : this._legendHTML();
+    // Am Handy uebernimmt in der Tagesansicht die Personenleiste den Filter
+    const legende = this.config.hide_legend || (this._view === "day" && this._schmal) ? "" : this._legendHTML();
     this.innerHTML = `<style>${css}</style><ha-card class="fcc-card">${kopf}${legende}${view.html}</ha-card>`;
     this.querySelectorAll(".fcc-nav-b,.fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._go(); }));
     this.querySelectorAll(".fcc-vw").forEach(b => b.addEventListener("click", () => { const v = b.dataset.v; if (v !== this._view) { this._view = v; this._offset = 0; this._maybeFetch(true); } }));
@@ -1208,9 +1277,21 @@ class FamilyCalendarCard extends HTMLElement {
     this.querySelectorAll(".fcc-dy-add").forEach(b => b.addEventListener("click", () => {
       // Heute: naechste volle Stunde, sonst 9 Uhr
       const n = new Date(); const heute = b.dataset.date === `${n.getFullYear()}-${this._pad(n.getMonth() + 1)}-${this._pad(n.getDate())}`;
-      this._openEvent({ dateIso: b.dataset.date, hour: heute ? Math.min(22, n.getHours() + 1) : 9, personName: b.dataset.person });
+      this._openEvent({ dateIso: b.dataset.date, hour: heute ? Math.min(22, n.getHours() + 1) : 9, personName: b.dataset.person || null });
     }));
     const neuCols = this.querySelector(".fcc-dy-cols"); if (neuCols && scrollX) neuCols.scrollLeft = scrollX;
+    this.querySelectorAll(".fcc-dy-p").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; this._fokus = this._fokus === n ? null : n; this._render(); }));
+    const mob = this.querySelector(".fcc-dy-mob");
+    if (mob) {
+      // Wischen nach links/rechts wechselt den Tag
+      let x0 = null, y0 = 0;
+      mob.addEventListener("touchstart", e => { if (e.target.closest(".fcc-dy-strip,.fcc-dy-who")) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+      mob.addEventListener("touchend", e => {
+        if (x0 === null) return;
+        const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { this._offset += dx < 0 ? 1 : -1; this._go(); }
+      }, { passive: true });
+    }
     this.querySelectorAll(".fcc-ev,.fcc-ad-ev,.fcc-m-ev,.fcc-ag-ev,.fcc-dy-ev,.fcc-dy-chip").forEach(el => el.addEventListener("click", e => {
       e.stopPropagation();
       const k = el.dataset.key;
@@ -1283,6 +1364,31 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-done .fcc-dy-s{padding-right:26px;}
     .fcc-dy-ok{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;}
     .fcc-dy-now{box-shadow:0 0 0 2px var(--c);}
+    /* Tagesansicht am Handy */
+    .fcc-dy-who{display:flex;align-items:flex-start;gap:2px;padding:2px 10px 10px;}
+    .fcc-dy-p{position:relative;flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;border:none;background:none;padding:4px 2px;cursor:pointer;font:inherit;color:var(--primary-text-color);border-radius:12px;}
+    .fcc-dy-p .fcc-dy-av{width:44px;height:44px;flex-basis:44px;}
+    .fcc-dy-pn{font-size:.78rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .fcc-dy-cnt{position:absolute;top:0;right:calc(50% - 28px);min-width:18px;height:18px;border-radius:9px;font-size:.7rem;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;box-sizing:border-box;border:2px solid var(--card-background-color,#fff);}
+    .fcc-dy-fok{background:rgba(var(--fp-accent-rgb,79,195,247),.18);}
+    .fcc-dy-fok .fcc-dy-pn{color:var(--fp-head,var(--primary-color));}
+    .fcc-dy-aus{opacity:.4;}
+    .fcc-dy-add-m{flex:0 0 40px;width:40px;height:40px;margin:6px 0 0 4px;background:var(--fp-accent,#039be5);color:var(--fp-accent-fg,#fff);font-size:1.6rem;}
+    .fcc-dy-list{display:flex;flex-direction:column;gap:8px;padding:0 12px 4px;min-height:120px;}
+    .fcc-dy-mob .fcc-dy-ev{border-left:5px solid #888;border-radius:12px;padding:10px 12px;}
+    .fcc-dy-ganz{margin-left:62px;}
+    .fcc-dy-row{display:flex;gap:10px;align-items:stretch;}
+    .fcc-dy-row .fcc-dy-ev{flex:1;min-width:0;}
+    .fcc-dy-row.fcc-dy-done .fcc-dy-ev{opacity:1;}
+    .fcc-dy-zeit{flex:0 0 52px;display:flex;flex-direction:column;align-items:flex-end;padding-top:9px;color:var(--primary-text-color);}
+    .fcc-dy-zeit b{font-size:1rem;}
+    .fcc-dy-zeit span{font-size:.82rem;color:var(--secondary-text-color);text-align:right;line-height:1.15;}
+    .fcc-dy-meta{display:flex;align-items:center;gap:10px;margin-top:4px;font-size:.85rem;color:var(--primary-text-color);opacity:.8;}
+    .fcc-dy-who1{display:inline-flex;align-items:center;gap:5px;}
+    .fcc-dy-live{font-weight:700;}
+    .fcc-dy-jetzt{position:relative;height:0;border-top:2px solid #e53935;margin:4px 0 4px 62px;}
+    .fcc-dy-jetzt span{position:absolute;left:-58px;top:-10px;font-size:.75rem;font-weight:700;color:#e53935;width:52px;text-align:right;}
+    .fcc-dy-none{padding:24px 8px;text-align:center;font-size:.95rem;color:var(--secondary-text-color);}
     .fcc-dy-free{font-size:.9rem;color:var(--secondary-text-color);opacity:.7;padding:6px 2px;}
     .fcc-gutter{width:48px;flex:0 0 48px;}
     .fcc-wk-head{display:flex;padding:6px 8px 0;}
