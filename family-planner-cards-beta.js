@@ -681,7 +681,7 @@ if (!customElements.get("meal-grid-card-beta")) {
 }
 })();
 
-/* ===== family-calendar-card-beta v2.9 (Tagesansicht day: Datumsleiste, am Tablet eine Spalte je Person mit Avatar und Plus, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Woche mit grossen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
+/* ===== family-calendar-card-beta v2.9 (Tagesansicht day: Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Knopf + Termin in der Kopfleiste, Personenfilter als Chips mit Alle, Tippen auf freie Flaeche legt an; Woche mit grossen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -699,6 +699,7 @@ class FamilyCalendarCard extends HTMLElement {
     this._offset = 0;
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
     this._hidden = this._loadHidden();
+    this._filter = new Set(); // Personen-Chips in Tag und Woche; leer = alle
   }
   set hass(hass) { this._hass = hass; this._maybeFetch(); }
   _istSchmal() { return this.clientWidth > 0 && this.clientWidth < 560; }
@@ -707,7 +708,7 @@ class FamilyCalendarCard extends HTMLElement {
     // Als Block, sonst ist das Element inline: Breite 0 und kein ResizeObserver-Signal.
     this.style.display = "block";
     if (!this._ro && window.ResizeObserver) {
-      this._ro = new ResizeObserver(() => { if ((this._view === "day" || (this._view === "week" && !this.config.week_grid)) && this._istSchmal() !== !!this._schmal) this._render(); });
+      this._ro = new ResizeObserver(() => { if (this._istSchmal() !== !!this._schmal) this._render(); });
       this._ro.observe(this);
     }
   }
@@ -823,11 +824,12 @@ class FamilyCalendarCard extends HTMLElement {
     return { allDay, start, end };
   }
 
-  _items() {
+  // alle: Legende ignorieren (Tag und Woche filtern ueber die Personen-Chips)
+  _items(alle) {
     const out = []; this._evMap = {};
     (this._events || []).forEach(ev => {
       const cl = this._classify(ev); if (!cl) return;
-      if (this._hidden.has(cl.person.name)) return;
+      if (!alle && this._hidden.has(cl.person.name)) return;
       const t = this._parse(ev);
       const item = { person: cl.person, display: cl.display, allDay: t.allDay, start: t.start, end: t.end, uid: ev.uid, recurrence_id: ev.recurrence_id, description: ev.description, entity: ev._entity };
       item.key = ev._entity + "|" + (ev.uid || "") + "|" + (ev.recurrence_id || ""); // uid allein kollidiert über Kalender/Serien hinweg
@@ -905,6 +907,24 @@ class FamilyCalendarCard extends HTMLElement {
     return h;
   }
 
+  _zeigt(p) { return !this._filter.size || this._filter.has(p.name); }
+  _kannAnlegen() { return this.config.persons.some(p => p.calendar && !p.no_create); }
+  _addBtnHTML() { return this._kannAnlegen() ? `<button class="fcc-btn fcc-add" aria-label="Neuer Termin"><span class="fcc-add-i">+</span>Termin</button>` : ""; }
+
+  // Neuer Termin: Tag aus der Ansicht (oder dataset), Person aus dem Filter,
+  // wenn genau eine gewaehlt ist. Heute: naechste volle Stunde, sonst 9 Uhr.
+  _neuerTermin(dateIso, person) {
+    const n = new Date(); const heute = new Date(n); heute.setHours(0, 0, 0, 0);
+    const iso = d => `${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())}`;
+    if (!dateIso) {
+      const r = this._range();
+      const d = this._view === "day" ? r.sel : (r.start <= heute && heute < r.end ? heute : r.start);
+      dateIso = iso(d);
+    }
+    if (!person && this._filter.size === 1) person = [...this._filter][0];
+    this._openEvent({ dateIso, hour: dateIso === iso(heute) ? Math.min(22, n.getHours() + 1) : 9, personName: person || null });
+  }
+
   _headerHTML(label) {
     return `<div class="fcc-bar">
       <div class="fcc-title">${this._esc(this.config.title)}</div>
@@ -919,6 +939,7 @@ class FamilyCalendarCard extends HTMLElement {
         <button class="fcc-btn fcc-vw${this._view === "week" ? " fcc-vw-on" : ""}" data-v="week">Woche</button>
         <button class="fcc-btn fcc-vw${this._view === "month" ? " fcc-vw-on" : ""}" data-v="month">Monat</button>
       </div>
+      ${this._addBtnHTML()}
     </div>`;
   }
 
@@ -937,25 +958,26 @@ class FamilyCalendarCard extends HTMLElement {
   _dayHTML() {
     const r = this._range(), sel = r.sel;
     const selEnd = new Date(sel); selEnd.setDate(selEnd.getDate() + 1);
-    const items = this._items();
+    const items = this._items(true);
     const now = new Date();
     const heute = new Date(now); heute.setHours(0, 0, 0, 0);
     const hhmm = t => `${this._pad(t.getHours())}:${this._pad(t.getMinutes())}`;
     const kurz = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
     const selIdx = (sel.getDay() + 6) % 7;
+    const alleLeute = this.config.persons.filter(p => !p.no_create);
 
     let strip = `<div class="fcc-dy-strip"><button class="fcc-dy-arr" data-o="${this._offset - 7}">${CP(0x2039)}</button>`;
     for (let i = 0; i < 7; i++) {
       const d = new Date(r.start); d.setDate(d.getDate() + i);
       const de = new Date(d); de.setDate(de.getDate() + 1);
-      const hat = items.some(it => !it.person.no_create && it.start < de && it.end > d);
+      const hat = items.some(it => !it.person.no_create && this._zeigt(it.person) && it.start < de && it.end > d);
       const cls = (i === selIdx ? " fcc-dy-sel" : "") + (this._sameDay(d, heute) ? " fcc-dy-today" : "");
       strip += `<button class="fcc-dy-d${cls}" data-o="${this._offset + i - selIdx}"><span class="fcc-dy-wd">${kurz[i]}</span><span class="fcc-dy-n">${d.getDate()}</span><span class="fcc-dy-dot${hat ? "" : " fcc-dy-leer"}"></span></button>`;
     }
     strip += `<button class="fcc-dy-arr" data-o="${this._offset + 7}">${CP(0x203A)}</button></div>`;
 
     const label = sel.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
-    let html = strip;
+    let html = this._chipsHTML(alleLeute) + strip;
     if (this.config.hide_header) html += `<div class="fcc-dy-title">${this._sameDay(sel, heute) ? '<span class="fcc-dy-badge">Heute</span>' : ""}${this._esc(label)}</div>`;
 
     const amTag = items.filter(it => it.start < selEnd && it.end > sel)
@@ -973,14 +995,13 @@ class FamilyCalendarCard extends HTMLElement {
       if (ab && bis) return it.end - it.start > 0 ? `${hhmm(it.start)} – ${hhmm(it.end)}` : hhmm(it.start);
       return ab ? "ab " + hhmm(it.start) : "bis " + hhmm(it.end);
     };
-    const leute = this.config.persons.filter(p => !p.no_create && !this._hidden.has(p.name));
-    if (this._schmal = this._istSchmal()) return { label, html: `<div class="fcc-dy fcc-dy-mob">${html}${this._dayListHTML(amTag.filter(it => !it.person.no_create), leute, sel, ds)}</div>` };
+    const leute = alleLeute.filter(p => this._zeigt(p));
+    if (this._schmal) return { label, html: `<div class="fcc-dy fcc-dy-mob">${html}${this._dayListHTML(amTag.filter(it => !it.person.no_create), leute, sel)}</div>` };
     html += '<div class="fcc-dy-cols">';
     leute.forEach(p => {
       const c = p.color || "#888888";
       const list = amTag.filter(it => it.person === p);
-      html += `<div class="fcc-dy-col"><div class="fcc-dy-h" style="border-bottom-color:${c}">${this._avatar(p)}<span class="fcc-dy-name">${this._esc(p.name)}</span>`
-        + (p.calendar ? `<button class="fcc-dy-add" data-person="${this._esc(p.name)}" data-date="${ds}" style="background:${this._rgba(c, 0.2)}" aria-label="Termin für ${this._esc(p.name)}">+</button>` : "")
+      html += `<div class="fcc-dy-col" data-date="${ds}" data-person="${this._esc(p.name)}"><div class="fcc-dy-h" style="border-bottom-color:${c}">${this._avatar(p)}<span class="fcc-dy-name">${this._esc(p.name)}</span>`
         + "</div>";
       if (!list.length) html += '<div class="fcc-dy-free">frei</div>';
       list.forEach(it => {
@@ -998,17 +1019,16 @@ class FamilyCalendarCard extends HTMLElement {
     return { label, html: `<div class="fcc-dy">${html}</div>` };
   }
 
-  // Handy: Personenleiste als Filter (antippen zeigt nur diese Person),
-  // Zahl am Avatar = Termine im angezeigten Zeitraum, Plus legt an.
-  _whoHTML(items, leute, ds) {
-    if (this._fokus && !leute.some(p => p.name === this._fokus)) this._fokus = null;
-    let h = '<div class="fcc-dy-who">';
+  // Personenfilter als Chips (Avatar + Name, gewaehlt mit Haken), dazu
+  // "Alle". Mehrfachauswahl; ohne Auswahl ist niemand ausgefiltert.
+  _chipsHTML(leute) {
+    [...this._filter].forEach(n => { if (!leute.some(p => p.name === n)) this._filter.delete(n); });
+    let h = `<div class="fcc-flt" role="group" aria-label="Personen filtern"><button class="fcc-fc fcc-fc-alle${this._filter.size ? "" : " fcc-fc-on"}" data-person="" aria-pressed="${!this._filter.size}">Alle</button>`;
     leute.forEach(p => {
-      const n = items.filter(it => it.person === p).length;
-      const cls = this._fokus === p.name ? " fcc-dy-fok" : this._fokus ? " fcc-dy-aus" : "";
-      h += `<button class="fcc-dy-p${cls}" data-person="${this._esc(p.name)}">${this._avatar(p)}${n ? `<span class="fcc-dy-cnt" style="background:${p.color};color:${this._textOn(p.color)}">${n}</span>` : ""}<span class="fcc-dy-pn">${this._esc(p.name)}</span></button>`;
+      const on = this._filter.has(p.name);
+      h += `<button class="fcc-fc${on ? " fcc-fc-on" : ""}" data-person="${this._esc(p.name)}" aria-pressed="${on}">${this._avatar(p)}${on ? `<span class="fcc-fc-chk">${CP(0x2713)}</span>` : ""}<span>${this._esc(p.name)}</span></button>`;
     });
-    if (leute.some(p => p.calendar)) h += `<button class="fcc-dy-add fcc-dy-add-m" data-person="${this._esc(this._fokus || "")}" data-date="${ds}" aria-label="Neuer Termin">+</button>`;
+    if (this.config.hide_header) h += this._addBtnHTML();
     return h + "</div>";
   }
 
@@ -1050,11 +1070,10 @@ class FamilyCalendarCard extends HTMLElement {
     return h;
   }
 
-  _dayListHTML(amTag, leute, sel, ds) {
-    let h = this._whoHTML(amTag, leute, ds);
-    const liste = amTag.filter(it => leute.includes(it.person) && (!this._fokus || it.person.name === this._fokus));
-    h += '<div class="fcc-dy-list">';
-    if (!liste.length) h += `<div class="fcc-dy-none">${this._fokus ? this._esc(this._fokus) + " hat" : "Ihr habt"} an diesem Tag keine Termine.</div>`;
+  _dayListHTML(amTag, leute, sel) {
+    const liste = amTag.filter(it => leute.includes(it.person));
+    let h = '<div class="fcc-dy-list">';
+    if (!liste.length) h += `<div class="fcc-dy-none">${this._filter.size === 1 ? this._esc([...this._filter][0]) + " hat an diesem Tag keine Termine." : "An diesem Tag stehen keine Termine an."}</div>`;
     return h + this._listRows(liste, sel) + "</div>";
   }
 
@@ -1075,10 +1094,10 @@ class FamilyCalendarCard extends HTMLElement {
     const heute = new Date(now); heute.setHours(0, 0, 0, 0);
     const iso = d => `${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())}`;
     const hhmm = t => `${this._pad(t.getHours())}:${this._pad(t.getMinutes())}`;
-    const leute = this.config.persons.filter(p => !p.no_create && !this._hidden.has(p.name));
-    const plusTag = cols.find(d => this._sameDay(d, heute)) || cols[0];
+    const alleLeute = this.config.persons.filter(p => !p.no_create);
+    const leute = alleLeute.filter(p => this._zeigt(p));
     const kurz = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
-    let h = this._whoHTML(items.filter(it => !it.person.no_create), leute, iso(plusTag)) + '<div class="fcc-wt">';
+    let h = this._chipsHTML(alleLeute) + '<div class="fcc-wt">';
     cols.forEach((d, i) => {
       const de = new Date(d); de.setDate(de.getDate() + 1);
       const amTag = items.filter(it => it.start < de && it.end > d)
@@ -1086,10 +1105,10 @@ class FamilyCalendarCard extends HTMLElement {
           const ga = a.allDay || (a.start <= d && a.end >= de), gb = b.allDay || (b.start <= d && b.end >= de);
           return ga === gb ? (a.start - b.start || a.end - b.end) : (ga ? -1 : 1);
         });
-      const liste = amTag.filter(it => leute.includes(it.person) && (!this._fokus || it.person.name === this._fokus));
+      const liste = amTag.filter(it => leute.includes(it.person));
       const extra = amTag.filter(it => it.person.no_create);
       const istHeute = this._sameDay(d, heute);
-      h += `<div class="fcc-wt-day${istHeute ? " fcc-wl-heute" : ""}${d < heute ? " fcc-wl-vorbei" : ""}">`
+      h += `<div data-date="${iso(d)}" class="fcc-wt-day${istHeute ? " fcc-wl-heute" : ""}${d < heute ? " fcc-wl-vorbei" : ""}">`
         + `<button class="fcc-wl-h fcc-wt-h" data-o="${Math.round((d - heute) / 864e5)}"><span class="fcc-wl-w">${kurz[i]}</span><span class="fcc-wl-n">${d.getDate()}</span>`
         + (istHeute ? '<span class="fcc-dy-badge">Heute</span>' : "") + "</button>";
       extra.forEach(it => { h += `<span class="fcc-dy-chip" data-key="${this._esc(it.key)}" data-ent="${it.entity}"><span class="fcc-dot" style="background:${it.person.color}"></span>${this._esc(it.display)}</span>`; });
@@ -1118,16 +1137,15 @@ class FamilyCalendarCard extends HTMLElement {
   _weekListHTML(r, cols, items) {
     const heute = new Date(); heute.setHours(0, 0, 0, 0);
     const iso = d => `${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())}`;
-    const leute = this.config.persons.filter(p => !p.no_create && !this._hidden.has(p.name));
-    const eigene = items.filter(it => !it.person.no_create);
-    const plusTag = cols.find(d => this._sameDay(d, heute)) || cols[0];
+    const alleLeute = this.config.persons.filter(p => !p.no_create);
+    const leute = alleLeute.filter(p => this._zeigt(p));
     const wd = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
-    let h = this._whoHTML(eigene, leute, iso(plusTag)) + '<div class="fcc-wl">';
+    let h = this._chipsHTML(alleLeute) + '<div class="fcc-wl">';
     cols.forEach((d, i) => {
       const de = new Date(d); de.setDate(de.getDate() + 1);
       const amTag = items.filter(it => it.start < de && it.end > d)
         .sort((a, b) => (a.allDay === b.allDay) ? (a.start - b.start || a.end - b.end) : (a.allDay ? -1 : 1));
-      const liste = amTag.filter(it => leute.includes(it.person) && (!this._fokus || it.person.name === this._fokus));
+      const liste = amTag.filter(it => leute.includes(it.person));
       const extra = amTag.filter(it => it.person.no_create);
       const istHeute = this._sameDay(d, heute);
       const o = Math.round((d - heute) / 864e5);
@@ -1148,10 +1166,9 @@ class FamilyCalendarCard extends HTMLElement {
     const cols = []; for (let i = 0; i < 7; i++) { const d = new Date(r.start); d.setDate(d.getDate() + i); cols.push(d); }
     const HH = 46, h0 = this.config.day_start, h1 = this.config.day_end;
     const gridH = (h1 - h0) * HH;
-    const items = this._items();
+    const items = this._items(!this.config.week_grid);
     const label = `${cols[0].getDate()}.${cols[0].getMonth() + 1}. - ${cols[6].getDate()}.${cols[6].getMonth() + 1}.${cols[6].getFullYear()}`;
     if (!this.config.week_grid) {
-      this._schmal = this._istSchmal();
       return { label, html: this._schmal ? this._weekListHTML(r, cols, items) : this._weekTilesHTML(r, cols, items) };
     }
 
@@ -1357,32 +1374,36 @@ class FamilyCalendarCard extends HTMLElement {
   _render() {
     if (!this._hass) return;
     if (this._editing) return; // offenen Dialog nicht zerstören
+    this._schmal = this._istSchmal();
     const view = this._view === "month" ? this._monthHTML()
       : this._view === "agenda" ? this._agendaHTML()
       : this._view === "day" ? this._dayHTML() : this._weekHTML();
-    const altCols = this.querySelector(".fcc-dy-cols"); const scrollX = altCols ? altCols.scrollLeft : 0;
     const css = this._css();
     const kopf = this.config.hide_header ? "" : this._headerHTML(view.label);
-    // Am Handy uebernimmt in der Tagesansicht die Personenleiste den Filter
-    const legende = this.config.hide_legend || (this._view === "day" && this._schmal) || (this._view === "week" && !this.config.week_grid) ? "" : this._legendHTML();
-    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card" lang="de">${kopf}${legende}${view.html}</ha-card>`;
+    // Tag und Woche filtern ueber die Personen-Chips statt ueber die Legende
+    const legende = this.config.hide_legend || this._view === "day" || (this._view === "week" && !this.config.week_grid) ? "" : this._legendHTML();
+    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card${this._schmal ? " fcc-narrow" : ""}" lang="de">${kopf}${legende}${view.html}</ha-card>`;
     this.querySelectorAll(".fcc-nav-b,.fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._go(); }));
     this.querySelectorAll(".fcc-vw").forEach(b => b.addEventListener("click", () => { const v = b.dataset.v; if (v !== this._view) { this._view = v; this._offset = 0; this._maybeFetch(true); } }));
     this.querySelectorAll(".fcc-chip").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; if (this._hidden.has(n)) this._hidden.delete(n); else this._hidden.add(n); this._saveHidden(); this._render(); }));
     this.querySelectorAll(".fcc-dy-d,.fcc-dy-arr").forEach(b => b.addEventListener("click", () => { this._offset = parseInt(b.dataset.o, 10) || 0; this._go(); }));
-    this.querySelectorAll(".fcc-dy-add").forEach(b => b.addEventListener("click", () => {
-      // Heute: naechste volle Stunde, sonst 9 Uhr
-      const n = new Date(); const heute = b.dataset.date === `${n.getFullYear()}-${this._pad(n.getMonth() + 1)}-${this._pad(n.getDate())}`;
-      this._openEvent({ dateIso: b.dataset.date, hour: heute ? Math.min(22, n.getHours() + 1) : 9, personName: b.dataset.person || null });
+    this.querySelectorAll(".fcc-add").forEach(b => b.addEventListener("click", () => this._neuerTermin()));
+    // Freie Flaeche eines Tages bzw. einer Personenspalte legt dort einen Termin an
+    this.querySelectorAll(".fcc-wt-day,.fcc-dy-col").forEach(el => el.addEventListener("click", e => {
+      if (e.target.closest(".fcc-dy-ev,.fcc-dy-chip,.fcc-wl-h")) return;
+      this._neuerTermin(el.dataset.date, el.dataset.person);
     }));
-    const neuCols = this.querySelector(".fcc-dy-cols"); if (neuCols && scrollX) neuCols.scrollLeft = scrollX;
     this.querySelectorAll(".fcc-wl-h").forEach(b => b.addEventListener("click", () => { this._view = "day"; this._offset = parseInt(b.dataset.o, 10) || 0; this._go(); }));
-    this.querySelectorAll(".fcc-dy-p").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; this._fokus = this._fokus === n ? null : n; this._render(); }));
+    this.querySelectorAll(".fcc-fc").forEach(b => b.addEventListener("click", () => {
+      const n = b.dataset.person;
+      if (!n) this._filter.clear(); else if (this._filter.has(n)) this._filter.delete(n); else this._filter.add(n);
+      this._render();
+    }));
     const mob = this.querySelector(".fcc-dy-mob");
     if (mob) {
       // Wischen nach links/rechts wechselt den Tag
       let x0 = null, y0 = 0;
-      mob.addEventListener("touchstart", e => { if (e.target.closest(".fcc-dy-strip,.fcc-dy-who")) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+      mob.addEventListener("touchstart", e => { if (e.target.closest(".fcc-dy-strip,.fcc-flt")) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
       mob.addEventListener("touchend", e => {
         if (x0 === null) return;
         const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
@@ -1411,6 +1432,25 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-btn{border:none;border-radius:9px;padding:7px 12px;font-size:.85rem;cursor:pointer;background:rgba(255,255,255,.25);color:inherit;}
     .fcc-btn:hover{background:rgba(255,255,255,.42);}
     .fcc-vw-on{background:#fff;color:var(--fp-head,#0277bd);font-weight:700;}
+    .fcc-add{display:inline-flex;align-items:center;gap:6px;background:var(--fp-accent,#039be5);color:var(--fp-accent-fg,#fff);font-weight:700;padding:7px 14px 7px 11px;box-shadow:0 2px 6px rgba(0,0,0,.22);white-space:nowrap;}
+    .fcc-add:hover{background:var(--fp-accent,#039be5);filter:brightness(1.08);}
+    .fcc-add-i{font-size:1.2rem;line-height:1;font-weight:600;}
+    .fcc-flt .fcc-add{margin-left:auto;height:36px;border-radius:18px;}
+    /* Handy: Titel + Termin, darunter Navigation + Zeitraum, darunter die Ansichten */
+    .fcc-narrow .fcc-bar{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"title title add" "nav range range" "views views views";gap:10px;}
+    .fcc-narrow .fcc-title{grid-area:title;align-self:center;}
+    .fcc-narrow .fcc-bar .fcc-add{grid-area:add;}
+    .fcc-narrow .fcc-nav{grid-area:nav;}
+    .fcc-narrow .fcc-range{grid-area:range;text-align:right;align-self:center;}
+    .fcc-narrow .fcc-views{grid-area:views;}
+    .fcc-narrow .fcc-views .fcc-btn{flex:1;}
+    /* Personenfilter (Chips) */
+    .fcc-flt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 14px 10px;}
+    .fcc-fc{display:inline-flex;align-items:center;gap:6px;height:36px;box-sizing:border-box;padding:0 12px 0 4px;border-radius:18px;border:1px solid var(--divider-color,#ccc);background:none;color:var(--primary-text-color);font:inherit;font-size:.9rem;font-weight:500;cursor:pointer;}
+    .fcc-fc.fcc-fc-alle{padding:0 14px;}
+    .fcc-fc .fcc-dy-av{flex:0 0 28px;width:28px;height:28px;border-width:0;font-size:.8rem;}
+    .fcc-fc-on{background:rgba(var(--fp-accent-rgb,79,195,247),.2);border-color:transparent;color:var(--fp-head,var(--primary-color));font-weight:700;}
+    .fcc-fc-chk{font-size:.85rem;font-weight:700;}
     .fcc-legend{display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px 4px;}
     .fcc-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--divider-color,#ddd);background:var(--card-background-color);color:var(--primary-text-color);border-radius:999px;padding:4px 10px;font-size:.82rem;cursor:pointer;}
     .fcc-chip.fcc-off{opacity:.4;text-decoration:line-through;}
@@ -1446,13 +1486,11 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-badge{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(var(--fp-accent-rgb,79,195,247),.2);color:var(--fp-head,var(--primary-color));}
     .fcc-dy-extra{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;}
     .fcc-dy-chip{display:inline-flex;align-items:center;gap:6px;font-size:.88rem;padding:4px 10px;border-radius:999px;background:var(--secondary-background-color,rgba(0,0,0,.05));color:var(--primary-text-color);cursor:pointer;}
-    .fcc-dy-cols{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,1fr);gap:12px;overflow-x:auto;padding:0 14px 4px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;}
+    .fcc-dy-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px;padding:0 14px 4px;}
     .fcc-dy-col{min-width:0;display:flex;flex-direction:column;gap:8px;scroll-snap-align:start;}
     .fcc-dy-h{display:flex;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:2px;border-bottom:3px solid #888;}
     .fcc-dy-av{flex:0 0 38px;width:38px;height:38px;border-radius:50%;border:2px solid #888;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:1.05rem;font-weight:700;background-size:cover;background-position:center;}
     .fcc-dy-name{flex:1;min-width:0;font-size:1.05rem;font-weight:700;color:var(--primary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    .fcc-dy-add{flex:0 0 32px;width:32px;height:32px;border:none;border-radius:50%;font-size:1.35rem;line-height:1;font-weight:600;color:var(--primary-text-color);cursor:pointer;padding:0;}
-    .fcc-dy-add:hover{filter:brightness(.92);}
     .fcc-dy-ev{position:relative;border-radius:16px;padding:12px 14px;cursor:pointer;}
     .fcc-dy-ev:hover{filter:brightness(.96);}
     .fcc-dy-s{font-size:1.05rem;font-weight:700;line-height:1.3;color:var(--primary-text-color);overflow-wrap:break-word;-webkit-hyphens:auto;hyphens:auto;}
@@ -1462,15 +1500,6 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-ok{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;}
     .fcc-dy-now{box-shadow:0 0 0 2px var(--c);}
     /* Tagesansicht am Handy */
-    .fcc-dy-who{display:flex;align-items:flex-start;gap:2px;padding:2px 10px 10px;}
-    .fcc-dy-p{position:relative;flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;border:none;background:none;padding:4px 2px;cursor:pointer;font:inherit;color:var(--primary-text-color);border-radius:12px;}
-    .fcc-dy-p .fcc-dy-av{width:44px;height:44px;flex-basis:44px;}
-    .fcc-dy-pn{font-size:.78rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-    .fcc-dy-cnt{position:absolute;top:0;right:calc(50% - 28px);min-width:18px;height:18px;border-radius:9px;font-size:.7rem;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;box-sizing:border-box;border:2px solid var(--card-background-color,#fff);}
-    .fcc-dy-fok{background:rgba(var(--fp-accent-rgb,79,195,247),.18);}
-    .fcc-dy-fok .fcc-dy-pn{color:var(--fp-head,var(--primary-color));}
-    .fcc-dy-aus{opacity:.4;}
-    .fcc-dy-add-m{flex:0 0 40px;width:40px;height:40px;margin:6px 0 0 4px;background:var(--fp-accent,#039be5);color:var(--fp-accent-fg,#fff);font-size:1.6rem;}
     .fcc-dy-list{display:flex;flex-direction:column;gap:8px;padding:0 12px 4px;min-height:120px;}
     .fcc-dy-mob .fcc-dy-ev{border-left:5px solid #888;border-radius:12px;padding:10px 12px;}
     .fcc-dy-ganz{margin-left:62px;}
@@ -1496,10 +1525,9 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-wl-heute .fcc-wl-n,.fcc-wl-heute .fcc-wl-w{color:var(--fp-head,var(--primary-color));}
     .fcc-wl-vorbei .fcc-wl-h{opacity:.55;}
     .fcc-wl-day .fcc-dy-extra{padding-left:68px;}
-    .fcc-dy:not(.fcc-dy-mob) .fcc-dy-who{justify-content:flex-start;gap:6px;padding:4px 14px 12px;}
-    .fcc-dy:not(.fcc-dy-mob) .fcc-dy-p{flex:0 0 76px;}
     .fcc-wt{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:14px 10px;padding:0 14px 4px;}
-    .fcc-wt-day{min-width:0;display:flex;flex-direction:column;gap:7px;}
+    .fcc-wt-day{min-width:0;display:flex;flex-direction:column;gap:7px;cursor:pointer;min-height:90px;}
+    .fcc-dy-col{cursor:pointer;min-height:120px;}
     .fcc-wt-h{padding:2px 2px 7px;border-bottom:3px solid var(--divider-color,#e5e5e5);flex-wrap:wrap;}
     .fcc-wt-h .fcc-wl-n{flex:0 0 auto;font-size:1.5rem;}
     .fcc-wt-h .fcc-wl-w{font-size:.95rem;color:var(--secondary-text-color);}
