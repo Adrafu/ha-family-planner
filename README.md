@@ -3,7 +3,7 @@
 Zwölf eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
 - **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und KI-Vorschlag (`ai_task`; entschärft mit Küchen-/Grundform-Rotation, Saison- und Wetterbezug, liest getippten Wunsch aus). **Kochbuch-Kopplung:** „★ Ins Kochbuch" pro Zelle und „Woche füllen" hybrid (erst gewichtet aus dem Kochbuch, dann KI). Auf schmalen Karten (Handy, unter 560 px) dreht sich das Raster: Tage als Zeilen, Mahlzeiten als Spalten. `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
-- **`family-calendar-card`** — Familienkalender mit echtem Wochen-Stunden-Raster + Monatsansicht, Präfix-basierter Aufteilung mehrerer Personen aus einem Kalender und einzeln umschaltbarer Legende. Termine direkt anlegen, bearbeiten und löschen. Jetzt-Linie (Outlook-Stil), hellblaues Heute-Highlight und ausgegraute vergangene Tage. Dazu eine **kompakte Mehrtagesansicht** (`initial_view: agenda`): eine Spalte je Tag, Termine als Kacheln mit farbiger Kante — gedacht als Ersatz fuer eine fremde Kalenderkarte in der Uebersicht.
+- **`family-calendar-card`** — Familienkalender mit **Tagesansicht** (eine Spalte je Person, große Terminkacheln, am Handy eine Zeitliste mit Jetzt-Linie), **Wochenansicht** mit großen Terminkacheln (am Tablet eine Spalte je Tag, am Handy die Tage untereinander; das klassische Stunden-Raster gibt es weiter mit `week_grid: true`) und Monatsansicht. Knopf „+ Termin“ in der Kopfleiste, Personenfilter als Chips, Wischen wechselt Tag bzw. Woche. Mehrere Personen lassen sich per Präfix aus einem Kalender aufteilen. Termine direkt anlegen, bearbeiten und löschen. Im Stunden-Raster Jetzt-Linie (Outlook-Stil), Heute-Highlight und ausgegraute vergangene Tage. Dazu eine **kompakte Mehrtagesansicht** (`initial_view: agenda`): eine Spalte je Tag, Termine als Kacheln mit farbiger Kante — gedacht als Ersatz fuer eine fremde Kalenderkarte in der Uebersicht.
 - **`kids-routine-card`** — Buddy-artige Routinen für Kinder: Aufgaben mit Emoji nach Tageszeit, antippen zum Abhaken (Sterne via ChoreOps), mit Belohnungs-Animation.
 - **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) inkl. Editor zum Hinzufügen/Entfernen/Sortieren; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar).
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
@@ -60,7 +60,8 @@ meals:
 ```yaml
 type: custom:family-calendar-card
 title: Familienkalender
-initial_view: week    # "week", "month" oder "agenda"
+initial_view: week    # "day", "week", "month" oder "agenda"
+week_grid: false      # true: Woche als Stunden-Raster statt Terminkacheln
 days: 4               # nur fuer "agenda": 1 bis 14 Tage nebeneinander
 hide_header: false    # Navigationsleiste ausblenden
 hide_legend: false    # Personenfilter ausblenden
@@ -70,8 +71,11 @@ persons:
   - { name: Familie, color: "#E53935", calendar: calendar.familie, match: none }
   - { name: Person A, color: "#1E88E5", calendar: calendar.familie, prefix: "A" }
   - { name: Person B, color: "#8E24AA", calendar: calendar.familie, prefix: "B" }
-  - { name: Kind A, color: "#43A047", calendar: calendar.kind_a }
+  - { name: Kind A, color: "#43A047", calendar: calendar.kind_a, entity: person.kind_a }  # entity oder picture: Foto statt Initiale
+  - { name: Feiertage, color: "#78909C", calendar: calendar.feiertage, no_create: true }  # nur lesen, als Zeile über den Terminen
 ```
+
+Tag und Woche passen sich der Kartenbreite an: unter 560 px die Handy-Liste, darüber Spalten. Passen die Spalten nicht nebeneinander, brechen sie in eine zweite Zeile um, statt seitlich zu scrollen. Ein Tipp auf eine freie Fläche legt dort einen Termin an.
 
 ### Beispiel: shopping-fav-card
 

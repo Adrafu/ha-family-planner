@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.6.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card */
+/* Family Planner custom cards v2.7.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -681,28 +681,41 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v2.8 (Datums- und Uhrzeitfelder passen aufs iPhone; Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
+/* ===== family-calendar-card v2.9 (Tagesansicht day: Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Knopf + Termin in der Kopfleiste, Personenfilter als Chips mit Alle, Tippen auf freie Flaeche legt an; Woche mit grossen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
 class FamilyCalendarCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
-      title: "Kalender", initial_view: "week", day_start: 6, day_end: 23, persons: [],
+      title: "Kalender", initial_view: "week",   // week | month | day | agenda day_start: 6, day_end: 23, persons: [],
       days: 4,                 // nur fuer initial_view: "agenda"
       hide_header: false,      // Kopfleiste mit Navigation und Ansichtswechsel
       hide_legend: false,      // Personenfilter unter der Kopfleiste
+      week_grid: false,        // Woche als Stundenraster statt Terminkacheln
     }, config || {});
     if (!this.config.persons || !this.config.persons.length) throw new Error("Bitte 'persons' konfigurieren");
-    this._view = this.config.initial_view === "month" ? "month"
-      : this.config.initial_view === "agenda" ? "agenda" : "week";
+    this._view = ["month", "agenda", "day"].includes(this.config.initial_view) ? this.config.initial_view : "week";
     this._offset = 0;
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
     this._hidden = this._loadHidden();
+    this._filter = new Set(); // Personen-Chips in Tag und Woche; leer = alle
   }
   set hass(hass) { this._hass = hass; this._maybeFetch(); }
-  connectedCallback() { if (!this._clock) this._clock = setInterval(() => this._tickNow(), 60000); }
-  disconnectedCallback() { if (this._clock) { clearInterval(this._clock); this._clock = null; } }
+  _istSchmal() { return this.clientWidth > 0 && this.clientWidth < 560; }
+  connectedCallback() {
+    if (!this._clock) this._clock = setInterval(() => this._tickNow(), 60000);
+    // Als Block, sonst ist das Element inline: Breite 0 und kein ResizeObserver-Signal.
+    this.style.display = "block";
+    if (!this._ro && window.ResizeObserver) {
+      this._ro = new ResizeObserver(() => { if (this._istSchmal() !== !!this._schmal) this._render(); });
+      this._ro.observe(this);
+    }
+  }
+  disconnectedCallback() {
+    if (this._clock) { clearInterval(this._clock); this._clock = null; }
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+  }
   _tickNow() {
     if (this._view !== "week") return;
     const line = this.querySelector(".fcc-now"), past = this.querySelector(".fcc-nowpast");
@@ -728,6 +741,13 @@ class FamilyCalendarCard extends HTMLElement {
       const end = new Date(d); end.setDate(end.getDate() + n);
       return { start: d, end, gridStart: d, gridEnd: end };
     }
+    if (this._view === "day") {
+      // _offset zaehlt hier Tage; geladen wird die ganze Woche der Datumsleiste
+      const sel = new Date(now); sel.setDate(sel.getDate() + this._offset);
+      const ws = new Date(sel); ws.setDate(ws.getDate() - (ws.getDay() + 6) % 7);
+      const we = new Date(ws); we.setDate(we.getDate() + 7);
+      return { start: ws, end: we, gridStart: ws, sel };
+    }
     if (this._view === "week") {
       const d = new Date(now); const dow = (d.getDay() + 6) % 7;
       d.setDate(d.getDate() - dow + this._offset * 7);
@@ -741,12 +761,18 @@ class FamilyCalendarCard extends HTMLElement {
     return { start: first, end: last, gridStart: gs, gridEnd: ge };
   }
 
-  async _maybeFetch(force) {
-    if (!this._hass) return;
+  _fetchSpan() {
     const r = this._range();
     const fs = this._view === "month" ? r.gridStart : r.start;
     const fe = this._view === "month" ? r.gridEnd : r.end;
-    const key = this._view + "|" + this._offset + "|" + fs.toISOString();
+    return { fs, fe, key: this._view + "|" + fs.toISOString() + "|" + fe.toISOString() };
+  }
+  // Nach Navigation: innerhalb des geladenen Zeitraums nur neu zeichnen
+  _go() { if (this._events && this._fetchSpan().key === this._rangeKey) this._render(); else this._maybeFetch(true); }
+
+  async _maybeFetch(force) {
+    if (!this._hass) return;
+    const { fs, fe, key } = this._fetchSpan();
     const now = Date.now();
     if (!force && key === this._rangeKey && now - this._lastFetch < 60000) return;
     this._rangeKey = key; this._lastFetch = now;
@@ -798,11 +824,12 @@ class FamilyCalendarCard extends HTMLElement {
     return { allDay, start, end };
   }
 
-  _items() {
+  // alle: Legende ignorieren (Tag und Woche filtern ueber die Personen-Chips)
+  _items(alle) {
     const out = []; this._evMap = {};
     (this._events || []).forEach(ev => {
       const cl = this._classify(ev); if (!cl) return;
-      if (this._hidden.has(cl.person.name)) return;
+      if (!alle && this._hidden.has(cl.person.name)) return;
       const t = this._parse(ev);
       const item = { person: cl.person, display: cl.display, allDay: t.allDay, start: t.start, end: t.end, uid: ev.uid, recurrence_id: ev.recurrence_id, description: ev.description, entity: ev._entity };
       item.key = ev._entity + "|" + (ev.uid || "") + "|" + (ev.recurrence_id || ""); // uid allein kollidiert über Kalender/Serien hinweg
@@ -880,6 +907,24 @@ class FamilyCalendarCard extends HTMLElement {
     return h;
   }
 
+  _zeigt(p) { return !this._filter.size || this._filter.has(p.name); }
+  _kannAnlegen() { return this.config.persons.some(p => p.calendar && !p.no_create); }
+  _addBtnHTML() { return this._kannAnlegen() ? `<button class="fcc-btn fcc-add" aria-label="Neuer Termin"><span class="fcc-add-i">+</span>Termin</button>` : ""; }
+
+  // Neuer Termin: Tag aus der Ansicht (oder dataset), Person aus dem Filter,
+  // wenn genau eine gewaehlt ist. Heute: naechste volle Stunde, sonst 9 Uhr.
+  _neuerTermin(dateIso, person) {
+    const n = new Date(); const heute = new Date(n); heute.setHours(0, 0, 0, 0);
+    const iso = d => `${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())}`;
+    if (!dateIso) {
+      const r = this._range();
+      const d = this._view === "day" ? r.sel : (r.start <= heute && heute < r.end ? heute : r.start);
+      dateIso = iso(d);
+    }
+    if (!person && this._filter.size === 1) person = [...this._filter][0];
+    this._openEvent({ dateIso, hour: dateIso === iso(heute) ? Math.min(22, n.getHours() + 1) : 9, personName: person || null });
+  }
+
   _headerHTML(label) {
     return `<div class="fcc-bar">
       <div class="fcc-title">${this._esc(this.config.title)}</div>
@@ -890,10 +935,229 @@ class FamilyCalendarCard extends HTMLElement {
       </div>
       <div class="fcc-range">${this._esc(label)}</div>
       <div class="fcc-views">
+        <button class="fcc-btn fcc-vw${this._view === "day" ? " fcc-vw-on" : ""}" data-v="day">Tag</button>
         <button class="fcc-btn fcc-vw${this._view === "week" ? " fcc-vw-on" : ""}" data-v="week">Woche</button>
         <button class="fcc-btn fcc-vw${this._view === "month" ? " fcc-vw-on" : ""}" data-v="month">Monat</button>
       </div>
+      ${this._addBtnHTML()}
     </div>`;
+  }
+
+  _avatar(p) {
+    const c = p.color || "#888888";
+    let pic = p.picture || "";
+    const st = p.entity && this._hass && this._hass.states[p.entity];
+    if (!pic && st) pic = st.attributes.entity_picture || "";
+    if (pic) return `<span class="fcc-dy-av" style="background-image:url('${this._esc(pic)}');border-color:${c}"></span>`;
+    const ini = String(p.name || "?").trim().charAt(0).toUpperCase();
+    return `<span class="fcc-dy-av" style="background:${c};border-color:${c};color:${this._textOn(c)}">${this._esc(ini)}</span>`;
+  }
+
+  // Tagesansicht: Datumsleiste oben, darunter eine Spalte je Person mit
+  // grossen, gut lesbaren Terminkarten in der Personenfarbe.
+  _dayHTML() {
+    const r = this._range(), sel = r.sel;
+    const selEnd = new Date(sel); selEnd.setDate(selEnd.getDate() + 1);
+    const items = this._items(true);
+    const now = new Date();
+    const heute = new Date(now); heute.setHours(0, 0, 0, 0);
+    const hhmm = t => `${this._pad(t.getHours())}:${this._pad(t.getMinutes())}`;
+    const kurz = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    const selIdx = (sel.getDay() + 6) % 7;
+    const alleLeute = this.config.persons.filter(p => !p.no_create);
+
+    let strip = `<div class="fcc-dy-strip"><button class="fcc-dy-arr" data-o="${this._offset - 7}">${CP(0x2039)}</button>`;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(r.start); d.setDate(d.getDate() + i);
+      const de = new Date(d); de.setDate(de.getDate() + 1);
+      const hat = items.some(it => !it.person.no_create && this._zeigt(it.person) && it.start < de && it.end > d);
+      const cls = (i === selIdx ? " fcc-dy-sel" : "") + (this._sameDay(d, heute) ? " fcc-dy-today" : "");
+      strip += `<button class="fcc-dy-d${cls}" data-o="${this._offset + i - selIdx}"><span class="fcc-dy-wd">${kurz[i]}</span><span class="fcc-dy-n">${d.getDate()}</span><span class="fcc-dy-dot${hat ? "" : " fcc-dy-leer"}"></span></button>`;
+    }
+    strip += `<button class="fcc-dy-arr" data-o="${this._offset + 7}">${CP(0x203A)}</button></div>`;
+
+    const label = sel.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
+    let html = this._chipsHTML(alleLeute) + strip;
+    if (this.config.hide_header) html += `<div class="fcc-dy-title">${this._sameDay(sel, heute) ? '<span class="fcc-dy-badge">Heute</span>' : ""}${this._esc(label)}</div>`;
+
+    const amTag = items.filter(it => it.start < selEnd && it.end > sel)
+      .sort((a, b) => (a.allDay === b.allDay) ? (a.start - b.start || a.end - b.end) : (a.allDay ? -1 : 1));
+    // Personen ohne eigene Termine (no_create, z. B. Feiertage) als Zeile ueber den Spalten
+    const extra = amTag.filter(it => it.person.no_create);
+    if (extra.length) {
+      html += '<div class="fcc-dy-extra">' + extra.map(it => `<span class="fcc-dy-chip" data-key="${this._esc(it.key)}" data-ent="${it.entity}"><span class="fcc-dot" style="background:${it.person.color}"></span>${this._esc(it.display)}</span>`).join("") + "</div>";
+    }
+
+    const ds = `${sel.getFullYear()}-${this._pad(sel.getMonth() + 1)}-${this._pad(sel.getDate())}`;
+    const zeitVon = it => {
+      const ab = it.start >= sel, bis = it.end <= selEnd;
+      if (it.allDay || (!ab && !bis)) return "ganztägig";
+      if (ab && bis) return it.end - it.start > 0 ? `${hhmm(it.start)} – ${hhmm(it.end)}` : hhmm(it.start);
+      return ab ? "ab " + hhmm(it.start) : "bis " + hhmm(it.end);
+    };
+    const leute = alleLeute.filter(p => this._zeigt(p));
+    if (this._schmal) return { label, html: `<div class="fcc-dy fcc-dy-mob">${html}${this._dayListHTML(amTag.filter(it => !it.person.no_create), leute, sel)}</div>` };
+    html += '<div class="fcc-dy-cols">';
+    leute.forEach(p => {
+      const c = p.color || "#888888";
+      const list = amTag.filter(it => it.person === p);
+      html += `<div class="fcc-dy-col" data-date="${ds}" data-person="${this._esc(p.name)}"><div class="fcc-dy-h" style="border-bottom-color:${c}">${this._avatar(p)}<span class="fcc-dy-name">${this._esc(p.name)}</span>`
+        + "</div>";
+      if (!list.length) html += '<div class="fcc-dy-free">frei</div>';
+      list.forEach(it => {
+        const zeit = zeitVon(it);
+        const vorbei = it.allDay ? it.end <= heute : it.end <= now;
+        const laeuft = !it.allDay && it.start <= now && it.end > now;
+        html += `<div class="fcc-dy-ev${vorbei ? " fcc-dy-done" : ""}${laeuft ? " fcc-dy-now" : ""}" data-key="${this._esc(it.key)}" data-ent="${it.entity}" style="background:${this._rgba(c, 0.22)};--c:${c}">`
+          + `<div class="fcc-dy-s">${this._esc(it.display)}</div><div class="fcc-dy-t">${this._esc(zeit)}</div>`
+          + (vorbei ? `<span class="fcc-dy-ok" style="background:${c};color:${this._textOn(c)}">${CP(0x2713)}</span>` : "")
+          + "</div>";
+      });
+      html += "</div>";
+    });
+    html += "</div>";
+    return { label, html: `<div class="fcc-dy">${html}</div>` };
+  }
+
+  // Personenfilter als Chips (Avatar + Name, gewaehlt mit Haken), dazu
+  // "Alle". Mehrfachauswahl; ohne Auswahl ist niemand ausgefiltert.
+  _chipsHTML(leute) {
+    [...this._filter].forEach(n => { if (!leute.some(p => p.name === n)) this._filter.delete(n); });
+    let h = `<div class="fcc-flt" role="group" aria-label="Personen filtern"><button class="fcc-fc fcc-fc-alle${this._filter.size ? "" : " fcc-fc-on"}" data-person="" aria-pressed="${!this._filter.size}">Alle</button>`;
+    leute.forEach(p => {
+      const on = this._filter.has(p.name);
+      h += `<button class="fcc-fc${on ? " fcc-fc-on" : ""}" data-person="${this._esc(p.name)}" aria-pressed="${on}">${this._avatar(p)}${on ? `<span class="fcc-fc-chk">${CP(0x2713)}</span>` : ""}<span>${this._esc(p.name)}</span></button>`;
+    });
+    if (this.config.hide_header) h += this._addBtnHTML();
+    return h + "</div>";
+  }
+
+  // Zeitliste eines Tages: Ganztaegiges oben, dann nach Uhrzeit mit Jetzt-Linie.
+  // liste enthaelt nur Termine, die an diesem Tag liegen.
+  _listRows(liste, tag) {
+    const now = new Date();
+    const heute = new Date(now); heute.setHours(0, 0, 0, 0);
+    const tagEnde = new Date(tag); tagEnde.setDate(tagEnde.getDate() + 1);
+    const morgenEnde = new Date(tagEnde); morgenEnde.setDate(morgenEnde.getDate() + 1);
+    const hhmm = t => `${this._pad(t.getHours())}:${this._pad(t.getMinutes())}`;
+    const istGanz = it => it.allDay || (it.start <= tag && it.end >= tagEnde);
+    const marke = it => `<span class="fcc-dy-who1"><span class="fcc-dot" style="background:${it.person.color}"></span>${this._esc(it.person.name)}</span>`;
+    let h = "";
+    liste.filter(istGanz).forEach(it => {
+      const c = it.person.color || "#888888";
+      h += `<div class="fcc-dy-ev fcc-dy-ganz${(it.end <= heute) ? " fcc-dy-done" : ""}" data-key="${this._esc(it.key)}" data-ent="${it.entity}" style="background:${this._rgba(c, 0.22)};border-left-color:${c};--c:${c}">`
+        + `<div class="fcc-dy-s">${this._esc(it.display)}</div><div class="fcc-dy-meta">${marke(it)}<span>ganztägig</span></div></div>`;
+    });
+    const zeit = liste.filter(it => !istGanz(it));
+    let jetztGesetzt = !this._sameDay(tag, heute);
+    const jetzt = `<div class="fcc-dy-jetzt"><span>${hhmm(now)}</span></div>`;
+    zeit.forEach(it => {
+      const c = it.person.color || "#888888";
+      if (!jetztGesetzt && it.start > now) { h += jetzt; jetztGesetzt = true; }
+      const vorbei = it.end <= now, laeuft = it.start <= now && it.end > now;
+      // Linke Spalte: Beginn gross, Ende klein; laeuft der Termin ueber den Tag hinaus, steht dort wann
+      let z1, z2;
+      if (it.start < tag) { z1 = hhmm(it.end); z2 = "Ende"; }
+      else if (it.end > tagEnde) { z1 = hhmm(it.start); z2 = it.end <= morgenEnde ? "bis morgen" : `bis ${it.end.getDate()}.${it.end.getMonth() + 1}.`; }
+      else { z1 = hhmm(it.start); z2 = it.end - it.start > 0 ? hhmm(it.end) : ""; }
+      h += `<div class="fcc-dy-row${vorbei ? " fcc-dy-done" : ""}"><div class="fcc-dy-zeit"><b>${this._esc(z1)}</b>${z2 ? `<span>${this._esc(z2)}</span>` : ""}</div>`
+        + `<div class="fcc-dy-ev${laeuft ? " fcc-dy-now" : ""}" data-key="${this._esc(it.key)}" data-ent="${it.entity}" style="background:${this._rgba(c, 0.22)};border-left-color:${c};--c:${c}">`
+        + `<div class="fcc-dy-s">${this._esc(it.display)}</div><div class="fcc-dy-meta">${marke(it)}${laeuft ? '<span class="fcc-dy-live">läuft</span>' : ""}</div>`
+        + (vorbei ? `<span class="fcc-dy-ok" style="background:${c};color:${this._textOn(c)}">${CP(0x2713)}</span>` : "")
+        + "</div></div>";
+    });
+    if (!jetztGesetzt && zeit.length) h += jetzt;
+    return h;
+  }
+
+  _dayListHTML(amTag, leute, sel) {
+    const liste = amTag.filter(it => leute.includes(it.person));
+    let h = '<div class="fcc-dy-list">';
+    if (!liste.length) h += `<div class="fcc-dy-none">${this._filter.size === 1 ? this._esc([...this._filter][0]) + " hat an diesem Tag keine Termine." : "An diesem Tag stehen keine Termine an."}</div>`;
+    return h + this._listRows(liste, sel) + "</div>";
+  }
+
+  _zeitText(it, tag) {
+    const tagEnde = new Date(tag); tagEnde.setDate(tagEnde.getDate() + 1);
+    const hhmm = t => `${this._pad(t.getHours())}:${this._pad(t.getMinutes())}`;
+    const ab = it.start >= tag, bis = it.end <= tagEnde;
+    if (it.allDay || (!ab && !bis)) return "ganztägig";
+    if (ab && bis) return it.end - it.start > 0 ? `${hhmm(it.start)} – ${hhmm(it.end)}` : hhmm(it.start);
+    return ab ? "ab " + hhmm(it.start) : "bis " + hhmm(it.end);
+  }
+
+  // Woche am Tablet: eine Spalte je Tag mit grossen Terminkacheln, oben die
+  // Personenleiste als Filter. Ist die Karte zu schmal fuer sieben Spalten,
+  // brechen die Tage in eine zweite Zeile um statt seitlich zu scrollen.
+  _weekTilesHTML(r, cols, items) {
+    const now = new Date();
+    const heute = new Date(now); heute.setHours(0, 0, 0, 0);
+    const iso = d => `${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())}`;
+    const hhmm = t => `${this._pad(t.getHours())}:${this._pad(t.getMinutes())}`;
+    const alleLeute = this.config.persons.filter(p => !p.no_create);
+    const leute = alleLeute.filter(p => this._zeigt(p));
+    const kurz = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    let h = this._chipsHTML(alleLeute) + '<div class="fcc-wt">';
+    cols.forEach((d, i) => {
+      const de = new Date(d); de.setDate(de.getDate() + 1);
+      const amTag = items.filter(it => it.start < de && it.end > d)
+        .sort((a, b) => {
+          const ga = a.allDay || (a.start <= d && a.end >= de), gb = b.allDay || (b.start <= d && b.end >= de);
+          return ga === gb ? (a.start - b.start || a.end - b.end) : (ga ? -1 : 1);
+        });
+      const liste = amTag.filter(it => leute.includes(it.person));
+      const extra = amTag.filter(it => it.person.no_create);
+      const istHeute = this._sameDay(d, heute);
+      h += `<div data-date="${iso(d)}" class="fcc-wt-day${istHeute ? " fcc-wl-heute" : ""}${d < heute ? " fcc-wl-vorbei" : ""}">`
+        + `<button class="fcc-wl-h fcc-wt-h" data-o="${Math.round((d - heute) / 864e5)}"><span class="fcc-wl-w">${kurz[i]}</span><span class="fcc-wl-n">${d.getDate()}</span>`
+        + (istHeute ? '<span class="fcc-dy-badge">Heute</span>' : "") + "</button>";
+      extra.forEach(it => { h += `<span class="fcc-dy-chip" data-key="${this._esc(it.key)}" data-ent="${it.entity}"><span class="fcc-dot" style="background:${it.person.color}"></span>${this._esc(it.display)}</span>`; });
+      if (!liste.length) h += '<div class="fcc-dy-free">frei</div>';
+      let jetztGesetzt = !istHeute;
+      liste.forEach(it => {
+        const c = it.person.color || "#888888";
+        const ganz = it.allDay || (it.start <= d && it.end >= de);
+        if (!jetztGesetzt && !ganz && it.start > now) { h += `<div class="fcc-wt-jetzt"><span>${hhmm(now)}</span></div>`; jetztGesetzt = true; }
+        const vorbei = it.allDay ? it.end <= heute : it.end <= now;
+        const laeuft = !it.allDay && it.start <= now && it.end > now;
+        h += `<div class="fcc-dy-ev${vorbei ? " fcc-dy-done" : ""}${laeuft ? " fcc-dy-now" : ""}" data-key="${this._esc(it.key)}" data-ent="${it.entity}" style="background:${this._rgba(c, 0.22)};--c:${c}">`
+          + `<div class="fcc-dy-s">${this._esc(it.display)}</div><div class="fcc-dy-t">${this._esc(this._zeitText(it, d))}</div>`
+          + `<div class="fcc-wt-who"><span class="fcc-dot" style="background:${c}"></span>${this._esc(it.person.name)}</div>`
+          + (vorbei ? `<span class="fcc-dy-ok" style="background:${c};color:${this._textOn(c)}">${CP(0x2713)}</span>` : "")
+          + "</div>";
+      });
+      if (!jetztGesetzt && liste.length) h += `<div class="fcc-wt-jetzt"><span>${hhmm(now)}</span></div>`;
+      h += "</div>";
+    });
+    return `<div class="fcc-dy">${h}</div></div>`;
+  }
+
+  // Woche am Handy: die Tage untereinander, jeder mit derselben Zeitliste
+  // wie die Tagesansicht. Antippen des Tageskopfs oeffnet den Tag.
+  _weekListHTML(r, cols, items) {
+    const heute = new Date(); heute.setHours(0, 0, 0, 0);
+    const iso = d => `${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())}`;
+    const alleLeute = this.config.persons.filter(p => !p.no_create);
+    const leute = alleLeute.filter(p => this._zeigt(p));
+    const wd = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+    let h = this._chipsHTML(alleLeute) + '<div class="fcc-wl">';
+    cols.forEach((d, i) => {
+      const de = new Date(d); de.setDate(de.getDate() + 1);
+      const amTag = items.filter(it => it.start < de && it.end > d)
+        .sort((a, b) => (a.allDay === b.allDay) ? (a.start - b.start || a.end - b.end) : (a.allDay ? -1 : 1));
+      const liste = amTag.filter(it => leute.includes(it.person));
+      const extra = amTag.filter(it => it.person.no_create);
+      const istHeute = this._sameDay(d, heute);
+      const o = Math.round((d - heute) / 864e5);
+      h += `<div class="fcc-wl-day${istHeute ? " fcc-wl-heute" : ""}${d < heute ? " fcc-wl-vorbei" : ""}">`
+        + `<button class="fcc-wl-h" data-o="${o}"><span class="fcc-wl-n">${d.getDate()}</span><span class="fcc-wl-w">${wd[i]}</span>`
+        + (istHeute ? '<span class="fcc-dy-badge">Heute</span>' : "")
+        + `<span class="fcc-wl-cnt">${liste.length ? liste.length + (liste.length === 1 ? " Termin" : " Termine") : "frei"}</span></button>`;
+      if (extra.length) h += '<div class="fcc-dy-extra">' + extra.map(it => `<span class="fcc-dy-chip" data-key="${this._esc(it.key)}" data-ent="${it.entity}"><span class="fcc-dot" style="background:${it.person.color}"></span>${this._esc(it.display)}</span>`).join("") + "</div>";
+      if (liste.length) h += `<div class="fcc-dy-list">${this._listRows(liste, d)}</div>`;
+      h += "</div>";
+    });
+    return `<div class="fcc-dy fcc-dy-mob">${h}</div></div>`;
   }
 
   _weekHTML() {
@@ -902,8 +1166,11 @@ class FamilyCalendarCard extends HTMLElement {
     const cols = []; for (let i = 0; i < 7; i++) { const d = new Date(r.start); d.setDate(d.getDate() + i); cols.push(d); }
     const HH = 46, h0 = this.config.day_start, h1 = this.config.day_end;
     const gridH = (h1 - h0) * HH;
-    const items = this._items();
+    const items = this._items(!this.config.week_grid);
     const label = `${cols[0].getDate()}.${cols[0].getMonth() + 1}. - ${cols[6].getDate()}.${cols[6].getMonth() + 1}.${cols[6].getFullYear()}`;
+    if (!this.config.week_grid) {
+      return { label, html: this._schmal ? this._weekListHTML(r, cols, items) : this._weekTilesHTML(r, cols, items) };
+    }
 
     let head = '<div class="fcc-wk-head"><div class="fcc-gutter"></div>';
     cols.forEach((d, i) => { head += `<div class="fcc-dcol${this._isToday(d) ? " fcc-today" : ""}"><div class="fcc-dn">${dn[i]}</div><div class="fcc-dd">${d.getDate()}.${d.getMonth() + 1}.</div></div>`; });
@@ -1018,6 +1285,7 @@ class FamilyCalendarCard extends HTMLElement {
     } else {
       dateIso = opts.dateIso;
       dateIso2 = opts.dateIso;
+      if (opts.personName) { const pi = persons.findIndex(p => p.name === opts.personName); if (pi >= 0) personIdx = pi; }
       von = pad(opts.hour) + ":00";
       bis = pad(Math.min(opts.hour + 1, 23)) + ":00";
     }
@@ -1106,16 +1374,43 @@ class FamilyCalendarCard extends HTMLElement {
   _render() {
     if (!this._hass) return;
     if (this._editing) return; // offenen Dialog nicht zerstören
+    this._schmal = this._istSchmal();
     const view = this._view === "month" ? this._monthHTML()
-      : this._view === "agenda" ? this._agendaHTML() : this._weekHTML();
+      : this._view === "agenda" ? this._agendaHTML()
+      : this._view === "day" ? this._dayHTML() : this._weekHTML();
     const css = this._css();
     const kopf = this.config.hide_header ? "" : this._headerHTML(view.label);
-    const legende = this.config.hide_legend ? "" : this._legendHTML();
-    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card">${kopf}${legende}${view.html}</ha-card>`;
-    this.querySelectorAll(".fcc-nav-b,.fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._maybeFetch(true); }));
+    // Tag und Woche filtern ueber die Personen-Chips statt ueber die Legende
+    const legende = this.config.hide_legend || this._view === "day" || (this._view === "week" && !this.config.week_grid) ? "" : this._legendHTML();
+    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card${this._schmal ? " fcc-narrow" : ""}" lang="de">${kopf}${legende}${view.html}</ha-card>`;
+    this.querySelectorAll(".fcc-nav-b,.fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._go(); }));
     this.querySelectorAll(".fcc-vw").forEach(b => b.addEventListener("click", () => { const v = b.dataset.v; if (v !== this._view) { this._view = v; this._offset = 0; this._maybeFetch(true); } }));
     this.querySelectorAll(".fcc-chip").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; if (this._hidden.has(n)) this._hidden.delete(n); else this._hidden.add(n); this._saveHidden(); this._render(); }));
-    this.querySelectorAll(".fcc-ev,.fcc-ad-ev,.fcc-m-ev,.fcc-ag-ev").forEach(el => el.addEventListener("click", e => {
+    this.querySelectorAll(".fcc-dy-d,.fcc-dy-arr").forEach(b => b.addEventListener("click", () => { this._offset = parseInt(b.dataset.o, 10) || 0; this._go(); }));
+    this.querySelectorAll(".fcc-add").forEach(b => b.addEventListener("click", () => this._neuerTermin()));
+    // Freie Flaeche eines Tages bzw. einer Personenspalte legt dort einen Termin an
+    this.querySelectorAll(".fcc-wt-day,.fcc-dy-col").forEach(el => el.addEventListener("click", e => {
+      if (e.target.closest(".fcc-dy-ev,.fcc-dy-chip,.fcc-wl-h")) return;
+      this._neuerTermin(el.dataset.date, el.dataset.person);
+    }));
+    this.querySelectorAll(".fcc-wl-h").forEach(b => b.addEventListener("click", () => { this._view = "day"; this._offset = parseInt(b.dataset.o, 10) || 0; this._go(); }));
+    this.querySelectorAll(".fcc-fc").forEach(b => b.addEventListener("click", () => {
+      const n = b.dataset.person;
+      if (!n) this._filter.clear(); else if (this._filter.has(n)) this._filter.delete(n); else this._filter.add(n);
+      this._render();
+    }));
+    const mob = this.querySelector(".fcc-dy-mob");
+    if (mob) {
+      // Wischen nach links/rechts wechselt den Tag
+      let x0 = null, y0 = 0;
+      mob.addEventListener("touchstart", e => { if (e.target.closest(".fcc-dy-strip,.fcc-flt")) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+      mob.addEventListener("touchend", e => {
+        if (x0 === null) return;
+        const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { this._offset += dx < 0 ? 1 : -1; this._go(); }
+      }, { passive: true });
+    }
+    this.querySelectorAll(".fcc-ev,.fcc-ad-ev,.fcc-m-ev,.fcc-ag-ev,.fcc-dy-ev,.fcc-dy-chip").forEach(el => el.addEventListener("click", e => {
       e.stopPropagation();
       const k = el.dataset.key;
       const item = k && this._evMap ? this._evMap[k] : null;
@@ -1137,6 +1432,25 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-btn{border:none;border-radius:9px;padding:7px 12px;font-size:.85rem;cursor:pointer;background:rgba(255,255,255,.25);color:inherit;}
     .fcc-btn:hover{background:rgba(255,255,255,.42);}
     .fcc-vw-on{background:#fff;color:var(--fp-head,#0277bd);font-weight:700;}
+    .fcc-add{display:inline-flex;align-items:center;gap:6px;background:var(--fp-accent,#039be5);color:var(--fp-accent-fg,#fff);font-weight:700;padding:7px 14px 7px 11px;box-shadow:0 2px 6px rgba(0,0,0,.22);white-space:nowrap;}
+    .fcc-add:hover{background:var(--fp-accent,#039be5);filter:brightness(1.08);}
+    .fcc-add-i{font-size:1.2rem;line-height:1;font-weight:600;}
+    .fcc-flt .fcc-add{margin-left:auto;height:36px;border-radius:18px;}
+    /* Handy: Titel + Termin, darunter Navigation + Zeitraum, darunter die Ansichten */
+    .fcc-narrow .fcc-bar{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"title title add" "nav range range" "views views views";gap:10px;}
+    .fcc-narrow .fcc-title{grid-area:title;align-self:center;}
+    .fcc-narrow .fcc-bar .fcc-add{grid-area:add;}
+    .fcc-narrow .fcc-nav{grid-area:nav;}
+    .fcc-narrow .fcc-range{grid-area:range;text-align:right;align-self:center;}
+    .fcc-narrow .fcc-views{grid-area:views;}
+    .fcc-narrow .fcc-views .fcc-btn{flex:1;}
+    /* Personenfilter (Chips) */
+    .fcc-flt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 14px 10px;}
+    .fcc-fc{display:inline-flex;align-items:center;gap:6px;height:36px;box-sizing:border-box;padding:0 12px 0 4px;border-radius:18px;border:1px solid var(--divider-color,#ccc);background:none;color:var(--primary-text-color);font:inherit;font-size:.9rem;font-weight:500;cursor:pointer;}
+    .fcc-fc.fcc-fc-alle{padding:0 14px;}
+    .fcc-fc .fcc-dy-av{flex:0 0 28px;width:28px;height:28px;border-width:0;font-size:.8rem;}
+    .fcc-fc-on{background:rgba(var(--fp-accent-rgb,79,195,247),.2);border-color:transparent;color:var(--fp-head,var(--primary-color));font-weight:700;}
+    .fcc-fc-chk{font-size:.85rem;font-weight:700;}
     .fcc-legend{display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px 4px;}
     .fcc-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--divider-color,#ddd);background:var(--card-background-color);color:var(--primary-text-color);border-radius:999px;padding:4px 10px;font-size:.82rem;cursor:pointer;}
     .fcc-chip.fcc-off{opacity:.4;text-decoration:line-through;}
@@ -1154,6 +1468,80 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-ag-t{font-size:.72rem;font-weight:700;line-height:1.3;}
     .fcc-ag-s{font-size:.8rem;line-height:1.3;color:var(--primary-text-color);overflow-wrap:anywhere;}
     .fcc-ag-none{font-size:.78rem;color:var(--secondary-text-color);opacity:.7;padding:5px 2px;}
+    /* Tagesansicht */
+    .fcc-dy{padding:10px 0 14px;}
+    .fcc-dy-strip{display:flex;align-items:stretch;gap:4px;padding:0 10px 10px;}
+    .fcc-dy-d,.fcc-dy-arr{border:none;background:none;color:var(--primary-text-color);cursor:pointer;font:inherit;border-radius:14px;}
+    .fcc-dy-arr{flex:0 0 30px;font-size:1.4rem;color:var(--secondary-text-color);}
+    .fcc-dy-d{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0 5px;}
+    .fcc-dy-d:hover{background:var(--secondary-background-color,rgba(0,0,0,.05));}
+    .fcc-dy-wd{font-size:.78rem;font-weight:600;color:var(--secondary-text-color);}
+    .fcc-dy-n{font-size:1.2rem;font-weight:700;line-height:1.2;}
+    .fcc-dy-dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.5;}
+    .fcc-dy-dot.fcc-dy-leer{visibility:hidden;}
+    .fcc-dy-today .fcc-dy-n,.fcc-dy-today .fcc-dy-wd{color:var(--fp-head,var(--primary-color));}
+    .fcc-dy-d.fcc-dy-sel{background:var(--fp-accent,#039be5);}
+    .fcc-dy-d.fcc-dy-sel span{color:var(--fp-accent-fg,#fff);}
+    .fcc-dy-title{display:flex;align-items:center;gap:8px;padding:0 16px 10px;font-size:1.15rem;font-weight:700;color:var(--primary-text-color);}
+    .fcc-dy-badge{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(var(--fp-accent-rgb,79,195,247),.2);color:var(--fp-head,var(--primary-color));}
+    .fcc-dy-extra{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;}
+    .fcc-dy-chip{display:inline-flex;align-items:center;gap:6px;font-size:.88rem;padding:4px 10px;border-radius:999px;background:var(--secondary-background-color,rgba(0,0,0,.05));color:var(--primary-text-color);cursor:pointer;}
+    .fcc-dy-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px;padding:0 14px 4px;}
+    .fcc-dy-col{min-width:0;display:flex;flex-direction:column;gap:8px;}
+    .fcc-dy-h{display:flex;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:2px;border-bottom:3px solid #888;}
+    .fcc-dy-av{flex:0 0 38px;width:38px;height:38px;border-radius:50%;border:2px solid #888;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:1.05rem;font-weight:700;background-size:cover;background-position:center;}
+    .fcc-dy-name{flex:1;min-width:0;font-size:1.05rem;font-weight:700;color:var(--primary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .fcc-dy-ev{position:relative;border-radius:16px;padding:12px 14px;cursor:pointer;}
+    .fcc-dy-ev:hover{filter:brightness(.96);}
+    .fcc-dy-s{font-size:1.05rem;font-weight:700;line-height:1.3;color:var(--primary-text-color);overflow-wrap:break-word;-webkit-hyphens:auto;hyphens:auto;}
+    .fcc-dy-t{margin-top:4px;font-size:.9rem;font-weight:500;color:var(--primary-text-color);opacity:.75;}
+    .fcc-dy-done{opacity:.55;}
+    .fcc-dy-done .fcc-dy-s{padding-right:26px;}
+    .fcc-dy-ok{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;}
+    .fcc-dy-now{box-shadow:0 0 0 2px var(--c);}
+    /* Tagesansicht am Handy */
+    .fcc-dy-list{display:flex;flex-direction:column;gap:8px;padding:0 12px 4px;min-height:120px;}
+    .fcc-dy-mob .fcc-dy-ev{border-left:5px solid #888;border-radius:12px;padding:10px 12px;}
+    .fcc-dy-ganz{margin-left:62px;}
+    .fcc-dy-row{display:flex;gap:10px;align-items:stretch;}
+    .fcc-dy-row .fcc-dy-ev{flex:1;min-width:0;}
+    .fcc-dy-row.fcc-dy-done .fcc-dy-ev{opacity:1;}
+    .fcc-dy-zeit{flex:0 0 52px;display:flex;flex-direction:column;align-items:flex-end;padding-top:9px;color:var(--primary-text-color);}
+    .fcc-dy-zeit b{font-size:1rem;}
+    .fcc-dy-zeit span{font-size:.82rem;color:var(--secondary-text-color);text-align:right;line-height:1.15;}
+    .fcc-dy-meta{display:flex;align-items:center;gap:10px;margin-top:4px;font-size:.85rem;color:var(--primary-text-color);opacity:.8;}
+    .fcc-dy-who1{display:inline-flex;align-items:center;gap:5px;}
+    .fcc-dy-live{font-weight:700;}
+    .fcc-dy-jetzt{position:relative;height:0;border-top:2px solid #e53935;margin:4px 0 4px 62px;}
+    .fcc-dy-jetzt span{position:absolute;left:-58px;top:-10px;font-size:.75rem;font-weight:700;color:#e53935;width:52px;text-align:right;}
+    .fcc-dy-none{padding:24px 8px;text-align:center;font-size:.95rem;color:var(--secondary-text-color);}
+    .fcc-wl{display:flex;flex-direction:column;gap:6px;}
+    .fcc-wl-day{padding:4px 0 8px;}
+    .fcc-wl-day+.fcc-wl-day{border-top:1px solid var(--divider-color,#e5e5e5);}
+    .fcc-wl-h{display:flex;align-items:baseline;gap:8px;width:100%;border:none;background:none;font:inherit;cursor:pointer;text-align:left;padding:10px 14px 8px;color:var(--primary-text-color);}
+    .fcc-wl-n{flex:0 0 46px;text-align:right;font-size:1.6rem;font-weight:700;line-height:1;}
+    .fcc-wl-w{font-size:1.05rem;font-weight:600;}
+    .fcc-wl-cnt{margin-left:auto;font-size:.85rem;color:var(--secondary-text-color);}
+    .fcc-wl-heute .fcc-wl-n,.fcc-wl-heute .fcc-wl-w{color:var(--fp-head,var(--primary-color));}
+    .fcc-wl-vorbei .fcc-wl-h{opacity:.55;}
+    .fcc-wl-day .fcc-dy-extra{padding-left:68px;}
+    .fcc-wt{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:14px 10px;padding:0 14px 4px;}
+    .fcc-wt-day{min-width:0;display:flex;flex-direction:column;gap:7px;cursor:pointer;min-height:90px;}
+    .fcc-dy-col{cursor:pointer;min-height:120px;}
+    .fcc-wt-h{padding:2px 2px 7px;border-bottom:3px solid var(--divider-color,#e5e5e5);flex-wrap:wrap;}
+    .fcc-wt-h .fcc-wl-n{flex:0 0 auto;font-size:1.5rem;}
+    .fcc-wt-h .fcc-wl-w{font-size:.95rem;color:var(--secondary-text-color);}
+    .fcc-wl-heute .fcc-wt-h{border-bottom-color:var(--fp-head,var(--primary-color));}
+    .fcc-wt-day .fcc-dy-ev{padding:10px 11px;border-radius:14px;}
+    .fcc-wt-day .fcc-dy-s{font-size:1rem;}
+    .fcc-wt-day .fcc-dy-ok{top:8px;right:8px;width:18px;height:18px;font-size:.68rem;}
+    .fcc-wt-day .fcc-dy-done .fcc-dy-s{padding-right:18px;}
+    .fcc-wt-day .fcc-dy-t{font-size:.85rem;margin-top:3px;}
+    .fcc-wt-who{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:.8rem;color:var(--primary-text-color);opacity:.8;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+    .fcc-wt-day .fcc-dy-chip{align-self:flex-start;max-width:100%;font-size:.8rem;}
+    .fcc-wt-jetzt{position:relative;height:0;border-top:2px solid #e53935;margin:3px 0;}
+    .fcc-wt-jetzt span{position:absolute;right:0;top:-9px;font-size:.7rem;font-weight:700;color:#e53935;background:var(--card-background-color,#fff);padding-left:4px;}
+    .fcc-dy-free{font-size:.9rem;color:var(--secondary-text-color);opacity:.7;padding:6px 2px;}
     .fcc-gutter{width:48px;flex:0 0 48px;}
     .fcc-wk-head{display:flex;padding:6px 8px 0;}
     .fcc-dcol{flex:1;min-width:0;text-align:center;border-radius:8px 8px 0 0;padding:2px;}
@@ -1210,7 +1598,7 @@ class FamilyCalendarCard extends HTMLElement {
 if (!customElements.get("family-calendar-card")) {
   customElements.define("family-calendar-card", FamilyCalendarCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "family-calendar-card", name: "Family Calendar Card", description: "Wochen-Stunden-Raster + Monat mit Praefix-Personen" });
+  window.customCards.push({ type: "family-calendar-card", name: "Family Calendar Card", description: "Tag, Woche und Monat mit Praefix-Personen" });
 }
 })();
 
@@ -4681,7 +5069,7 @@ if (!customElements.get("fp-weight-card")) {
 }
 })();
 
-/* ===== fp-diaper-card v2 (Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
+/* ===== fp-diaper-card v3 (liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
 // Ein Eintrag = ein kurzer Termin im eigenen Kalender: Titel "Windel nass",
 // Beschreibung {"typ":"windel","art":"nass|voll|beides"}. Nicht in den
 // Stillkalender schreiben: die 3-h-Erinnerung zählt dort jeden Eintrag als Mahlzeit.
@@ -4701,8 +5089,8 @@ class FpDiaperCard extends HTMLElement {
   }
   connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._tick(), 20000); }
   disconnectedCallback() { clearInterval(this._timer); this._timer = null; }
-  // „vor …" läuft alle 20 s mit, der Kalender wird jede Minute neu gelesen.
-  _tick() { this._paintSince(); if (++this._ticks % 3 === 0) this._load(); }
+  // Alle 20 s Kalender neu lesen — Einträge kommen auch von außen (Hue-Schalter, andere Geräte).
+  _tick() { this._load(); }
 
   _p(n) { return String(n).padStart(2, "0"); }
   _hm(d) { return `${this._p(d.getHours())}:${this._p(d.getMinutes())}`; }
