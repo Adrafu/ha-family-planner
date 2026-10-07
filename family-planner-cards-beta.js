@@ -4049,7 +4049,7 @@ if (!customElements.get("dobby-clock-card-beta")) {
   window.customCards.push({ type: "dobby-clock-card-beta", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card-beta v10 (7-Tage-Ansicht mit Spalte Stillzeit je Tag; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card-beta v10 (7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -4396,7 +4396,8 @@ class FpFeedingCard extends HTMLElement {
     }
     const maxN = Math.max(1, ...zeilen.map(z => z.n));
     box.innerHTML = `<table class="ff-tab ff-wk">
-      <thead><tr><th>Tag</th><th>Mahlzeiten</th><th>Stillzeit</th><th>Ø Abstand</th><th>Fläschchen</th></tr></thead>
+      <colgroup><col class="ff-wk-c1"><col class="ff-wk-c2"><col><col><col></colgroup>
+      <thead><tr><th>Tag</th><th>Mahlzeiten</th><th>Stillzeit</th><th>Ø&nbsp;Abstand</th><th>Fläschchen</th></tr></thead>
       <tbody>${zeilen.map(z => `<tr>
         <td>${z.titel}</td>
         <td><div class="ff-wk-n"><span class="ff-wk-track"><span class="ff-wk-bar" style="width:${(z.n / maxN) * 100}%"></span></span><b>${z.n}</b></div></td>
@@ -4809,11 +4810,19 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
       .ff-txtbtn{border:none;background:transparent;cursor:pointer;padding:6px 2px;
         font-size:.78rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--secondary-text-color);}
       .ff-week{margin-top:4px;}
-      .ff-wk td{padding:7px 6px;}
-      .ff-wk-n{display:flex;align-items:center;gap:6px;min-width:70px;}
+      .ff-wk{table-layout:fixed;}
+      .ff-wk td{padding:8px 10px;}
+      .ff-wk th{padding:4px 10px 6px;}
+      .ff-wk th:first-child,.ff-wk td:first-child{padding-left:4px;}
+      .ff-wk th:last-child,.ff-wk td:last-child{padding-right:4px;}
+      .ff-wk-c1{width:14%;} .ff-wk-c2{width:38%;}
+      .ff-wk th:nth-child(n+3),.ff-wk td:nth-child(n+3){text-align:right;}
+      .ff-wk td:nth-child(2){padding-right:22px;}
+      .ff-wk-n{display:flex;align-items:center;gap:10px;}
+      .ff-wk-n b{flex:0 0 2ch;text-align:right;}
       .ff-wk-track{flex:1;height:8px;border-radius:4px;background:var(--secondary-background-color);overflow:hidden;}
       .ff-wk-bar{display:block;height:100%;border-radius:4px;background:var(--ff-a);}
-      @container (max-width: 440px){ .ff-wk-n{min-width:0;} .ff-wk-track{display:none;} .ff-wk th{white-space:normal;line-height:1.15;} }
+      @container (max-width: 440px){ .ff-wk{table-layout:auto;} .ff-wk th,.ff-wk td{padding-left:4px;padding-right:4px;} .ff-wk td:nth-child(2){padding-right:4px;} .ff-wk-track{display:none;} .ff-wk-n b{flex:none;} .ff-wk th{white-space:nowrap;font-size:.66rem;} }
       .ff-tab tfoot td{border-bottom:none;font-weight:700;font-size:.82rem;color:var(--secondary-text-color);padding-top:8px;}
 
       .ff-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
