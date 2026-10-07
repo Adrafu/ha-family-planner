@@ -3409,7 +3409,7 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
       <div class="cb-m-head"><span>${this._esc(d.name)}</span><button class="cb-x">${CP(0x2715)}</button></div>
       ${this._imgSrc(d)
         ? `<div class="cb-hero">${this._imgTag(d, "cb-hero-img")}<button class="cb-hero-btn">${CP(0x1F4F7)} Bild ändern</button></div>`
-          + (d.image && d.image.credit ? `<div class="cb-credit">${d.image.link ? `<a href="${this._esc(d.image.link)}" target="_blank" rel="noopener">${this._esc(d.image.credit)}</a>` : this._esc(d.image.credit)}</div>` : "")
+          + (d.image && (d.image.credit || d.image.temp) ? `<div class="cb-credit">${d.image.temp ? '<span class="cb-temp">Vorläufiges Foto</span>' : ""}${d.image.credit ? (d.image.link ? `<a href="${this._esc(d.image.link)}" target="_blank" rel="noopener">${this._esc(d.image.credit)}</a>` : this._esc(d.image.credit)) : ""}</div>` : "")
         : `<button class="cb-hero cb-hero-add">${CP(0x1F4F7)} Bild hinzufügen</button>`}
       <div class="cb-m-tags">${(d.tags || []).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
       ${this._metaRow(d, "cb-time", true)}
@@ -3673,6 +3673,8 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
       .cb-hero-add{border:1.5px dashed var(--divider-color);background:var(--secondary-background-color);color:var(--secondary-text-color);padding:16px;font:inherit;font-weight:600;cursor:pointer;}
       .cb-credit{font-size:.7rem;color:var(--secondary-text-color);margin:-4px 0 8px;}
       .cb-credit a{color:inherit;}
+      .cb-temp{font-weight:700;margin-right:6px;}
+      .cb-temp::after{content:" ·";font-weight:400;}
       .cb-im-cur{margin-bottom:6px;}
       .cb-im-prev{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;}
       .cb-im-btns .cb-btn{display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;}
