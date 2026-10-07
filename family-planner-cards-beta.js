@@ -4049,7 +4049,7 @@ if (!customElements.get("dobby-clock-card-beta")) {
   window.customCards.push({ type: "dobby-clock-card-beta", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card-beta v9 (Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card-beta v10 (7-Tage-Ansicht mit Spalte Stillzeit je Tag; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -4389,15 +4389,18 @@ class FpFeedingCard extends HTMLElement {
       const idx = meals.map((m, j) => j).filter(j => this._tag(meals[j].start) === key);
       const abst = idx.filter(j => j > 0).map(j => meals[j].start - meals[j - 1].start).filter(x => x <= 8 * 3600000);
       const ml = evs.filter(e => e.typ === "flasche" && this._tag(e.start) === key).reduce((t, e) => t + (e.ml || 0), 0);
-      zeilen.push({ titel: i ? `${wt[d.getDay()]} ${d.getDate()}.` : "Heute", n: idx.length, ml,
+      // Gesamte Stilldauer des Tages, gezählt am Tag des Beginns
+      const still = evs.filter(e => e.typ === "stillen" && this._tag(e.start) === key).reduce((t, e) => t + Math.max(0, e.end - e.start), 0);
+      zeilen.push({ titel: i ? `${wt[d.getDay()]} ${d.getDate()}.` : "Heute", n: idx.length, ml, still,
         avg: abst.length ? abst.reduce((a, b) => a + b, 0) / abst.length : 0 });
     }
     const maxN = Math.max(1, ...zeilen.map(z => z.n));
     box.innerHTML = `<table class="ff-tab ff-wk">
-      <thead><tr><th>Tag</th><th>Mahlzeiten</th><th>Ø Abstand</th><th>Fläschchen</th></tr></thead>
+      <thead><tr><th>Tag</th><th>Mahlzeiten</th><th>Stillzeit</th><th>Ø Abstand</th><th>Fläschchen</th></tr></thead>
       <tbody>${zeilen.map(z => `<tr>
         <td>${z.titel}</td>
         <td><div class="ff-wk-n"><span class="ff-wk-track"><span class="ff-wk-bar" style="width:${(z.n / maxN) * 100}%"></span></span><b>${z.n}</b></div></td>
+        <td>${z.still ? this._hmDauer(z.still) : "–"}</td>
         <td>${z.avg ? this._hmDauer(z.avg) : "–"}</td>
         <td>${z.ml ? `${z.ml} ml` : "–"}</td></tr>`).join("")}</tbody>
     </table>`;
@@ -4810,6 +4813,7 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
       .ff-wk-n{display:flex;align-items:center;gap:6px;min-width:70px;}
       .ff-wk-track{flex:1;height:8px;border-radius:4px;background:var(--secondary-background-color);overflow:hidden;}
       .ff-wk-bar{display:block;height:100%;border-radius:4px;background:var(--ff-a);}
+      @container (max-width: 440px){ .ff-wk-n{min-width:0;} .ff-wk-track{display:none;} .ff-wk th{white-space:normal;line-height:1.15;} }
       .ff-tab tfoot td{border-bottom:none;font-weight:700;font-size:.82rem;color:var(--secondary-text-color);padding-top:8px;}
 
       .ff-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
