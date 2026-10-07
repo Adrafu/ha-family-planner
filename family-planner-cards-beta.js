@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.6.1 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta */
+/* Family Planner custom cards v2.7.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -1487,7 +1487,7 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-extra{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;}
     .fcc-dy-chip{display:inline-flex;align-items:center;gap:6px;font-size:.88rem;padding:4px 10px;border-radius:999px;background:var(--secondary-background-color,rgba(0,0,0,.05));color:var(--primary-text-color);cursor:pointer;}
     .fcc-dy-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px;padding:0 14px 4px;}
-    .fcc-dy-col{min-width:0;display:flex;flex-direction:column;gap:8px;scroll-snap-align:start;}
+    .fcc-dy-col{min-width:0;display:flex;flex-direction:column;gap:8px;}
     .fcc-dy-h{display:flex;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:2px;border-bottom:3px solid #888;}
     .fcc-dy-av{flex:0 0 38px;width:38px;height:38px;border-radius:50%;border:2px solid #888;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:1.05rem;font-weight:700;background-size:cover;background-position:center;}
     .fcc-dy-name{flex:1;min-width:0;font-size:1.05rem;font-weight:700;color:var(--primary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -2770,7 +2770,7 @@ if (!customElements.get("fp-glance-card-beta")) {
 }
 })();
 
-/* ===== fp-cookbook-card-beta v20 (Mengen mit Dezimalkomma; Zutaten → Einkauf fasst Mengen mit offenen Eintraegen gleichen Namens zusammen, g/kg und ml/l umgerechnet; Dialogknoepfe in Theme-Farben statt festem Hellblau, Abbrechen zurueckhaltend; Import per Link: Rezeptseiten und Videos, Naehrwerte je Portion, Filter „proteinreich" aus dem Eiweisswert, Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Naehrwerte, Zutaten, Schritte) ===== */
+/* ===== fp-cookbook-card-beta v21 (Bilder zu den Rezepten: in Kacheln und Rezeptansicht, eigenes Foto hochladen, freie Fotos ueber Openverse suchen, KI-Bild, Bildadresse; Mengen mit Dezimalkomma; Zutaten → Einkauf fasst Mengen mit offenen Eintraegen gleichen Namens zusammen, g/kg und ml/l umgerechnet; Dialogknoepfe in Theme-Farben statt festem Hellblau, Abbrechen zurueckhaltend; Import per Link: Rezeptseiten und Videos, Naehrwerte je Portion, Filter „proteinreich" aus dem Eiweisswert, Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Naehrwerte, Zutaten, Schritte) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2787,6 +2787,7 @@ class FpCookbookCard extends HTMLElement {
       quick_max_min: 20,            // bis hierher gilt ein Gericht als „schnell"
       import_service: "",           // z. B. rest_command.kochbuch_import — blendet das Link-Feld ein
       protein_min_g: 25,            // ab hier gilt eine Portion als „proteinreich"
+      image_folder: "kochbuch",     // Unterordner im HA-Medienordner für eigene Fotos
       style: "viel vegetarisch, bunt gemischt, proteinreich, schnell zu kochen",
       meals: [
         { label: "Frühstück", at: 8 },
@@ -2796,6 +2797,7 @@ class FpCookbookCard extends HTMLElement {
     }, config || {});
     this._dishes = null; this._sig = ""; this._built = false;
     this._search = ""; this._filter = "Alle"; this._ov = null; this._recentSuggestions = [];
+    this._imgCache = {}; this._queryCache = {};
   }
   set hass(hass) {
     this._hass = hass;
@@ -3117,6 +3119,158 @@ class FpCookbookCard extends HTMLElement {
     return { neu, zus };
   }
 
+  // ---------- Bilder ----------
+  // d.image = { src, credit?, link? }; src ist eine https-Adresse oder eine
+  // media-source-ID (eigene Fotos, KI-Bilder). Letztere brauchen eine signierte Adresse.
+  _imgSrc(d) { const i = d && d.image; return i ? (typeof i === "string" ? i : i.src || "") : ""; }
+  _imgTag(d, cls) {
+    const src = this._imgSrc(d);
+    if (!src) return `<div class="${cls} cb-noimg">${CP(0x1F37D)}</div>`;
+    return `<img class="${cls}" data-img="${this._esc(src)}" alt="" loading="lazy">`;
+  }
+  async _resolveImg(src) {
+    if (!/^media-source:\/\//.test(src)) return src;
+    const c = this._imgCache[src];
+    if (c && c.until > Date.now()) return c.url;
+    const r = await this._hass.callWS({ type: "media_source/resolve_media", media_content_id: src, expires: 86400 });
+    this._imgCache[src] = { url: r.url, until: Date.now() + 82800000 };
+    return r.url;
+  }
+  _fillImgs(root) {
+    (root || this).querySelectorAll("img[data-img]").forEach(img => {
+      const src = img.dataset.img;
+      this._resolveImg(src).then(u => { img.src = u; }).catch(() => { img.replaceWith(Object.assign(document.createElement("div"), { className: img.className + " cb-noimg", textContent: CP(0x1F37D) })); });
+      img.onerror = () => { img.classList.add("cb-img-err"); };
+    });
+  }
+  async _setImage(d, image) {
+    d.image = image || null;
+    if (!image) delete d.image;
+    return this._save(d, d.uid);
+  }
+  // Foto verkleinern (lange Seite 1280 px, JPEG) und in den Medienordner laden
+  async _uploadPhoto(d, file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
+      const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      const blob = await new Promise(ok => cv.toBlob(ok, "image/jpeg", 0.84));
+      const slug = U.norm(d.name).replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "rezept";
+      const fd = new FormData();
+      fd.append("media_content_id", `media-source://media_source/local/${this.config.image_folder}`);
+      fd.append("file", blob, `${slug}-${Date.now().toString(36)}.jpg`);
+      const res = await this._hass.fetchWithAuth("/api/media_source/local_source/upload", { method: "POST", body: fd });
+      if (res.status === 401 || res.status === 403) throw new Error("admin");
+      if (!res.ok) throw new Error("upload " + res.status);
+      const j = await res.json();
+      return { src: j.media_content_id };
+    } finally { URL.revokeObjectURL(url); }
+  }
+  // Englischer Suchbegriff fuer die Fotosuche (freie Fotos sind meist englisch beschriftet)
+  async _imageQuery(d) {
+    if (this._queryCache[d.name]) return this._queryCache[d.name];
+    let q = d.name;
+    try {
+      const data = { task_name: "Bildsuche", instructions: `Gib NUR einen kurzen englischen Suchbegriff (2 bis 4 Woerter, ohne Anfuehrungszeichen) fuer ein Foto des Gerichts "${d.name}" zurueck.` };
+      if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+      const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
+      let t = r && r.response && r.response.data;
+      if (t && typeof t === "object") t = t.text || "";
+      t = String(t || "").split("\n")[0].replace(/["'„“.]/g, "").trim();
+      if (t && t.length < 60) q = t;
+    } catch (e) { /* ohne KI mit dem deutschen Namen suchen */ }
+    return (this._queryCache[d.name] = q);
+  }
+  async _searchPhotos(q) {
+    const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&page_size=12&mature=false`);
+    if (!r.ok) throw new Error("openverse " + r.status);
+    const j = await r.json();
+    return (j.results || []).filter(x => x.url).map(x => ({
+      thumb: x.thumbnail || x.url, src: x.url, link: x.foreign_landing_url || "",
+      credit: `Foto: ${x.creator || "unbekannt"}, ${String(x.license || "").toUpperCase() === "CC0" ? "CC0" : "CC " + String(x.license || "").toUpperCase() + " " + (x.license_version || "")}`.trim(),
+    }));
+  }
+  async _aiImage(d) {
+    const data = { task_name: "Kochbuch-Bild", instructions: `Appetizing realistic food photograph of the dish "${d.name}"${(d.ingredients || []).length ? ` (main ingredients: ${(d.ingredients || []).slice(0, 6).map(i => i.item).join(", ")})` : ""}, served on a plate on a wooden kitchen table, natural daylight, shallow depth of field, landscape 4:3, no text, no people.` };
+    if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+    const r = await this._hass.callService("ai_task", "generate_image", data, undefined, false, true);
+    const id = r && r.response && r.response.media_source_id;
+    if (!id) throw new Error("kein Bild");
+    return { src: id, credit: "KI-Bild" };
+  }
+  _aiImageOk() {
+    const st = this.config.ai_entity && this._hass.states[this.config.ai_entity];
+    return !!(st && (Number(st.attributes.supported_features) & 4));
+  }
+
+  _openImage(d) {
+    const cur = this._imgSrc(d);
+    const ov = this._overlay(`
+      <div class="cb-m-head"><span>Bild für „${this._esc(d.name)}"</span><button class="cb-x">${CP(0x2715)}</button></div>
+      ${cur ? `<div class="cb-im-cur">${this._imgTag(d, "cb-im-prev")}</div>` : ""}
+      <div class="cb-m-foot cb-im-btns">
+        <label class="cb-btn cb-im-photo">${CP(0x1F4F7)} Eigenes Foto<input type="file" accept="image/*" hidden></label>
+        <button class="cb-btn cb-im-find">${CP(0x1F50E)} Foto suchen</button>
+        ${this._aiImageOk() ? `<button class="cb-btn cb-im-ai">${CP(0x2728)} KI-Bild</button>` : ""}
+      </div>
+      <div class="cb-im-search" hidden>
+        <div class="cb-imp-row"><input class="cb-in cb-im-q" type="text" placeholder="Suchbegriff"><button class="cb-btn cb-im-go">Suchen</button></div>
+        <div class="cb-im-grid"></div>
+        <div class="cb-e-hint">Freie Fotos von Openverse (Creative Commons). Der Hinweis auf den Fotografen wird mitgespeichert.</div>
+      </div>
+      <div class="cb-sub">Oder Bildadresse einfügen</div>
+      <div class="cb-imp-row"><input class="cb-in cb-im-url" type="url" inputmode="url" placeholder="https://…"><button class="cb-btn cb-im-urlok">Übernehmen</button></div>
+      <div class="cb-m-foot">
+        ${cur ? `<button class="cb-btn cb-e-cancel cb-im-del">Bild entfernen</button>` : ""}
+        <button class="cb-btn cb-e-cancel cb-im-back">Zurück</button>
+      </div>`);
+    this._fillImgs(ov);
+    const fertig = async (image, msg) => { if (await this._setImage(d, image)) { this._toast(msg); this._openDetail(d); } };
+    ov.querySelector(".cb-x").addEventListener("click", () => this._closeOv());
+    ov.querySelector(".cb-im-back").addEventListener("click", () => this._openDetail(d));
+    const del = ov.querySelector(".cb-im-del");
+    if (del) del.addEventListener("click", () => fertig(null, "Bild entfernt"));
+    const fileIn = ov.querySelector(".cb-im-photo input");
+    fileIn.addEventListener("change", async () => {
+      const file = fileIn.files && fileIn.files[0]; if (!file) return;
+      const lab = ov.querySelector(".cb-im-photo"); lab.classList.add("cb-busy"); lab.firstChild.textContent = `${CP(0x23F3)} Lädt hoch …`;
+      try { await fertig(await this._uploadPhoto(d, file), "Foto gespeichert"); }
+      catch (e) { lab.classList.remove("cb-busy"); lab.firstChild.textContent = `${CP(0x1F4F7)} Eigenes Foto`; this._toast(e.message === "admin" ? "Hochladen geht nur mit einem Admin-Konto" : "Foto konnte nicht hochgeladen werden"); }
+    });
+    const box = ov.querySelector(".cb-im-search"), qIn = ov.querySelector(".cb-im-q"), grid = ov.querySelector(".cb-im-grid");
+    const suchen = async () => {
+      const q = qIn.value.trim(); if (!q) return;
+      grid.innerHTML = `<div class="cb-e-hint">${CP(0x23F3)} Suche …</div>`;
+      try {
+        const hits = await this._searchPhotos(q);
+        if (!hits.length) { grid.innerHTML = `<div class="cb-e-hint">Nichts gefunden. Probier einen anderen Begriff.</div>`; return; }
+        grid.innerHTML = hits.map((h, i) => `<button class="cb-im-hit" data-i="${i}"><img src="${this._esc(h.thumb)}" alt="" loading="lazy"></button>`).join("");
+        grid.querySelectorAll(".cb-im-hit").forEach(b => b.addEventListener("click", () => { const h = hits[+b.dataset.i]; fertig({ src: h.src, credit: h.credit, link: h.link }, "Bild gespeichert"); }));
+      } catch (e) { grid.innerHTML = `<div class="cb-e-hint">Fotosuche gerade nicht erreichbar.</div>`; }
+    };
+    ov.querySelector(".cb-im-find").addEventListener("click", async e => {
+      box.hidden = false;
+      if (!qIn.value) { const btn = e.currentTarget; btn.disabled = true; qIn.value = await this._imageQuery(d); btn.disabled = false; }
+      suchen();
+    });
+    ov.querySelector(".cb-im-go").addEventListener("click", suchen);
+    qIn.addEventListener("keydown", e => { if (e.key === "Enter") suchen(); });
+    const ai = ov.querySelector(".cb-im-ai");
+    if (ai) ai.addEventListener("click", async () => {
+      ai.disabled = true; ai.textContent = `${CP(0x2728)} Malt …`;
+      try { await fertig(await this._aiImage(d), "KI-Bild gespeichert"); }
+      catch (e) { ai.disabled = false; ai.textContent = `${CP(0x2728)} KI-Bild`; this._toast("KI-Bild nicht möglich. Google erzeugt Bilder nur mit bezahltem Kontingent."); }
+    });
+    ov.querySelector(".cb-im-urlok").addEventListener("click", () => {
+      const u = ov.querySelector(".cb-im-url").value.trim();
+      if (!/^https:\/\/\S+$/i.test(u)) { this._toast("Bitte eine vollständige https-Adresse einfügen"); return; }
+      fertig({ src: u }, "Bild gespeichert");
+    });
+  }
+
   // ---------- UI ----------
   _closeOv() { if (this._ov && this._ov.parentNode) this._ov.parentNode.removeChild(this._ov); this._ov = null; }
   _stars(n) { let s = ""; for (let i = 1; i <= 5; i++) s += i <= n ? CP(0x2605) : CP(0x2606); return s; }
@@ -3193,13 +3347,7 @@ class FpCookbookCard extends HTMLElement {
     const nNoNutri = (this._dishes || []).filter(d => this._nutriMissing(d)).length;
     const nutriBar = nNoNutri ? `<button class="cb-fixnutri">${CP(0x1F525)} Nährwerte für ${nNoNutri} Rezept${nNoNutri === 1 ? "" : "e"} berechnen</button>` : "";
     const cards = dishes.length ? dishes.map(d => `
-      <button class="cb-dish" data-uid="${this._esc(d.uid)}">
-        <div class="cb-d-name">${this._esc(d.name)}</div>
-        <div class="cb-d-meta">${d.category && d.category !== "egal" ? this._esc(d.category) + " · " : ""}${this._esc(this._sinceTxt(d.last_cooked))}</div>
-        ${this._metaRow(d, "cb-d-time")}
-        <div class="cb-d-tags">${(d.tags || []).slice(0, 3).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
-        <div class="cb-d-stars">${d.rating ? this._stars(d.rating) : ""}</div>
-      </button>`).join("")
+${this._tileHTML(d)}`).join("")
       : `<div class="cb-empty">Noch keine Rezepte. Tippe auf „＋ Neu", um eins per KI zu erzeugen.</div>`;
 
     this.innerHTML = `
@@ -3225,19 +3373,27 @@ class FpCookbookCard extends HTMLElement {
     si.addEventListener("input", e => { this._search = e.target.value; this._renderGridOnly(); });
     this.querySelectorAll(".cb-chip").forEach(b => b.addEventListener("click", () => { this._filter = b.dataset.f; this._render(); }));
     this.querySelectorAll(".cb-dish").forEach(b => b.addEventListener("click", () => { const d = this._dishes.find(x => x.uid === b.dataset.uid); if (d) this._openDetail(d); }));
+    this._fillImgs(this.querySelector(".cb-grid"));
+  }
+  _tileHTML(d) {
+    return `<button class="cb-dish" data-uid="${this._esc(d.uid)}">
+        ${this._imgTag(d, "cb-d-img")}
+        <div class="cb-d-body">
+          <div class="cb-d-name">${this._esc(d.name)}</div>
+          <div class="cb-d-meta">${d.category && d.category !== "egal" ? this._esc(d.category) + " · " : ""}${this._esc(this._sinceTxt(d.last_cooked))}</div>
+          ${this._metaRow(d, "cb-d-time")}
+          <div class="cb-d-tags">${(d.tags || []).slice(0, 3).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
+          <div class="cb-d-stars">${d.rating ? this._stars(d.rating) : ""}</div>
+        </div>
+      </button>`;
   }
   _renderGridOnly() {
     const grid = this.querySelector(".cb-grid"); if (!grid) return;
     const dishes = this._filtered();
     grid.innerHTML = dishes.length ? dishes.map(d => `
-      <button class="cb-dish" data-uid="${this._esc(d.uid)}">
-        <div class="cb-d-name">${this._esc(d.name)}</div>
-        <div class="cb-d-meta">${d.category && d.category !== "egal" ? this._esc(d.category) + " · " : ""}${this._esc(this._sinceTxt(d.last_cooked))}</div>
-        ${this._metaRow(d, "cb-d-time")}
-        <div class="cb-d-tags">${(d.tags || []).slice(0, 3).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
-        <div class="cb-d-stars">${d.rating ? this._stars(d.rating) : ""}</div>
-      </button>`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
+${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
     grid.querySelectorAll(".cb-dish").forEach(b => b.addEventListener("click", () => { const d = this._dishes.find(x => x.uid === b.dataset.uid); if (d) this._openDetail(d); }));
+    this._fillImgs(grid);
   }
 
   _overlay(html) {
@@ -3251,6 +3407,10 @@ class FpCookbookCard extends HTMLElement {
     let portions = d.portions_base || this.config.base_portions;
     const ov = this._overlay(`
       <div class="cb-m-head"><span>${this._esc(d.name)}</span><button class="cb-x">${CP(0x2715)}</button></div>
+      ${this._imgSrc(d)
+        ? `<div class="cb-hero">${this._imgTag(d, "cb-hero-img")}<button class="cb-hero-btn">${CP(0x1F4F7)} Bild ändern</button></div>`
+          + (d.image && d.image.credit ? `<div class="cb-credit">${d.image.link ? `<a href="${this._esc(d.image.link)}" target="_blank" rel="noopener">${this._esc(d.image.credit)}</a>` : this._esc(d.image.credit)}</div>` : "")
+        : `<button class="cb-hero cb-hero-add">${CP(0x1F4F7)} Bild hinzufügen</button>`}
       <div class="cb-m-tags">${(d.tags || []).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
       ${this._metaRow(d, "cb-time", true)}
       <div class="cb-rate" data-r="${d.rating || 0}">Bewertung: <span class="cb-rate-stars"></span></div>
@@ -3273,6 +3433,8 @@ class FpCookbookCard extends HTMLElement {
     const renderStars = () => { ov.querySelector(".cb-rate-stars").innerHTML = [1, 2, 3, 4, 5].map(i => `<span class="cb-star" data-v="${i}">${i <= (d.rating || 0) ? CP(0x2605) : CP(0x2606)}</span>`).join(""); };
     renderStars();
     ov.querySelector(".cb-x").addEventListener("click", () => this._closeOv());
+    ov.querySelectorAll(".cb-hero-btn,.cb-hero-add").forEach(b => b.addEventListener("click", () => this._openImage(d)));
+    this._fillImgs(ov);
     ov.querySelector(".cb-port-slider").addEventListener("input", e => { portions = Number(e.target.value); renderIng(); });
     ov.querySelector(".cb-rate-stars").addEventListener("click", e => { const s = e.target.closest(".cb-star"); if (!s) return; d.rating = Number(s.dataset.v); renderStars(); this._save(d, d.uid); });
     ov.querySelector(".cb-edit").addEventListener("click", () => this._openEdit(d));
@@ -3499,7 +3661,28 @@ class FpCookbookCard extends HTMLElement {
       .cb-src{margin-top:12px;font-size:.85rem;}
       .cb-src a{color:var(--primary-color,var(--fp-head,#0277bd));}
       .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;}
-      .cb-dish{text-align:left;border:1px solid var(--divider-color);border-radius:12px;padding:10px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;display:flex;flex-direction:column;gap:4px;min-height:70px;}
+      .cb-dish{text-align:left;border:1px solid var(--divider-color);border-radius:12px;padding:0;overflow:hidden;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;display:flex;flex-direction:column;min-height:70px;font:inherit;}
+      .cb-d-img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:rgba(var(--fp-tint-rgb,129,212,250),.18);}
+      .cb-noimg{display:flex;align-items:center;justify-content:center;font-size:2rem;opacity:.55;background:linear-gradient(135deg,rgba(var(--fp-tint-rgb,129,212,250),.22),rgba(var(--fp-accent-rgb,79,195,247),.12));}
+      .cb-d-img.cb-noimg{aspect-ratio:4/3;}
+      .cb-d-body{display:flex;flex-direction:column;gap:4px;padding:9px 10px 10px;}
+      .cb-hero{position:relative;display:block;width:100%;margin:0 0 8px;border-radius:12px;overflow:hidden;}
+      .cb-hero-img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;}
+      .cb-hero-img.cb-noimg{aspect-ratio:16/10;}
+      .cb-hero-btn{position:absolute;right:8px;bottom:8px;border:none;border-radius:999px;padding:6px 11px;font-size:.8rem;font-weight:600;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;}
+      .cb-hero-add{border:1.5px dashed var(--divider-color);background:var(--secondary-background-color);color:var(--secondary-text-color);padding:16px;font:inherit;font-weight:600;cursor:pointer;}
+      .cb-credit{font-size:.7rem;color:var(--secondary-text-color);margin:-4px 0 8px;}
+      .cb-credit a{color:inherit;}
+      .cb-im-cur{margin-bottom:6px;}
+      .cb-im-prev{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;}
+      .cb-im-btns .cb-btn{display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;}
+      .cb-im-photo{cursor:pointer;}
+      .cb-busy{opacity:.7;pointer-events:none;}
+      .cb-im-search{margin-top:10px;}
+      .cb-im-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px;}
+      .cb-im-hit{border:none;padding:0;border-radius:8px;overflow:hidden;cursor:pointer;background:var(--secondary-background-color);aspect-ratio:1;}
+      .cb-im-hit img{width:100%;height:100%;object-fit:cover;display:block;}
+      .cb-im-hit:hover{outline:3px solid var(--fp-accent,#039be5);}
       .cb-dish:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.18);}
       .cb-d-name{font-weight:700;font-size:.95rem;line-height:1.15;}
       .cb-d-meta{font-size:.75rem;color:var(--secondary-text-color);}
