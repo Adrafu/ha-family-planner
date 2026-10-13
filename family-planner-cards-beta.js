@@ -6355,7 +6355,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v7 (Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card-beta v8 (Erinnerung tags/nachts und Pause bis zur neuen Mahlzeit aus denselben Helfern wie Stillkarte und Automation; Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -6389,7 +6389,11 @@ class FpBabyOverviewCard extends HTMLElement {
       growth_data: "",           // optional: Perzentilkurven wie bei der fp-weight-card-beta (dazu je Kind birth, ga, sex)
       memories_path: "",         // nur noch Rückfall ohne milestone_calendar: Tab, zu dem „Momente“ springt
       bottle_presets: [40, 60, 90, 120],
-      reminder_hours: 3,         // ab hier ist die Mahlzeit „fällig“, wie in der Stillkarte
+      reminder_hours: 3,         // ab hier ist die Mahlzeit „fällig“, wie in der Stillkarte (Rückfall ohne Helfer)
+      reminder_entity: "",       // optional: input_number (Stunden) tagsüber, dieselben Helfer wie Stillkarte und Automation
+      reminder_night_entity: "", // optional: input_number (Stunden) nachts
+      night_start: 22, night_end: 6,
+      meal_pause_entity: "",     // optional: input_number (Minuten), überschreibt meal_pause_minutes
       meal_pause_minutes: 45,    // höchstens so viel Pause zwischen zwei Einträgen derselben Mahlzeit
       bottle_minutes: 15,        // Fläschchen stehen mit „fertig um“: so viel früher war ihr Beginn
     }, config);
@@ -6600,8 +6604,18 @@ class FpBabyOverviewCard extends HTMLElement {
   }
 
   // Mahlzeiten wie in der Stillkarte: Einträge mit höchstens meal_pause_minutes Pause gehören zusammen.
+  // Zahl aus einem Helfer, sonst der Rückfallwert — wie in der Stillkarte.
+  _zahl(e, d) { const st = e && this._hass && this._hass.states[e], n = st ? Number(st.state) : NaN; return isFinite(n) && n > 0 ? n : Number(d); }
+  // Erinnerungsgrenze in Stunden zu einem Zeitpunkt, nachts eine eigene (wie Stillkarte und Erinnerungs-Automation).
+  _grenze(kid, t) {
+    const c = this.config, h = new Date(t).getHours();
+    const nacht = c.night_start > c.night_end ? (h >= c.night_start || h < c.night_end) : (h >= c.night_start && h < c.night_end);
+    const tag = this._zahl(c.reminder_entity, kid.reminder_hours || c.reminder_hours);
+    return nacht ? this._zahl(c.reminder_night_entity, tag) : tag;
+  }
+  _pauseMin() { return this._zahl(this.config.meal_pause_entity, this.config.meal_pause_minutes); }
   _mahlzeiten(feeds) {
-    const pause = Number(this.config.meal_pause_minutes) * MIN, flasche = Number(this.config.bottle_minutes) * MIN, out = [];
+    const pause = this._pauseMin() * MIN, flasche = Number(this.config.bottle_minutes) * MIN, out = [];
     let ende = 0;
     feeds.map(e => ({ e, ab: e.typ === "flasche" ? +e.start - flasche : +e.start })).sort((a, b) => a.ab - b.ab).forEach(({ e, ab }) => {
       if (!out.length || ab - ende > pause) out.push({ start: ab, end: ab, geschaetzt: e.typ === "flasche", evs: [] });
@@ -7053,7 +7067,7 @@ class FpBabyOverviewCard extends HTMLElement {
     }
     if (k.feeding_calendar || k.switch) {
       const st = vm.raw.feeds.filter(e => e.typ === "stillen").pop(), l = vm.letzte;
-      const ziel = Number(k.reminder_hours || this.config.reminder_hours) * STD, faellig = !lauf && l && jetzt - l.start >= ziel && jetzt - l.start <= 8 * STD;
+      const ziel = this._grenze(k, jetzt) * STD, faellig = !lauf && l && jetzt - l.start >= ziel && jetzt - l.start <= 8 * STD;
       if (lauf) karten.push(karte("var(--c-nurse)", "Stillen", `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>`, "läuft gerade", ""));
       else if (st) { const [w, u] = her(+st.start); karten.push(karte("var(--c-nurse)", "Stillen", w, u, faellig ? `<span class="fo-due-t">Fällig</span>` : vm.prog && jetzt < vm.prog.hi ? spanne(vm.prog) : "", faellig)); }
       else karten.push(leer("var(--c-nurse)", "Stillen", "noch nichts eingetragen"));
@@ -7661,7 +7675,7 @@ class FpBabyOverviewCard extends HTMLElement {
       if (kid.birth) L.push(`Geboren ${this._dmy(this._day(kid.birth))}${kid.ga ? ` in SSW ${kid.ga}` : ""}, heute ${this._alterText(kid)} alt.`);
       if (this._laeuft(kid)) L.push(`Gerade läuft: Stillen seit ${this._hm(new Date(this._beginn(kid)))}${this._seite(kid) ? ` (${this._seite(kid)})` : ""}.`);
       if (kid.feeding_calendar || kid.diaper_calendar) {
-        L.push(`Tageswerte (0–24 Uhr; eine Mahlzeit = Einträge mit höchstens ${this.config.meal_pause_minutes} Min Pause; Abstand = Beginn zu Beginn):`);
+        L.push(`Tageswerte (0–24 Uhr; eine Mahlzeit = Einträge mit höchstens ${this._pauseMin()} Min Pause; Abstand = Beginn zu Beginn):`);
         L.push("Tag | Mahlzeiten | gestillt Min | Fläschchen ml | Ø Abstand | längster Abstand | Windeln nass/voll");
         for (let i = tage - 1; i >= 0; i--) {
           const d0 = this._mitternacht(jetzt, -i), t0 = +d0, t1 = t0 + TAG;
