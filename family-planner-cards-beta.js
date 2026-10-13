@@ -6355,7 +6355,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v6 (aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card-beta v7 (Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -6387,7 +6387,7 @@ class FpBabyOverviewCard extends HTMLElement {
       ai_entity: "",             // ai_task-Entity für den Chat; leer = die in HA voreingestellte
       days: 14,                  // so viele Tage bekommt die KI
       growth_data: "",           // optional: Perzentilkurven wie bei der fp-weight-card-beta (dazu je Kind birth, ga, sex)
-      memories_path: "",         // optional: Tab mit der Meilensteinkarte, erscheint unten als „Momente“
+      memories_path: "",         // nur noch Rückfall ohne milestone_calendar: Tab, zu dem „Momente“ springt
       bottle_presets: [40, 60, 90, 120],
       reminder_hours: 3,         // ab hier ist die Mahlzeit „fällig“, wie in der Stillkarte
       meal_pause_minutes: 45,    // höchstens so viel Pause zwischen zwei Einträgen derselben Mahlzeit
@@ -6401,7 +6401,7 @@ class FpBabyOverviewCard extends HTMLElement {
     this._kind = this._pref("kind", "");
     if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
     const v = this._pref("view", "heute");
-    this._view = v === "muster" || v === "wachstum" ? v : "heute";
+    this._view = ["muster", "wachstum", "momente"].includes(v) ? v : "heute";
     this._filter = this._pref("filter", "alle");
     this._spanne = this._pref("spanne", "7") === "14" ? 14 : 7;
     this._off = 0;   // 0 = heute, -1 = gestern …
@@ -6424,6 +6424,7 @@ class FpBabyOverviewCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    if (this._ms) this._ms.hass = hass;
     // Verglichen wird mit dem, was die Karte zuletzt gesehen hat — nicht mit dem vorigen hass-Objekt.
     const kids = this.config.kids, lauf = kids.map(k => this._laeuft(k)), schlaf = kids.map(k => this._schlaeft(k));
     const sig = JSON.stringify([lauf, schlaf, kids.map((k, i) => [this._seite(k), lauf[i] ? this._beginn(k) : 0, schlaf[i] ? this._schlafBeginn(k) : 0]), this._dunkel()]);
@@ -6863,6 +6864,14 @@ class FpBabyOverviewCard extends HTMLElement {
     const z = sel => ev.target.closest(sel);
     let b;
     if ((b = z(".fo-spark"))) { this._openChat(); return; }
+    // Klicks in den eingebetteten Meilensteinen gehören der Meilensteinkarte. Sie baut dabei Teile neu auf,
+    // der angeklickte Knopf hängt danach nicht mehr im Dokument — deshalb über den Pfad beim Auslösen prüfen.
+    // Hat sie das Kind gewechselt, zieht der Kopf der Übersicht nach.
+    if (this._ms && ev.composedPath && ev.composedPath().includes(this._ms)) {
+      const k = this.config.kids.find(x => (x.milestone_key || x.key) === this._ms._kind);
+      if (k && k.key !== this._kind) { this._kind = k.key; this._setPref("kind", k.key); this.querySelector(".fo-top").innerHTML = this._kopf(); }
+      return;
+    }
     if ((b = z(".fo-kidbtn"))) { const m = this.querySelector(".fo-menu"); if (m) m.hidden = !m.hidden; return; }
     if ((b = z("[data-kind-sel]"))) { this._kind = b.dataset.kindSel; this._setPref("kind", this._kind); this._paint(true); return; }
     if ((b = z("[data-off]"))) { this._off = Math.min(0, Math.max(-(LADETAGE - 1), this._off + Number(b.dataset.off))); this._paint(true); return; }
@@ -6891,7 +6900,7 @@ class FpBabyOverviewCard extends HTMLElement {
 
   _paint(force) {
     if (!this._built || !this._d) return;
-    if (this._view === "wachstum" && !this.config.weight_calendar) this._view = "heute";
+    if ((this._view === "wachstum" && !this.config.weight_calendar) || (this._view === "momente" && !this.config.milestone_calendar)) this._view = "heute";
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
     const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
       kids.map(k => [this._laeuft(k), this._seite(k), this._schlaeft(k)]),
@@ -6911,11 +6920,13 @@ class FpBabyOverviewCard extends HTMLElement {
       ${multi ? `<div class="fo-blk"><div class="fo-colhead">${this._avatar(vm.kid, 30)}<b>${U.esc(vm.kid.name)}</b><small>${this._alterZeile(vm.kid)}</small></div></div>` : ""}
       ${Array.from({ length: n }, (_, j) => `<div class="fo-blk">${teile[i][j] || ""}</div>`).join("")}</section>`).join("");
     const kopf = this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav() + (this._off === 0 ? this._schlafLeiste() : "");
-    body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
+    if (this._view === "momente") this._zeigeMomente(body);
+    else body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
     const views = [["heute", "Heute"], ["muster", "Muster"]];
     if (this.config.weight_calendar) views.push(["wachstum", "Wachstum"]);
+    if (this.config.milestone_calendar) views.push(["momente", "Momente"]);
     const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
-    if (this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
+    if (!this.config.milestone_calendar && this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
     this.querySelector(".fo-tabbar").innerHTML = tabs.join("");
     if (this._view === "wachstum") this._zeichne();
   }
@@ -7105,7 +7116,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const karten = [];
     if (this.config.weight_calendar) karten.push(`<div class="fo-mini" data-view="wachstum"><span class="fo-mi">⚖️</span><div><small>Wachstum</small><b>${wl ? this._kg(wl.g) : "–"}</b>
       <span>${wl ? `${vor ? `${wl.g - vor.g >= 0 ? "+" : "−"}${Math.abs(wl.g - vor.g)} g seit ${this._dm(vor.date)}` : `am ${this._dm(wl.date)}`}` : "noch nicht gewogen"}</span></div></div>`);
-    if (this.config.milestone_calendar) karten.push(`<div class="fo-mini"${this.config.memories_path ? ` data-nav="memories_path"` : ""}><span class="fo-mi">${mz ? U.esc(mz.e) : "⭐"}</span><div><small>Momente</small><b>${mz ? U.esc(mz.t) : "–"}</b>
+    if (this.config.milestone_calendar) karten.push(`<div class="fo-mini" data-view="momente"><span class="fo-mi">${mz ? U.esc(mz.e) : "⭐"}</span><div><small>Momente</small><b>${mz ? U.esc(mz.t) : "–"}</b>
       <span>${mz ? `am ${this._dm(mz.date)}` : "noch kein Meilenstein"}</span></div></div>`);
     return karten.length ? `<div class="fo-minis">${karten.join("")}</div>` : "";
   }
@@ -7143,6 +7154,33 @@ class FpBabyOverviewCard extends HTMLElement {
       <div class="fo-hint">Tage schwanken – der Trend zählt mehr als ein einzelner Tag.</div>`,
       `<div class="fo-rows"><div class="fo-row fo-row-ticks"><span class="fo-rl"></span>${this._ticks()}<span class="fo-rt"></span></div>${rows.join("")}</div>`,
       bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>` : ""];
+  }
+
+  // ---------- Momente ----------
+  // Die fp-milestone-card-beta steckt als eigene Ansicht in der Übersicht, statt in einem eigenen Tab.
+  // Sie wird einmal angelegt und bleibt bestehen (gewählter Bereich, offener Dialog); die Farben der
+  // Übersicht bekommt sie über die Theme-Variablen ihres Rahmens.
+  _momente() {
+    if (!this._ms) {
+      if (!customElements.get("fp-milestone-card-beta")) return null;
+      this._ms = document.createElement("fp-milestone-card-beta");
+      this._ms.setConfig({ calendar: this.config.milestone_calendar, title: "",
+        kids: this.config.kids.map(k => ({ key: k.milestone_key || k.key, name: k.name, color: k.color, birth: k.birth, ga: k.ga })) });
+    }
+    if (this._hass) this._ms.hass = this._hass;
+    return this._ms;
+  }
+  _zeigeMomente(body) {
+    // Nur beim Wechsel in die Ansicht neu aufbauen; sonst würde jedes Neuzeichnen die Karte umhängen
+    // und einem offenen Dialog den Fokus nehmen.
+    let host = body.querySelector(":scope > .fo-ms-host");
+    if (!host) { body.innerHTML = `<div class="fo-mtitle"><b>Momente</b><span>Erste Male, Entwicklung und Bewegung</span></div><div class="fo-ms-host"></div>`; host = body.querySelector(".fo-ms-host"); }
+    const ms = this._momente();
+    if (!ms) { host.innerHTML = `<div class="fo-leer">Die Meilensteinkarte ist nicht geladen.</div>`; return; }
+    if (ms.parentNode !== host) host.appendChild(ms);
+    // Gewähltes Kind der Übersicht übernehmen
+    const k = this._kid(this._kind), key = k.milestone_key || k.key;
+    if (ms._kind !== key && ms.config.kids.some(x => x.key === key)) { ms._kind = key; ms._band = null; if (ms._paint) ms._paint(true); }
   }
 
   // ---------- Wachstum ----------
@@ -7849,6 +7887,13 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-ins{display:flex;flex-direction:column;gap:6px;}
       .fo-ins div{border-radius:14px;padding:10px 12px;background:var(--b-card);font-size:.88rem;line-height:1.35;}
       .fo-ins span{color:var(--b-mut);}
+
+      /* Momente: die eingebettete Meilensteinkarte in den Farben der Übersicht, ohne eigenen Kartenrahmen */
+      .fo-ms-host{--primary-text-color:var(--b-text);--secondary-text-color:var(--b-mut);--secondary-background-color:var(--b-card);
+        --card-background-color:var(--b-bg);--divider-color:var(--b-line);--ha-card-box-shadow:none;--ha-card-border-width:0;}
+      .fo-ms-host ha-card{background:transparent !important;box-shadow:none !important;border:none !important;}
+      .fo-ms-host .fm-card{padding:0 0 8px;}
+      .fo-ms-host .fm-title:empty{display:none;}
 
       /* Wachstum: Kurve in der Kinderfarbe, im Dunkeln aufgehellt */
       .fo-gtiles{margin-top:10px;}
