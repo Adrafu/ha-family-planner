@@ -1,6 +1,6 @@
 # Family Planner Cards
 
-Zwölf eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
+Vierzehn eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
 - **`meal-grid-card`** — Wochen-Essensplan als Kästchen-Raster (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und KI-Vorschlag (`ai_task`; entschärft mit Küchen-/Grundform-Rotation, Saison- und Wetterbezug, liest getippten Wunsch aus). **Kochbuch-Kopplung:** „★ Ins Kochbuch" pro Zelle und „Woche füllen" hybrid (erst gewichtet aus dem Kochbuch, dann KI). Auf schmalen Karten (Handy, unter 560 px) dreht sich das Raster: Tage als Zeilen, Mahlzeiten als Spalten. `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
 - **`family-calendar-card`** — Familienkalender mit **Tagesansicht** (eine Spalte je Person, große Terminkacheln, am Handy eine Zeitliste mit Jetzt-Linie), **Wochenansicht** mit großen Terminkacheln (am Tablet eine Spalte je Tag, am Handy die Tage untereinander; das klassische Stunden-Raster gibt es weiter mit `week_grid: true`) und Monatsansicht. Knopf „+ Termin“ in der Kopfleiste, Personenfilter als Chips, Wischen wechselt Tag bzw. Woche. Mehrere Personen lassen sich per Präfix aus einem Kalender aufteilen. Termine direkt anlegen, bearbeiten und löschen. Im Stunden-Raster Jetzt-Linie (Outlook-Stil), Heute-Highlight und ausgegraute vergangene Tage. Dazu eine **kompakte Mehrtagesansicht** (`initial_view: agenda`): eine Spalte je Tag, Termine als Kacheln mit farbiger Kante — gedacht als Ersatz fuer eine fremde Kalenderkarte in der Uebersicht.
@@ -14,6 +14,8 @@ Zwölf eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - **`fp-feeding-card`** — **Stillprotokoll** je Kind: Start/Stopp mit laufender Uhr, Seitenvorschlag, Fläschchen in ml, Nachtragen, Tabelle für heute und gestern mit Tagessummen. Groß die **Zeit seit der letzten Mahlzeit** mit Balken bis zur Erinnerung, aufklappbar ein **Rückblick über 7 Tage** (Mahlzeiten, Stillzeit, Ø Abstand, Fläschchen) und ein **Bericht** der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht.
 - **`fp-weight-card`** — **Gewichtsverlauf** mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog, Punkt antippen zum Bearbeiten. Optional mit **Perzentilkurven** aus einer eigenen Datendatei, auch für Frühgeborene nach korrigiertem Alter.
 - **`fp-diaper-card`** — **Windelprotokoll** je Kind: nass, voll oder beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, heute und gestern mit Summen, Rückblick über 7 Tage.
+- **`fp-milestone-card`** — **Meilensteine** je Kind zum Abhaken: **Erste Male** als Sticker-Album (erstes Lachen, erster Zahn, erste Schritte, erster Schnee …), **Entwicklung** nach Alter mit den Punkten, die gerade dran sind, und **Bewegung** mit den Zeitfenstern der WHO. Abhaken ist ein kleines Fest: Konfetti, ein Jubel-Dialog, Datum und Notiz, auch nachträglich und für Geschwister auf einmal. Eigene Momente lassen sich dazulegen. Frühgeborene nach korrigiertem Alter.
+- **`fp-baby-overview-card`** — **Übersicht** je Kind im Stil der App Buma, gespeist aus den Kalendern von Still-, Windel-, Gewichts- und Meilensteinkarte und einem eigenen Schlafkalender. **Heute:** Schlafknöpfe („Beide schlafen“ und je Kind), farbige Schnellknöpfe für Stillen, Windel und Fläschchen, die Karte **„Nächste Mahlzeit“** mit Zeitfenster, Jetzt-Karten mit „her“, „Nächste ~“ und „Fällig“, Tageszahlen, Tagesstreifen und Einträge, mit ‹ › durch die letzten Wochen blättern. **Muster:** Zusammenfassung, Filter, Tagesschnitt und eine Zeile je Tag. **Wachstum:** aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern, Messungen, Wiegen direkt in der Karte. ✦ öffnet **„Frag nach“**: eine KI (`ai_task`) beantwortet Fragen zu allen Einträgen und sucht Muster. Dunkel wie Buma, hell oder nach Theme; Zwillinge am Tablet nebeneinander, am Handy zum Umschalten.
 
 ## Installation (HACS)
 
@@ -36,6 +38,8 @@ Zwölf eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - `custom:fp-feeding-card`
 - `custom:fp-weight-card`
 - `custom:fp-diaper-card`
+- `custom:fp-milestone-card`
+- `custom:fp-baby-overview-card`
 
 ### Beispiel: meal-grid-card
 
@@ -295,6 +299,76 @@ color: "#4A7A3A"
 Drei Knöpfe (nass, voll, beides) tragen sofort ein; ein Doppeltipp erzeugt keinen zweiten Eintrag. Darunter die Zeit seit der letzten Windel und dem letzten Stuhl, die Einträge von heute und gestern mit Summen (antippen zum Ändern oder Löschen) und aufklappbar die letzten 7 Tage. „Beides" zählt bei nass und bei voll mit. Einen eigenen Kalender verwenden, nicht den des Stillprotokolls, sonst zählt eine Erinnerung „seit der letzten Mahlzeit" auch Windeln mit.
 
 Die To-do-Liste `todo.kochbuch` muss vorab über die Integration **Local To-do** angelegt sein. Jedes Gericht wird als ein Listeneintrag gespeichert (Name = Titel, Rezeptdaten als JSON in der Beschreibung). KI-Funktionen benötigen eine eingerichtete `ai_task`-Entity (z. B. Google Generative AI). Am besten als **Panel-View** einbinden.
+
+### Beispiel: fp-milestone-card
+
+```yaml
+type: custom:fp-milestone-card
+title: Meilensteine
+calendar: calendar.meilensteine     # Local Calendar, ein Ganztagstermin je Meilenstein und Kind
+kids:                               # gleiche Angaben wie bei der fp-weight-card
+  - { key: kind_a, name: Kind A, color: "#4A7A3A", birth: "2026-01-15", ga: "34+5" }
+  - { key: kind_b, name: Kind B, color: "#7A4A78", birth: "2026-01-15", ga: "34+5" }
+sections: [firsts, development, motor]   # optional: welche Bereiche, in welcher Reihenfolge
+```
+
+Den Kalender vorab über die Integration **Local Calendar** anlegen (z. B. „Meilensteine“). Ein erreichter Meilenstein ist ein Ganztagstermin an dem Tag, an dem es passiert ist, etwa „🐢 Kind A: Krabbelt“. Wer den Kalender zusätzlich in der `family-calendar-card` einblendet, sieht die Meilensteine dort auch. Andere Termine im selben Kalender werden übersprungen.
+
+- **✨ Erste Male:** Gesammelte Momente werden zu Stickern in der Farbe des Kinds, mit dem Alter von damals. Offene Plätze sind gestrichelt. „＋ Eigener Moment“ legt eigene Erinnerungen mit Symbol und Titel dazu.
+- **🌱 Entwicklung:** Die Punkte aus den Checklisten der CDC (2022) für 2, 4, 6, 9, 12, 15 und 18 Monate und 2 Jahre, nach Gefühlen, Sprache, Entdecken und Bewegung. Jeden Punkt schaffen mindestens drei von vier Kindern bis zu diesem Alter. Die Stufe, die gerade dran ist, ist vorausgewählt und mit „jetzt“ markiert.
+- **👣 Bewegung:** Die sechs Meilensteine der WHO-Motorikstudie mit ihrem Zeitfenster (1. bis 99. Perzentil), dazu ein Punkt je Kind, wann es so weit war, und eine Linie bei heute.
+
+Ein Tipp auf einen offenen Meilenstein öffnet den Jubel-Dialog: Datum (heute, gestern oder frei), „Datum nur ungefähr“, eine Notiz und bei Geschwistern „Auch für … festhalten“ (bei Erlebnissen schon angehakt). „Festhalten“ zeigt Konfetti und lässt den Sticker hüpfen. Ein Tipp auf etwas Abgehaktes öffnet die Erinnerung zum Ändern. Derselbe Meilenstein in mehreren Bereichen wird nur einmal abgehakt: „Sitzt allein“ zählt auch für „Sitzt ohne Hilfe“ und das WHO-Fenster.
+
+Mit `birth` zeigt die Karte das Alter. Mit `ga` (Schwangerschaftswoche bei der Geburt, z. B. `34+5`) rechnen „jetzt“ und die WHO-Fenster bei Kindern, die mindestens drei Wochen zu früh kamen, nach korrigiertem Alter.
+
+### Beispiel: fp-baby-overview-card
+
+```yaml
+type: custom:fp-baby-overview-card
+weight_calendar: calendar.gewicht_zwillinge   # optional: Kalender der fp-weight-card
+milestone_calendar: calendar.meilensteine     # optional: Kalender der fp-milestone-card
+ai_entity: ai_task.google_ai_task             # für „Frag nach“; leer = die in HA voreingestellte KI
+appearance: dark                              # dark (wie Buma), light oder auto (folgt dem Theme)
+growth_data: /local/fp-growth-data.json       # optional: Perzentilkurven wie bei der fp-weight-card
+memories_path: /familien-planer/meilensteine  # optional: unten „Momente“
+kids:
+  - key: kind_a                     # wie in Gewichts- und Meilensteinkarte (sonst weight_key / milestone_key)
+    name: Kind A
+    color: "#4A7A3A"
+    birth: "2026-01-15"
+    ga: "34+5"
+    sex: m                          # für die Perzentilkurven (m oder f)
+    picture: /local/kind_a.jpg      # optional: Foto im Kopf (oder entity: person.kind_a)
+    feeding_calendar: calendar.stillprotokoll_kind_a   # wie bei der fp-feeding-card
+    switch: input_boolean.stillen_kind_a
+    side: input_select.stillen_kind_a_seite
+    start: input_datetime.stillen_kind_a_beginn
+    diaper_calendar: calendar.windeln_kind_a           # wie bei der fp-diaper-card
+    sleep_calendar: calendar.schlaf_kind_a             # optional: Schlaf, ein Termin je Schlafphase
+    sleep_switch: input_boolean.schlafen_kind_a
+    sleep_start: input_datetime.schlafen_kind_a_beginn
+  - key: kind_b
+    name: Kind B
+    color: "#7A4A78"
+    # … gleich wie oben
+```
+
+Für den Schlaf je Kind ein `input_boolean` (an = schläft), ein `input_datetime` mit Datum und Uhrzeit für den Beginn und einen Local Calendar anlegen. Eine Automation stempelt beim Einschalten den Beginn und schreibt beim Ausschalten den Termin `Schlaf` mit der Beschreibung `{"typ":"schlaf","auto":false}`; Phasen unter einer Minute verwirft sie. Startet das Stillen, während das Kind schläft, schaltet sie den Schlaf aus: wer gestillt wird, ist wach. Eine zweite Automation beendet einen vergessenen Schlaf nach 12 Stunden, der Termin wird dann gekappt und mit `"auto":true` markiert. Der Schlafkalender ist bewusst ein eigener: Eine Erinnerung, die jeden Eintrag im Stillkalender als Mahlzeit zählt, bliebe sonst stumm.
+
+Weitere Optionen: `chat: false` blendet ✦ aus, `days` (Vorgabe 14) legt fest, wie viele Tage die KI bekommt, `bottle_presets` (Vorgabe 40/60/90/120) sind die Mengen im Fläschchen-Blatt, `reminder_hours`, `meal_pause_minutes` und `bottle_minutes` wirken wie bei der Stillkarte (`reminder_hours` auch je Kind).
+
+Die Karte liest, was die anderen Karten schreiben, und braucht keine eigenen Helfer. Selbst schreibt sie Windeln, Fläschchen und Gewichte im Format jener Karten und schaltet den Still-Schalter wie die Stillkarte; den Termin legt weiterhin die Protokoll-Automation an. Genauso beim Schlaf: Die Knöpfe schalten nur `sleep_switch`, den Termin schreibt eine Automation (siehe unten). Fehlt ein Kalender in der Konfiguration, fällt der passende Teil einfach weg. Am besten als eigener Tab in einer **Panel-View**.
+
+- **Kopf:** Foto oder Initiale, Name, Alter („8 Mon. 28 T. · korr. 7 Mon.“). Bei mehreren Kindern wechselt ein Tipp auf den Namen das Kind; am Tablet stehen alle nebeneinander. Rechts ✦ für „Frag nach“, darunter ‹ Heute › zum Blättern.
+- **Schnellknöpfe:** Stillen startet und stoppt (läuft es, steht die Uhr im Knopf), Windel fragt nass, voll oder beides, Fläschchen fragt Menge und Uhrzeit („fertig getrunken um“).
+- **Nächste Mahlzeit:** die Spanne, in der die nächste Mahlzeit üblich ist — aus den Abständen der letzten 72 Stunden, getrennt nach Tag und Nacht (22–6 Uhr), ab vier Abständen. Danach „Fällig“. Während des Stillens steht hier die laufende Uhr.
+- **Jetzt:** Schlaf, Stillen, Fläschchen und Windel (mit dem letzten Stuhl) als gleich hohe Karten, mit der Zeit seit dem letzten Mal, ab einem Tag mit Wochentag und Uhrzeit. Welche Karten erscheinen, hängt nur an der Konfiguration; fehlt ein Eintrag, steht „–“. Am Tablet stehen die Spalten der Kinder Zeile für Zeile auf einer Höhe. Stillen und Windel zeigen „Nächste ~“ und werden „Fällig“, wenn die Erinnerungsgrenze bzw. die übliche Spanne vorbei ist.
+- **Tag:** Zahlen (gestillt, Mahlzeiten, Fläschchen, Windeln), Streifen von 0 bis 24 Uhr und alle Einträge. Mit ‹ geht es bis zu vier Wochen zurück.
+- **Muster:** „Woche“ oder „2 Wochen“, Filter Alle/Stillen/Fläschchen/Windel. Oben eine gerechnete Zusammenfassung (z. B. „Die Nächte werden länger 🌙“ mit Mahlzeiten und Windeln am Tag und dem Vergleich zur Zeit davor), darunter der Tagesschnitt, eine Zeile je Tag mit Summe und Bemerktes wie die längste Pause der letzten Nacht.
+- **Schlaf:** über den Spalten „Beide schlafen“ (bei mehr Kindern „Alle schlafen“) und ein Knopf je Kind. Schläft ein Kind, ist sein Knopf gefüllt und zeigt die Dauer; ein Tipp heißt „aufgewacht“. „Beide schlafen“ legt alle hin, die noch wach sind, und weckt alle, wenn alle schlafen. Unter einer Minute gilt als Fehltipp. Die Jetzt-Karte „Schlaf“ zeigt die laufende Dauer oder die Wachzeit und, ab drei Wachphasen in den letzten 72 Stunden, wann der nächste Schlaf üblich ist (getrennt nach Tag und Nacht, wie bei der nächsten Mahlzeit). Schlaf erscheint als Fläche im Tagesstreifen, in den Tageszahlen, in den Einträgen (Tipp zum Ändern oder Löschen), im Muster als eigener Filter und in „Frag nach“. ＋ trägt Schlaf nach, auch für beide auf einmal; überschneidende Phasen werden abgelehnt.
+- **Wachstum:** erscheint unten in der Leiste, sobald `weight_calendar` gesetzt ist. Oben das letzte Gewicht mit Alter, Perzentile und der Zunahme seit der Messung davor (Ø g am Tag), darunter Zunahme seit der Geburt, Schnitt pro Woche und die Perzentile jetzt und bei der Geburt. Die Kurve zeigt das Gewicht nach Lebenswochen bzw. -monaten, mit `growth_data` und `sex` je Kind auch die Bänder P3–P97 und P50, ein Stück in die Zukunft und mit einer Linie bei heute. „Bemerkt“ nennt gerechnete Beobachtungen wie den tiefsten Wert nach der Geburt, wann das Geburtsgewicht wieder erreicht war oder eine neue Kilomarke. „⚖️ Wiegen“ trägt ein, ein Tipp auf eine Messung oder einen Punkt ändert oder löscht sie; pro Kind und Tag bleibt es bei einem Wert. Als Geburtsgewicht gilt der Wert am Geburtstag.
+- **Frag nach:** Vorschläge wie „Wie war die letzte Nacht?“ oder freie Fragen. Die Karte rechnet Tageswerte, Nächte und die Einträge der letzten drei Tage vor und gibt sie mit der Frage und dem bisherigen Gespräch an `ai_task.generate_data`. **Diese Daten gehen an den KI-Dienst, der hinter der `ai_task`-Entity steht.** Die Antworten sind kein ärztlicher Rat.
 
 ## Lizenz
 

@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.8.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card */
+/* Family Planner custom cards v2.9.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -5532,5 +5532,2418 @@ if (!customElements.get("fp-diaper-card")) {
   customElements.define("fp-diaper-card", FpDiaperCard);
   window.customCards = window.customCards || [];
   window.customCards.push({ type: "fp-diaper-card", name: "FP Diaper Card", description: "Windelprotokoll je Kind: nass/voll per Tipp, seit wann, Heute/Gestern, Rückblick über 7 Tage" });
+}
+})();
+
+/* ===== fp-milestone-card v2 (Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
+// Ein erreichter Meilenstein = ein Ganztagstermin im eigenen Kalender an dem Tag,
+// an dem es passiert ist: Titel "🐢 Kind A: Krabbelt", Beschreibung
+// {"typ":"meilenstein","kind":"kind_a","id":"krabbeln"}, dazu optional notiz,
+// ca (Datum nur ungefähr) und bei eigenen Momenten t (Titel) und e (Symbol).
+// Dieselbe id in mehreren Bereichen ist derselbe Meilenstein: „Sitzt allein“ bei
+// den Ersten Malen hakt auch „Sitzt ohne Hilfe“ (Entwicklung, 9 Monate) und das
+// WHO-Fenster ab. Ids nie umbenennen — sie stehen in den Kalendereinträgen.
+(() => {
+const U = window.__fpUtils;
+
+// Erste Male: [id, Symbol, Titel]. Kein Zeitplan, nur Erinnerung.
+const FIRSTS = [
+  { g: "Bewegung", e: "🤸", items: [
+    ["drehen_br", "🔄", "Dreht sich vom Bauch auf den Rücken"],
+    ["drehen_rb", "🙃", "Dreht sich vom Rücken auf den Bauch"],
+    ["robben", "🐛", "Robbt"],
+    ["sitzen", "🧘", "Sitzt allein"],
+    ["krabbeln", "🐢", "Krabbelt"],
+    ["hochziehen", "💪", "Zieht sich hoch in den Stand"],
+    ["gehen_hilfe", "🤝", "Erste Schritte mit Festhalten"],
+    ["stehen_frei", "🙌", "Steht frei"],
+    ["gehen", "👣", "Erste freie Schritte"],
+    ["treppe", "🪜", "Erste Stufen hinauf"],
+  ] },
+  { g: "Gefühle & Sprache", e: "💛", items: [
+    ["laecheln", "😊", "Erstes Lächeln"],
+    ["lachen", "😄", "Erstes Lachen"],
+    ["mama_papa", "👪", "Sagt Mama oder Papa"],
+    ["erstes_wort", "🗣️", "Erstes Wort"],
+    ["winken", "👋", "Winkt"],
+    ["klatschen", "👏", "Klatscht in die Hände"],
+    ["kuesschen", "😘", "Erstes Küsschen"],
+    ["zweiwort", "💬", "Erster Zwei-Wort-Satz"],
+  ] },
+  { g: "Essen & Trinken", e: "🥣", items: [
+    ["brei", "🥣", "Erster Brei"],
+    ["fingeressen", "🥕", "Isst selbst mit den Fingern"],
+    ["becher", "🥛", "Trinkt aus dem Becher"],
+    ["loeffel", "🥄", "Isst selbst mit dem Löffel"],
+    ["abgestillt", "🤱", "Abgestillt"],
+  ] },
+  { g: "Schlafen & Pflege", e: "🌙", items: [
+    ["nabel", "🩹", "Nabel abgefallen"],
+    ["baden", "🛁", "Erstes Bad"],
+    ["durchschlafen", "🌙", "Erste Nacht durchgeschlafen"],
+    ["eigenes_bett", "🛏️", "Erste Nacht im eigenen Bett"],
+    ["zahn", "🦷", "Erster Zahn"],
+    ["zaehneputzen", "🪥", "Erstes Zähneputzen"],
+    ["haarschnitt", "✂️", "Erster Haarschnitt"],
+  ] },
+  { g: "Erlebnisse", e: "🌍", items: [
+    ["spaziergang", "🌳", "Erster Spaziergang"],
+    ["ausflug", "🚗", "Erster Ausflug"],
+    ["wasser", "🌊", "Erstes Mal im Wasser"],
+    ["schnee", "❄️", "Erster Schnee"],
+    ["urlaub", "🧳", "Erster Urlaub"],
+    ["oma_opa", "🏡", "Erste Nacht bei Oma und Opa"],
+    ["weihnachten", "🎄", "Erstes Weihnachten"],
+    ["geburtstag", "🎂", "Erster Geburtstag"],
+    ["kita", "🎒", "Erster Kita-Tag"],
+  ] },
+  { g: "Später", e: "🌈", items: [
+    ["schuhe", "👟", "Erste Schuhe"],
+    ["kritzeln", "🖍️", "Erstes Gekritzel"],
+    ["laufrad", "🚲", "Erste Runde am Laufrad"],
+    ["ohne_windel", "🩲", "Tagsüber ohne Windel"],
+  ] },
+];
+
+// Entwicklung nach Alter: CDC „Learn the Signs. Act Early.“, Checklisten von 2022,
+// übersetzt. Jeden Punkt schaffen mindestens 75 % der Kinder bis zu diesem Alter.
+// [id, Bereich, Text]; Bereiche: s Gefühle & Miteinander, p Sprache, d Entdecken, b Bewegung.
+const AREAS = { s: ["💛", "Gefühle & Miteinander"], p: ["💬", "Sprache"], d: ["💡", "Entdecken"], b: ["🤸", "Bewegung"] };
+const CDC = [
+  { m: 2, items: [
+    ["c2_beruhigt", "s", "Beruhigt sich, wenn du es ansprichst oder hochnimmst"],
+    ["c2_gesicht", "s", "Schaut dir ins Gesicht"],
+    ["c2_freut", "s", "Freut sich, wenn du kommst"],
+    ["laecheln", "s", "Lächelt zurück, wenn du es anlächelst oder ansprichst"],
+    ["c2_laute", "p", "Macht andere Laute als Weinen"],
+    ["c2_geraeusch", "p", "Reagiert auf laute Geräusche"],
+    ["c2_folgt", "d", "Folgt dir mit den Augen"],
+    ["c2_spielzeug", "d", "Schaut ein Spielzeug einige Sekunden lang an"],
+    ["c2_kopf", "b", "Hebt in Bauchlage den Kopf"],
+    ["c2_arme", "b", "Bewegt beide Arme und beide Beine"],
+    ["c2_haende", "b", "Öffnet kurz die Hände"],
+  ] },
+  { m: 4, items: [
+    ["c4_laecheln", "s", "Lächelt von sich aus, um deine Aufmerksamkeit zu bekommen"],
+    ["c4_glucksen", "s", "Gluckst, wenn du es zum Lachen bringen willst"],
+    ["c4_aufmerksam", "s", "Holt sich mit Blicken, Bewegungen oder Lauten deine Aufmerksamkeit"],
+    ["c4_gurrt", "p", "Gurrt („oooh“, „aaah“)"],
+    ["c4_antwortet", "p", "Antwortet mit Lauten, wenn du mit ihm sprichst"],
+    ["c4_stimme", "p", "Dreht den Kopf zu deiner Stimme"],
+    ["c4_hunger", "d", "Öffnet bei Hunger den Mund, wenn es Brust oder Fläschchen sieht"],
+    ["c4_haende", "d", "Schaut sich neugierig die eigenen Hände an"],
+    ["c4_kopf", "b", "Hält den Kopf ohne Stütze, wenn du es hältst"],
+    ["c4_halten", "b", "Hält ein Spielzeug fest, das du ihm in die Hand gibst"],
+    ["c4_schlagen", "b", "Schlägt mit dem Arm nach Spielzeug"],
+    ["c4_mund", "b", "Steckt die Hände in den Mund"],
+    ["c4_unterarm", "b", "Stützt sich in Bauchlage auf die Unterarme"],
+  ] },
+  { m: 6, items: [
+    ["c6_kennt", "s", "Erkennt vertraute Menschen"],
+    ["c6_spiegel", "s", "Schaut sich gern im Spiegel an"],
+    ["lachen", "s", "Lacht"],
+    ["c6_abwechselnd", "p", "„Unterhält“ sich mit dir: Laute hin und her"],
+    ["c6_prusten", "p", "Macht Prustgeräusche mit den Lippen"],
+    ["c6_quietschen", "p", "Quietscht"],
+    ["c6_mund", "d", "Erkundet Dinge mit dem Mund"],
+    ["c6_greift", "d", "Greift gezielt nach einem Spielzeug"],
+    ["c6_satt", "d", "Macht den Mund zu, wenn es nichts mehr essen will"],
+    ["drehen_br", "b", "Dreht sich vom Bauch auf den Rücken"],
+    ["c6_arme", "b", "Stützt sich in Bauchlage auf gestreckte Arme"],
+    ["c6_abstuetzen", "b", "Stützt sich im Sitzen mit den Händen ab"],
+  ] },
+  { m: 9, items: [
+    ["c9_fremdeln", "s", "Fremdelt – ist bei Fremden schüchtern oder anhänglich"],
+    ["c9_gesichter", "s", "Zeigt verschiedene Gesichter: fröhlich, traurig, wütend, überrascht"],
+    ["c9_name", "s", "Schaut, wenn du seinen Namen rufst"],
+    ["c9_weggehen", "s", "Merkt, wenn du weggehst – schaut, streckt sich oder weint"],
+    ["c9_kuckuck", "s", "Lacht bei Kuckuck-Spielen"],
+    ["c9_silben", "p", "Plappert Silbenketten wie „mamama“ und „bababa“"],
+    ["c9_arme", "p", "Streckt die Arme hoch, um hochgenommen zu werden"],
+    ["c9_sucht", "d", "Sucht Dinge, die hinuntergefallen sind"],
+    ["c9_klopfen", "d", "Schlägt zwei Dinge aneinander"],
+    ["c9_aufsetzen", "b", "Setzt sich allein auf"],
+    ["sitzen", "b", "Sitzt ohne Hilfe"],
+    ["c9_wechseln", "b", "Gibt Dinge von einer Hand in die andere"],
+    ["c9_harken", "b", "Holt sich Essen mit den Fingern heran"],
+  ] },
+  { m: 12, items: [
+    ["c12_spiele", "s", "Spielt Spiele wie „Backe, backe Kuchen“"],
+    ["winken", "p", "Winkt „Tschüss“"],
+    ["mama_papa", "p", "Sagt „Mama“ oder „Papa“ (oder einen anderen Namen) zu euch"],
+    ["c12_nein", "p", "Versteht „Nein“ und hält kurz inne"],
+    ["c12_behaelter", "d", "Legt etwas in einen Behälter, zum Beispiel einen Klotz in einen Becher"],
+    ["c12_versteck", "d", "Findet Dinge, die du vor seinen Augen versteckst"],
+    ["hochziehen", "b", "Zieht sich hoch in den Stand"],
+    ["gehen_hilfe", "b", "Läuft an Möbeln entlang"],
+    ["becher", "b", "Trinkt aus einem offenen Becher, den du hältst"],
+    ["c12_pinzette", "b", "Hebt Kleines mit Daumen und Zeigefinger auf"],
+  ] },
+  { m: 15, items: [
+    ["c15_nachmachen", "s", "Macht andere Kinder beim Spielen nach"],
+    ["c15_zeigt", "s", "Zeigt dir etwas, das es mag"],
+    ["klatschen", "s", "Klatscht vor Freude"],
+    ["c15_kuscheltier", "s", "Umarmt ein Kuscheltier oder eine Puppe"],
+    ["c15_zuneigung", "s", "Zeigt Zuneigung: umarmt, kuschelt, gibt Küsschen"],
+    ["c15_woerter", "p", "Versucht ein, zwei Wörter außer Mama und Papa („ba“ für Ball)"],
+    ["c15_benennen", "p", "Schaut zum Gegenstand, wenn du ihn benennst"],
+    ["c15_gib", "p", "Gibt dir etwas, wenn du die Hand hinhältst und darum bittest"],
+    ["c15_zeigen", "p", "Zeigt mit dem Finger, wenn es etwas möchte oder Hilfe braucht"],
+    ["c15_richtig", "d", "Benutzt Dinge richtig: Becher, Telefon, Buch"],
+    ["c15_stapeln", "d", "Stapelt zwei Klötze aufeinander"],
+    ["gehen", "b", "Macht ein paar Schritte allein"],
+    ["fingeressen", "b", "Isst einiges selbst mit den Fingern"],
+  ] },
+  { m: 18, items: [
+    ["c18_entfernt", "s", "Entfernt sich, schaut aber, ob du in der Nähe bist"],
+    ["c18_zeigt", "s", "Zeigt auf etwas Spannendes, um es dir zu zeigen"],
+    ["c18_waschen", "s", "Hält dir die Hände zum Waschen hin"],
+    ["c18_buch", "s", "Schaut mit dir ein paar Seiten in einem Buch an"],
+    ["c18_anziehen", "s", "Hilft beim Anziehen: Arm in den Ärmel, Fuß hoch"],
+    ["c18_woerter", "p", "Versucht drei oder mehr Wörter außer Mama und Papa"],
+    ["c18_bitte", "p", "Folgt einfachen Bitten ohne Geste („Gib es mir“)"],
+    ["c18_hausarbeit", "d", "Macht Hausarbeit nach, zum Beispiel Kehren"],
+    ["c18_spielt", "d", "Spielt mit Spielzeug, schiebt zum Beispiel ein Auto"],
+    ["c18_laeuft", "b", "Läuft frei, ohne sich festzuhalten"],
+    ["kritzeln", "b", "Kritzelt"],
+    ["c18_becher", "b", "Trinkt allein aus einem offenen Becher, auch wenn noch etwas danebengeht"],
+    ["c18_finger", "b", "Isst selbst mit den Fingern"],
+    ["loeffel", "b", "Versucht, mit dem Löffel zu essen"],
+    ["c18_klettern", "b", "Klettert allein aufs Sofa und wieder hinunter"],
+  ] },
+  { m: 24, items: [
+    ["c24_mitgefuehl", "s", "Merkt, wenn andere traurig sind oder sich wehgetan haben"],
+    ["c24_schaut", "s", "Schaut in neuen Situationen zu dir, um zu sehen, wie du reagierst"],
+    ["c24_buch", "p", "Zeigt im Buch auf Dinge, wenn du danach fragst"],
+    ["zweiwort", "p", "Sagt zwei Wörter zusammen („mehr Milch“)"],
+    ["c24_koerper", "p", "Zeigt auf mindestens zwei Körperteile, wenn du fragst"],
+    ["c24_gesten", "p", "Nutzt Gesten wie Kusshand oder Nicken"],
+    ["c24_haende", "d", "Hält etwas in einer Hand und arbeitet mit der anderen, etwa einen Deckel abschrauben"],
+    ["c24_knoepfe", "d", "Probiert Schalter, Knöpfe und Tasten an Spielzeug aus"],
+    ["c24_spielen", "d", "Spielt mit mehreren Sachen zusammen, etwa Essen auf den Spielteller"],
+    ["c24_ball", "b", "Kickt einen Ball"],
+    ["c24_rennt", "b", "Rennt"],
+    ["treppe", "b", "Geht ein paar Stufen hinauf, mit oder ohne Hilfe"],
+    ["c24_loeffel", "b", "Isst mit dem Löffel"],
+  ] },
+];
+
+// WHO Motor Development Study (2006): Zeitfenster vom 1. bis zum 99. Perzentil in
+// Monaten, gesunde Kinder aus fünf Ländern. Gilt nach korrigiertem Alter.
+// [id, Symbol, Titel, von, bis]
+const WHO = [
+  ["sitzen", "🧘", "Sitzen ohne Hilfe", 3.8, 9.2],
+  ["stehen_hilfe", "🧍", "Stehen mit Festhalten", 4.8, 11.4],
+  ["krabbeln", "🐢", "Krabbeln auf Händen und Knien", 5.2, 13.5],
+  ["gehen_hilfe", "🤝", "Gehen mit Festhalten", 5.9, 13.7],
+  ["stehen_frei", "🙌", "Stehen ohne Festhalten", 6.9, 16.9],
+  ["gehen", "👣", "Gehen ohne Festhalten", 8.2, 17.6],
+];
+const WHO_MAX = 18;
+
+// Ein Name je id für Kalendertitel und Dialog — die Ersten Male haben die schönsten.
+const INDEX = {};
+const merk = (id, e, t) => { if (!INDEX[id]) INDEX[id] = { e, t }; };
+FIRSTS.forEach(g => g.items.forEach(([id, e, t]) => merk(id, e, t)));
+WHO.forEach(([id, e, t]) => merk(id, e, t));
+CDC.forEach(b => b.items.forEach(([id, a, t]) => merk(id, AREAS[a][0], t)));
+
+// Erlebnisse haben Geschwister meist gemeinsam: dort ist „Auch für …“ schon angehakt.
+const GEMEINSAM = new Set(FIRSTS.find(g => g.g === "Erlebnisse").items.map(([id]) => id));
+
+const CHEERS = ["Juhu!", "Hurra!", "Wie schön!", "Bravo!", "Wow!", "Großartig!"];
+const CONFETTI = ["#F2B53A", "#F07C6C", "#6CB4EE", "#7CC9A0", "#F29BC4", "#B794F4"];
+const JUBILAEEN = [10, 25, 50, 75, 100, 150];
+const KIDCOLORS = ["#4A7A3A", "#7A4A78", "#3A6A8A", "#A0603A"];
+const SECTIONS = ["firsts", "development", "motor"];
+const TABS = { firsts: "✨ Erste Male", development: "🌱 Entwicklung", motor: "👣 Bewegung" };
+
+class FpMilestoneCard extends HTMLElement {
+  setConfig(config) {
+    if (!config || !config.calendar) throw new Error("fp-milestone-card braucht calendar");
+    this.config = Object.assign({
+      title: "Meilensteine",
+      kids: [{ key: "kind_a", name: "Kind A", color: "#4A7A3A" }],   // je Kind key, name, color, dazu birth und ga wie bei der fp-weight-card
+      sections: SECTIONS,
+    }, config);
+    if (!Array.isArray(this.config.kids) || !this.config.kids.length) throw new Error("fp-milestone-card braucht mindestens ein Kind unter kids");
+    // Fehlt eine Angabe, trotzdem etwas Sinnvolles zeigen statt einer kaputten Farbe.
+    this.config.kids = this.config.kids.map((k, i) => Object.assign({}, k, {
+      key: String(k.key || k.name || `kind_${i + 1}`), name: String(k.name || k.key || `Kind ${i + 1}`), color: k.color || KIDCOLORS[i % KIDCOLORS.length] }));
+    const s = [].concat(this.config.sections || []).filter(x => SECTIONS.includes(x));
+    this._secs = s.length ? s : SECTIONS;
+    this._built = false; this._data = null; this._pend = []; this._hat = new Map(); this._sig = "";
+    this._pfx = `fp-milestone:${this.config.calendar}`;
+    this._kind = this._pref("kind", "");
+    if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
+    this._tab = this._pref("tab", "");
+    if (!this._secs.includes(this._tab)) this._tab = this._secs[0];
+    this._band = null;   // gewählte Altersstufe, null = die, die gerade dran ist
+  }
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._built) { this._build(); this._load(); }
+  }
+  connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._load(), 5 * 60000); }
+  disconnectedCallback() { clearInterval(this._timer); this._timer = null; }
+
+  // Gewähltes Kind und Bereich merken — reine Komfort-Einstellung.
+  _pref(n, d) { try { return localStorage.getItem(`${this._pfx}:${n}`) || d; } catch (e) { return d; } }
+  _setPref(n, v) { try { localStorage.setItem(`${this._pfx}:${n}`, v); } catch (e) { /* nur Komfort */ } }
+
+  // ---------- Hilfen ----------
+  _p(n) { return String(n).padStart(2, "0"); }
+  _iso(d) { return `${d.getFullYear()}-${this._p(d.getMonth() + 1)}-${this._p(d.getDate())}`; }
+  _day(s) { const [y, m, d] = String(s).slice(0, 10).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1, 12); }
+  _heute() { return this._day(this._iso(new Date())); }
+  _dm(d) { return `${d.getDate()}.${d.getMonth() + 1}.`; }
+  _dmy(d) { return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`; }
+  _kid(key) { return this.config.kids.find(k => k.key === key) || this.config.kids[0]; }
+  // Kinderfarbe als durchscheinende Fläche; Hex direkt, alles andere über color-mix.
+  _tint(c, a) {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c || "").trim());
+    if (!m) return `color-mix(in srgb, ${c} ${Math.round(a * 100)}%, transparent)`;
+    let h = m[1]; if (h.length === 3) h = h.split("").map(x => x + x).join("");
+    const n = parseInt(h, 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  _farbe(el, c) {
+    el.style.setProperty("--fm-k", c);
+    el.style.setProperty("--fm-k1", this._tint(c, .12));
+    el.style.setProperty("--fm-k2", this._tint(c, .24));
+    el.style.setProperty("--fm-k3", this._tint(c, .36));
+    // Schrift in Kinderfarbe: mit der Textfarbe gemischt, damit sie hell wie dunkel lesbar bleibt.
+    el.style.setProperty("--fm-kt", `color-mix(in srgb, ${c} 62%, var(--primary-text-color))`);
+  }
+  _info(id, h) {
+    if (id.startsWith("eigen_")) return { e: (h && h.e) || "✨", t: (h && h.t) || "Eigener Moment" };
+    return INDEX[id] || { e: "⭐", t: id };
+  }
+
+  // ---------- Alter ----------
+  // Tage, die ein Kind zu früh kam. Korrigiert wird ab drei Wochen vor dem Termin, wie bei der CDC.
+  _frueh(kid) {
+    if (!kid.ga) return 0;
+    const [w, d] = String(kid.ga).split("+").map(Number), ga = (w || 40) * 7 + (d || 0);
+    return ga < 259 ? 280 - ga : 0;
+  }
+  // Ab wann gezählt wird: die Geburt oder, korrigiert, der errechnete Termin.
+  _basis(kid, korr) {
+    if (!kid.birth) return null;
+    const b = this._day(kid.birth);
+    if (korr) b.setDate(b.getDate() + this._frueh(kid));
+    return b;
+  }
+  // „mit 7 Monaten“ bzw. kurz „7 Mon.“
+  _alter(kid, d, korr, kurz) {
+    const b = this._basis(kid, korr); if (!b) return "";
+    const tage = Math.round((d - b) / 86400000);
+    if (tage < 0) return "";
+    let m = (d.getFullYear() - b.getFullYear()) * 12 + d.getMonth() - b.getMonth();
+    if (d.getDate() < b.getDate()) m--;
+    const n = (x, e, mz) => `${x} ${x === 1 ? e : mz}`;
+    if (tage === 0) return kurz ? "1. Tag" : "am ersten Tag";
+    if (tage < 14) return kurz ? `${tage} T.` : `mit ${n(tage, "Tag", "Tagen")}`;
+    if (m < 2) { const w = Math.floor(tage / 7); return kurz ? `${w} Wo.` : `mit ${n(w, "Woche", "Wochen")}`; }
+    if (m < 24) return kurz ? `${m} Mon.` : `mit ${n(m, "Monat", "Monaten")}`;
+    const j = Math.floor(m / 12), r = m % 12;
+    return kurz ? `${j} J.${r ? ` ${r} M.` : ""}` : `mit ${n(j, "Jahr", "Jahren")}${r ? ` und ${n(r, "Monat", "Monaten")}` : ""}`;
+  }
+  _alterMon(kid, d) { const b = this._basis(kid, true); return b ? (d - b) / 86400000 / 30.4375 : null; }
+
+  // ---------- Daten ----------
+  _parse(ev) {
+    let meta = {};
+    try { meta = JSON.parse(ev.description || "{}") || {}; } catch (x) { meta = {}; }
+    if (meta.typ !== "meilenstein" || !meta.id || !meta.kind) return null;   // fremde Termine im selben Kalender überspringen
+    const start = (ev.start && (ev.start.date || ev.start.dateTime)) || ev.start;
+    return { uid: ev.uid, kind: String(meta.kind), id: String(meta.id), date: this._day(start), ca: !!meta.ca,
+      notiz: meta.notiz ? String(meta.notiz) : "", t: meta.t ? String(meta.t) : "", e: meta.e ? String(meta.e) : "" };
+  }
+  // Je Kind und Meilenstein zählt der früheste Eintrag; noch nicht gespeicherte stehen schon mit drin.
+  _index() {
+    const map = new Map();
+    for (const e of [...(this._data || []), ...this._pend]) {
+      const k = `${e.kind}|${e.id}`, alt = map.get(k);
+      if (!alt || e.date < alt.date) map.set(k, e);
+    }
+    this._hat = map;
+  }
+  _get(kind, id) { return this._hat.get(`${kind}|${id}`) || null; }
+  _zahl(kind) { let n = 0; for (const e of this._hat.values()) if (e.kind === kind) n++; return n; }
+
+  async _load() {
+    if (!this._hass) return;
+    const bis = new Date(); bis.setDate(bis.getDate() + 2);
+    try {
+      const s = encodeURIComponent(new Date(2015, 0, 1).toISOString()), e = encodeURIComponent(bis.toISOString());
+      const evts = await this._hass.callApi("GET", `calendars/${this.config.calendar}?start=${s}&end=${e}`);
+      this._data = (Array.isArray(evts) ? evts : []).map(x => this._parse(x)).filter(x => x && !isNaN(x.date));
+    } catch (err) {
+      if (this._loadedOnce) U.toast(this, "Meilensteine konnten nicht geladen werden");
+      this._data = this._data || [];
+    }
+    this._loadedOnce = true;   // allerersten Ladefehler (Startup-Flackern) nicht melden
+    this._index();
+    this._paint();
+  }
+
+  _ev(kind, id, x) {
+    const info = this._info(id, x), meta = { typ: "meilenstein", kind, id };
+    if (x.ca) meta.ca = true;
+    if (x.notiz) meta.notiz = x.notiz;
+    if (id.startsWith("eigen_")) { meta.t = info.t; meta.e = info.e; }
+    return { summary: `${info.e} ${this._kid(kind).name}: ${info.t}`, description: JSON.stringify(meta) };
+  }
+  // Erscheint sofort (optimistisch), der Kalender zieht nach.
+  async _create(kind, id, date, x) {
+    const tmp = { uid: `tmp-${Math.random()}`, kind, id, date, ca: !!x.ca, notiz: x.notiz || "", t: x.t || "", e: x.e || "" };
+    this._pend.push(tmp);
+    const d = this._ev(kind, id, x), nach = new Date(date); nach.setDate(nach.getDate() + 1);
+    try {
+      await this._hass.callService("calendar", "create_event", {
+        entity_id: this.config.calendar, summary: d.summary, description: d.description,
+        start_date: this._iso(date), end_date: this._iso(nach),
+      });
+      return true;
+    } catch (e) { U.toast(this, "Konnte nicht gespeichert werden – bitte nochmal versuchen"); return false; }
+    finally { this._pend = this._pend.filter(p => p !== tmp); }
+  }
+  async _delete(uid, leise) {
+    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this.config.calendar, uid }); return true; }
+    catch (e) { if (!leise) U.toast(this, "Eintrag konnte nicht gelöscht werden"); return false; }
+  }
+  async _update(alt, date, x) {
+    const d = this._ev(alt.kind, alt.id, x), nach = new Date(date); nach.setDate(nach.getDate() + 1);
+    try {
+      await this._hass.callWS({ type: "calendar/event/update", entity_id: this.config.calendar, uid: alt.uid,
+        event: { summary: d.summary, description: d.description, dtstart: this._iso(date), dtend: this._iso(nach) } });
+      return true;
+    } catch (e) {
+      // Rückfall wie bei Gewicht und Stillprotokoll: neu anlegen, dann alt löschen — und laut sagen, falls der alte bleibt.
+      if (!(await this._create(alt.kind, alt.id, date, x))) return false;
+      if (!(await this._delete(alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
+      return true;
+    }
+  }
+
+  // ---------- Aufbau ----------
+  _build() {
+    this._built = true;
+    this.innerHTML = `
+      <ha-card class="fm-card">
+        <div class="fm-head"><div class="fm-title">${U.esc(this.config.title)}</div><div class="fm-count"></div></div>
+        <div class="fm-kids"></div>
+        <div class="fm-tabs"></div>
+        <div class="fm-body"></div>
+      </ha-card>${this._styles()}`;
+    this.querySelector(".fm-kids").addEventListener("click", ev => {
+      const b = ev.target.closest("[data-kind]"); if (!b || b.dataset.kind === this._kind) return;
+      this._kind = b.dataset.kind; this._setPref("kind", this._kind); this._band = null; this._paint(true);
+    });
+    this.querySelector(".fm-tabs").addEventListener("click", ev => {
+      const b = ev.target.closest("[data-tab]"); if (!b) return;
+      this._tab = b.dataset.tab; this._setPref("tab", this._tab); this._paint(true);
+    });
+    this.querySelector(".fm-body").addEventListener("click", ev => {
+      const band = ev.target.closest("[data-band]");
+      if (band) { this._band = Number(band.dataset.band); this._paint(true); return; }
+      if (ev.target.closest(".fm-add")) { this._openSheet({ id: "", custom: true, src: ev.target.closest(".fm-add") }); return; }
+      const t = ev.target.closest("[data-id]"); if (!t) return;
+      const h = this._get(this._kind, t.dataset.id);
+      if (!h) this._burst(t, 10, true);   // schon beim Antippen ein kleines Funkeln
+      this._openSheet({ id: t.dataset.id, label: t.dataset.label || "", edit: h, custom: t.dataset.id.startsWith("eigen_"), src: t });
+    });
+  }
+
+  _paint(force) {
+    if (!this._built || !this._data) return;
+    // Ohne uid: wird aus dem vorläufigen Eintrag der echte, bleibt alles stehen und der Sticker hüpft zu Ende.
+    const sig = JSON.stringify([this._kind, this._tab, this._band, this._iso(new Date()),
+      [...this._hat.values()].map(e => [e.kind, e.id, +e.date, e.ca, e.notiz, e.t, e.e])]);
+    if (!force && sig === this._sig) return;
+    this._sig = sig;
+    const kid = this._kid(this._kind);
+    this._farbe(this, kid.color);   // am Host: der Dialog hängt daneben und braucht die Farbe auch
+    this._paintHead(kid);
+    const body = this.querySelector(".fm-body");
+    body.innerHTML = this._tab === "development" ? this._htmlDev(kid) : this._tab === "motor" ? this._htmlMotor(kid) : this._htmlFirsts(kid);
+    // Am Handy passt die Leiste der Altersstufen nicht ganz drauf: die gewählte in die Mitte holen.
+    const leiste = body.querySelector(".fm-bands"), sel = leiste && leiste.querySelector(".fm-sel");
+    if (sel && leiste.scrollWidth > leiste.clientWidth) leiste.scrollLeft = sel.offsetLeft - (leiste.clientWidth - sel.offsetWidth) / 2;
+  }
+
+  _paintHead(kid) {
+    const n = this._zahl(kid.key);
+    this.querySelector(".fm-count").innerHTML = n ? `⭐ <b>${n}</b> ${n === 1 ? "Moment" : "Momente"}` : "";
+    const kids = this.config.kids;
+    this.querySelector(".fm-kids").innerHTML = kids.length < 2 ? "" : kids.map(k => {
+      const alt = k.birth ? this._alter(k, this._heute(), false, true) : "";
+      return `<button class="fm-kid${k.key === kid.key ? " fm-sel" : ""}" data-kind="${U.esc(k.key)}" style="--c:${U.esc(k.color)};--c1:${this._tint(k.color, .14)}">
+        <span class="fm-av" style="background:${U.esc(k.color)}">${U.esc(String(k.name).slice(0, 1))}</span>${U.esc(k.name)}${alt ? `<span class="fm-kage">${alt}</span>` : ""}</button>`;
+    }).join("");
+    this.querySelector(".fm-tabs").innerHTML = this._secs.length < 2 ? "" : this._secs.map(s =>
+      `<button class="${s === this._tab ? "fm-sel" : ""}" data-tab="${s}">${TABS[s]}</button>`).join("");
+  }
+
+  // Kleine Punkte in den Farben der anderen Kinder, die das schon haben — für Geschwister und Zwillinge.
+  _andere(kid, id) {
+    const o = this.config.kids.filter(k => k.key !== kid.key && this._get(k.key, id));
+    return o.length ? `<span class="fm-others">${o.map(k => `<span class="fm-od" style="background:${U.esc(k.color)}" title="${U.esc(k.name)}">${U.esc(String(k.name).slice(0, 1))}</span>`).join("")}</span>` : "";
+  }
+
+  // ---------- Erste Male ----------
+  _htmlFirsts(kid) {
+    const gruppe = (titel, sym, items, extra) => {
+      const n = items.filter(it => this._get(kid.key, it.id)).length;
+      return `<div class="fm-grp"><div class="fm-gh"><span>${sym} ${U.esc(titel)}</span>${n ? `<span class="fm-gn">⭐ ${n}</span>` : ""}</div>
+        <div class="fm-stickers">${items.map(it => this._sticker(kid, it)).join("")}${extra || ""}</div></div>`;
+    };
+    const eigene = [...this._hat.values()].filter(e => e.kind === kid.key && e.id.startsWith("eigen_"))
+      .sort((a, b) => a.date - b.date).map(e => ({ id: e.id, ...this._info(e.id, e) }));
+    const tipp = this._zahl(kid.key) ? "" : `<div class="fm-hint">Tipp auf einen Moment, sobald er passiert – oder trag ihn nachträglich mit Datum ein. ✨</div>`;
+    return tipp + FIRSTS.map(g => gruppe(g.g, g.e, g.items.map(([id, e, t]) => ({ id, e, t })))).join("")
+      + gruppe("Eigene Momente", "✨", eigene, `<button class="fm-st fm-add"><span class="fm-st-e">＋</span><span class="fm-st-t">Eigener Moment</span></button>`);
+  }
+  _sticker(kid, it) {
+    const h = this._get(kid.key, it.id);
+    const wann = h ? `${h.ca ? "ca. " : ""}${this._alter(kid, h.date, false, true) || this._dm(h.date)}` : "";
+    return `<button class="fm-st${h ? " fm-on" : ""}" data-id="${U.esc(it.id)}" data-label="${U.esc(it.t)}" aria-pressed="${h ? "true" : "false"}"${h ? ` title="${U.esc(`${it.t}: ${this._dmy(h.date)}`)}"` : ""}>
+      ${h ? `<span class="fm-st-star">⭐</span>` : ""}${this._andere(kid, it.id)}
+      <span class="fm-st-e">${U.esc(it.e)}</span><span class="fm-st-t">${U.esc(it.t)}</span>${h ? `<span class="fm-st-d">${wann}</span>` : ""}</button>`;
+  }
+
+  // ---------- Entwicklung ----------
+  // Die Stufe, die gerade dran ist: die nächste ab dem (korrigierten) Alter, mit einem halben Monat Spielraum.
+  // Ohne Geburtsdatum die erste, in der noch etwas offen ist.
+  _aktBand(kid) {
+    const m = this._alterMon(kid, this._heute());
+    if (m == null) { const b = CDC.find(b => b.items.some(([id]) => !this._get(kid.key, id))); return (b || CDC[CDC.length - 1]).m; }
+    const b = CDC.find(b => b.m >= m - 0.5);
+    return (b || CDC[CDC.length - 1]).m;
+  }
+  _bandKurz(m) { return m < 24 ? `${m} Mon.` : `${m / 12} Jahre`; }
+  _bandLang(m) { return m < 24 ? `${m} Monaten` : `${m / 12} Jahren`; }
+  _htmlDev(kid) {
+    const akt = this._aktBand(kid), band = CDC.some(b => b.m === this._band) ? this._band : akt;
+    const stufe = CDC.find(b => b.m === band);
+    const chips = CDC.map(b => {
+      const n = b.items.filter(([id]) => this._get(kid.key, id)).length;
+      return `<button class="fm-band${b.m === band ? " fm-sel" : ""}" data-band="${b.m}">${b.m === akt ? `<span class="fm-jetzt">jetzt</span>` : ""}${this._bandKurz(b.m)}${
+        n === b.items.length ? " 🎉" : n ? ` <small>⭐${n}</small>` : ""}</button>`;
+    }).join("");
+    const n = stufe.items.filter(([id]) => this._get(kid.key, id)).length;
+    let html = `<div class="fm-bands">${chips}</div>
+      <div class="fm-bandhead"><div class="fm-bt">Mit etwa ${this._bandLang(band)}</div>${band === akt ? `<div class="fm-bs">🌱 Das wird gerade spannend</div>` : ""}</div>`;
+    if (n === stufe.items.length) html += `<div class="fm-alles">🎉 Alles entdeckt – wie schön!</div>`;
+    for (const a of Object.keys(AREAS)) {
+      const items = stufe.items.filter(it => it[1] === a);
+      if (items.length) html += `<div class="fm-area"><div class="fm-gh"><span>${AREAS[a][0]} ${AREAS[a][1]}</span></div>${items.map(([id, , t]) => this._row(kid, id, t)).join("")}</div>`;
+    }
+    const korr = this._frueh(kid) && kid.birth ? ` „Jetzt“ richtet sich nach dem korrigierten Alter (${this._alter(kid, this._heute(), true, true)}).` : "";
+    return html + `<div class="fm-quelle">Nach den Checklisten der CDC (2022): Das können die meisten Kinder bis zu diesem Alter. Viele brauchen etwas länger – jedes Kind hat sein eigenes Tempo.${korr}</div>`;
+  }
+  _row(kid, id, t) {
+    const h = this._get(kid.key, id);
+    return `<button class="fm-row${h ? " fm-on" : ""}" data-id="${U.esc(id)}" data-label="${U.esc(t)}" aria-pressed="${h ? "true" : "false"}">
+      <span class="fm-bub">${h ? "✓" : ""}</span><span class="fm-rt">${U.esc(t)}</span>${this._andere(kid, id)}${h ? `<span class="fm-rd">${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}</button>`;
+  }
+
+  // ---------- Bewegung ----------
+  _htmlMotor(kid) {
+    const pos = m => `${(Math.max(0, Math.min(WHO_MAX, m)) / WHO_MAX * 100).toFixed(2)}%`;
+    // Die Heute-Linie steht immer, sobald das Alter bekannt ist. Vor dem errechneten Termin
+    // (korrigiertes Alter unter 0) steht sie am linken Rand, nach 18 Monaten am rechten.
+    const jetzt = this._alterMon(kid, this._heute());
+    const jx = jetzt == null ? null : Math.max(0, Math.min(WHO_MAX, jetzt));
+    const now = jx != null ? `<span class="fm-now" style="left:${pos(jx)}"></span>` : "";
+    const rows = WHO.map(([id, e, t, lo, hi]) => {
+      const h = this._get(kid.key, id);
+      // Der eigene Punkt zuletzt, damit er oben liegt.
+      const dots = this.config.kids.slice().sort((a, b) => (a.key === kid.key) - (b.key === kid.key)).map(k => {
+        const x = this._get(k.key, id), m = x && this._alterMon(k, x.date);
+        if (m == null || m < 0) return "";
+        return `<span class="fm-dot${k.key === kid.key ? " fm-me" : ""}" style="left:${pos(m)};background:${U.esc(k.color)}" title="${U.esc(`${k.name}: ${this._dmy(x.date)}`)}">${U.esc(String(k.name).slice(0, 1))}</span>`;
+      }).join("");
+      return `<button class="fm-mo${h ? " fm-on" : ""}" data-id="${id}" data-label="${U.esc(t)}" aria-pressed="${h ? "true" : "false"}">
+        <span class="fm-ml"><span class="fm-mi">${e}</span><span class="fm-mt">${U.esc(t)}</span>${h ? `<span class="fm-md">⭐ ${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}</span>
+        <span class="fm-track"><span class="fm-win" style="left:${pos(lo)};width:${pos(hi - lo)}"></span>${now}${dots}</span></button>`;
+    }).join("");
+    // Zahlen, die mit „heute“ zusammenstoßen würden, fallen weg; am Rand steht „heute“ bündig statt mittig.
+    const ticks = [0, 3, 6, 9, 12, 15, 18].filter(m => jx == null || Math.abs(m - jx) >= 1).map(m => `<span style="left:${pos(m)}">${m}</span>`).join("")
+      + (jx != null ? `<span class="fm-nowl" style="left:${pos(jx)};transform:translateX(${jx < .7 ? "0" : jx > WHO_MAX - .7 ? "-100%" : "-50%"})">heute</span>` : "");
+    const korr = this._frueh(kid) && kid.birth ? ", nach korrigiertem Alter" : "";
+    const linie = jx == null ? "" : jetzt < 0 ? ", die Linie steht bei heute (noch vor dem errechneten Termin)" : ", die Linie steht bei heute";
+    return `<div class="fm-motor">${rows}<div class="fm-axis"><span class="fm-axl">Monate</span><span class="fm-ticks">${ticks}</span></div></div>
+      <div class="fm-quelle">Farbiges Feld: In dieser Zeit lernen es gesunde Kinder – so breit ist die Spanne (WHO-Motorikstudie, 1.–99. Perzentil). Punkte zeigen, wann es so weit war${korr}${linie}.</div>`;
+  }
+
+  // ---------- Feiern ----------
+  _bewegungArm() { try { return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } }
+  // Konfetti aus einem Element heraus: bunte Schnipsel, ab und zu ein Stern oder das Symbol.
+  _burst(src, n, klein, sym) {
+    if (this._bewegungArm()) return;
+    const fx = document.createElement("div"); fx.className = "fm-fx"; this.appendChild(fx);
+    // Relativ zur Ebene selbst rechnen: liegt ein Vorfahr mit transform darüber, ist „fixed“ nicht mehr das Fenster.
+    const r = (src && src.isConnected ? src : this).getBoundingClientRect(), f = fx.getBoundingClientRect();
+    const x0 = r.left - f.left + r.width / 2, y0 = r.top - f.top + r.height / 2;
+    const farben = [this._kid(this._kind).color, ...CONFETTI];
+    for (let i = 0; i < n; i++) {
+      const s = document.createElement("span");
+      if (!s.animate) break;
+      if (!klein && i % 6 === 0) { s.className = "fm-cf fm-cf-e"; s.textContent = sym && i % 12 === 0 ? sym : ["⭐", "💛", "✨"][i % 3]; }
+      else {
+        s.className = "fm-cf"; s.style.background = farben[i % farben.length];
+        const w = 6 + Math.random() * 6; s.style.width = `${w}px`; s.style.height = `${Math.random() < .5 ? w : w * .45}px`;
+        if (Math.random() < .35) s.style.borderRadius = "50%";
+      }
+      s.style.left = `${x0}px`; s.style.top = `${y0}px`;
+      fx.appendChild(s);
+      const ang = -Math.PI / 2 + (Math.random() - .5) * Math.PI * 1.4;   // überwiegend nach oben
+      const v = (klein ? 40 : 110) + Math.random() * (klein ? 50 : 170);
+      const dx = Math.cos(ang) * v, dy = Math.sin(ang) * v, fall = (klein ? 40 : 160) + Math.random() * 140;
+      const rot = (Math.random() - .5) * 720, dur = (klein ? 650 : 1300) + Math.random() * 700;
+      s.animate([
+        { transform: "translate(-50%,-50%) scale(.5)", opacity: 1 },
+        { transform: `translate(-50%,-50%) translate(${dx}px,${dy}px) rotate(${rot / 2}deg) scale(1)`, opacity: 1, offset: .35 },
+        { transform: `translate(-50%,-50%) translate(${dx * 1.3}px,${dy + fall}px) rotate(${rot}deg) scale(.85)`, opacity: 0 },
+      ], { duration: dur, easing: "cubic-bezier(.2,.7,.4,1)", fill: "forwards" });
+    }
+    setTimeout(() => fx.remove(), 2400);
+  }
+  _feiern(id, kids) {
+    const kid = this._kid(this._kind);
+    const el = this.querySelector(`.fm-body [data-id="${CSS.escape(id)}"]`);
+    if (el) { el.classList.add("fm-pop"); if (!this._bewegungArm()) el.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+    this._burst(el, 44, false, this._info(id, this._get(kid.key, id)).e);
+    const c = this.querySelector(".fm-count");
+    if (c) { c.classList.remove("fm-bump"); void c.offsetWidth; c.classList.add("fm-bump"); }
+    try { if (navigator.vibrate) navigator.vibrate([18, 40, 28]); } catch (e) { /* nicht überall */ }
+    const voll = CDC.find(b => b.items.some(([x]) => x === id) && b.items.every(([x]) => this._get(kid.key, x)));
+    if (voll) { U.toast(this, `🎉 Alles aus „${this._bandKurz(voll.m)}“ entdeckt – toll, ${kid.name}!`); return; }
+    for (const k of kids) {
+      const n = this._zahl(k);
+      if (JUBILAEEN.includes(n)) { U.toast(this, `🏆 Schon ${n} Momente mit ${this._kid(k).name} gesammelt!`); break; }
+    }
+  }
+
+  // ---------- Dialog ----------
+  _closeOv() { if (this._ov) { this._ov.remove(); this._ov = null; } }
+  _openSheet({ id, label, edit, custom }) {
+    this._closeOv();
+    const kid = this._kid(this._kind), e = edit || null, info = this._info(id || "eigen_", e);
+    const titel = custom ? (e ? info.t : "Eigener Moment") : (label || info.t);
+    const andere = this.config.kids.filter(k => k.key !== kid.key);
+    const schon = id ? andere.map(k => ({ k, h: this._get(k.key, id) })).filter(x => x.h) : [];
+    const frei = e ? [] : andere.filter(k => !id || !this._get(k.key, id));   // „auch für …“ nur, wer es noch nicht hat
+    const heute = this._heute(), gestern = new Date(heute); gestern.setDate(gestern.getDate() - 1);
+    const minD = kid.birth ? this._iso(this._day(kid.birth)) : "";
+    const ov = document.createElement("div");
+    ov.className = "fm-ov";
+    ov.innerHTML = `<div class="fm-sheet" role="dialog" aria-label="${U.esc(titel)}">
+      <div class="fm-sh-top">
+        <span class="fm-spark" style="left:12%;top:20%">✨</span><span class="fm-spark" style="right:13%;top:14%;animation-delay:.5s">⭐</span><span class="fm-spark" style="right:24%;bottom:18%;animation-delay:1s">✨</span>
+        <div class="fm-sh-e">${U.esc(info.e)}</div>
+        <div class="fm-sh-cheer">${e ? "Erinnerung" : custom ? "Ein besonderer Moment" : CHEERS[Math.floor(Math.random() * CHEERS.length)]}</div>
+        <div class="fm-sh-t">${U.esc(kid.name)} · ${U.esc(titel)}</div>
+        ${schon.map(x => `<div class="fm-sh-other"><span class="fm-od" style="background:${U.esc(x.k.color)}">${U.esc(String(x.k.name).slice(0, 1))}</span>Bei ${U.esc(x.k.name)} war’s am ${this._dmy(x.h.date)}</div>`).join("")}
+      </div>
+      <div class="fm-sh-body">
+        ${custom ? `<div class="fm-two"><label class="fm-emo"><span class="fm-lbl">Symbol</span><input class="fm-in fm-e" maxlength="12" value="${U.esc(e ? info.e : "✨")}"></label>
+          <label class="fm-grow"><span class="fm-lbl">Was ist passiert?</span><input class="fm-in fm-t" maxlength="60" placeholder="z. B. Erstes Mal im Tiergarten" value="${e ? U.esc(info.t) : ""}"></label></div>` : ""}
+        <span class="fm-lbl">Wann war’s?</span>
+        <div class="fm-when"><button data-d="${this._iso(heute)}">Heute</button><button data-d="${this._iso(gestern)}">Gestern</button>
+          <input class="fm-in fm-datum" type="date" value="${this._iso(e ? e.date : heute)}" max="${this._iso(heute)}"${minD ? ` min="${minD}"` : ""}></div>
+        <div class="fm-age"></div>
+        <label class="fm-check"><input type="checkbox" class="fm-ca"${e && e.ca ? " checked" : ""}> Datum nur ungefähr</label>
+        ${frei.map(k => `<label class="fm-check"><input type="checkbox" class="fm-also" value="${U.esc(k.key)}"${GEMEINSAM.has(id) ? " checked" : ""}> Auch für ${U.esc(k.name)} festhalten</label>`).join("")}
+        <span class="fm-lbl">Notiz <span class="fm-opt">– wenn du magst</span></span>
+        <textarea class="fm-in fm-notiz" rows="2" maxlength="500" placeholder="Wo wart ihr? Was war lustig?">${e ? U.esc(e.notiz) : ""}</textarea>
+      </div>
+      <div class="fm-foot">${e ? `<button class="fm-btn fm-del">Nicht mehr abhaken</button>` : ""}<span class="fm-flex"></span>
+        <button class="fm-btn fm-cancel">${e ? "Schließen" : "Abbrechen"}</button><button class="fm-btn fm-ok">${e ? "Speichern" : "Festhalten ✨"}</button></div>
+    </div>`;
+    ov.addEventListener("click", ev => { if (ev.target === ov) this._closeOv(); });
+    this.appendChild(ov); this._ov = ov;
+    const datum = ov.querySelector(".fm-datum"), ageEl = ov.querySelector(".fm-age");
+    const zeig = () => {
+      ov.querySelectorAll(".fm-when button").forEach(b => b.classList.toggle("fm-sel", b.dataset.d === datum.value));
+      if (!datum.value) { ageEl.textContent = ""; return; }
+      const d = this._day(datum.value), a = this._alter(kid, d, false, false), k = this._frueh(kid) ? this._alter(kid, d, true, true) : "";
+      ageEl.textContent = a ? `${a}${k && k !== this._alter(kid, d, false, true) ? ` · korrigiert ${k}` : ""}` : "";
+    };
+    ov.querySelectorAll(".fm-when button").forEach(b => b.addEventListener("click", () => { datum.value = b.dataset.d; zeig(); }));
+    datum.addEventListener("change", zeig); datum.addEventListener("input", zeig);
+    zeig();
+    if (custom && !e) setTimeout(() => ov.querySelector(".fm-t").focus(), 50);
+    ov.querySelector(".fm-cancel").addEventListener("click", () => this._closeOv());
+    if (e) ov.querySelector(".fm-del").addEventListener("click", async () => {
+      if (!window.confirm(`${kid.name}: „${titel}“ nicht mehr abhaken?`)) return;
+      this._closeOv();
+      const alle = (this._data || []).filter(x => x.kind === e.kind && x.id === e.id);   // Duplikate gleich mit
+      for (const x of alle) await this._delete(x.uid);
+      this._load();
+    });
+    ov.querySelector(".fm-ok").addEventListener("click", async () => {
+      if (!datum.value) { U.toast(this, "Bitte ein Datum wählen"); return; }
+      const d = this._day(datum.value);
+      if (d > heute) { U.toast(this, "Das Datum liegt in der Zukunft"); return; }
+      if (kid.birth && d < this._day(kid.birth)) { U.toast(this, "Das Datum liegt vor der Geburt"); return; }
+      const x = { ca: ov.querySelector(".fm-ca").checked, notiz: ov.querySelector(".fm-notiz").value.trim() };
+      let mid = id;
+      if (custom) {
+        x.t = ov.querySelector(".fm-t").value.trim(); x.e = ov.querySelector(".fm-e").value.trim() || "✨";
+        if (!x.t) { U.toast(this, "Wie soll der Moment heißen?"); return; }
+        if (!mid) mid = `eigen_${Date.now().toString(36)}`;
+      }
+      const auch = [...ov.querySelectorAll(".fm-also:checked")].map(c => c.value);
+      this._closeOv();
+      if (e) { if (await this._update(e, d, x)) this._load(); return; }
+      const kids = [kid.key, ...auch];
+      const jobs = kids.map(k => this._create(k, mid, d, x));   // legt die Einträge sofort vorläufig an
+      this._index(); this._paint(true); this._feiern(mid, kids);
+      const ok = await Promise.all(jobs);
+      if (ok.includes(false)) { this._index(); this._paint(true); }
+      this._load();
+    });
+  }
+
+  _styles() {
+    return `<style>
+      .fm-card{padding:16px 16px 14px;container-type:inline-size;}
+      .fm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
+      .fm-title{font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
+      .fm-count{font-size:.9rem;font-weight:600;color:var(--fm-kt,var(--fm-k));background:var(--fm-k1);border-radius:999px;padding:5px 12px;white-space:nowrap;}
+      .fm-count:empty{display:none;}
+      .fm-bump{animation:fm-bump .6s cubic-bezier(.3,1.6,.5,1);}
+      @keyframes fm-bump{40%{transform:scale(1.25);}}
+      .fm-kids{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;} .fm-kids:empty{display:none;}
+      .fm-kid{display:flex;align-items:center;gap:8px;border:2px solid transparent;border-radius:999px;padding:3px 14px 3px 3px;cursor:pointer;
+        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.95rem;font-weight:700;}
+      .fm-kid.fm-sel{border-color:var(--c);background:var(--c1);}
+      .fm-av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.9rem;font-weight:800;flex:none;}
+      .fm-kage{font-size:.78rem;font-weight:600;color:var(--secondary-text-color);}
+      .fm-tabs{display:flex;background:var(--secondary-background-color);border-radius:12px;padding:3px;gap:2px;margin-bottom:16px;} .fm-tabs:empty{display:none;}
+      .fm-tabs button{flex:1;border:none;background:transparent;color:var(--secondary-text-color);font-size:.92rem;font-weight:700;padding:9px 6px;border-radius:9px;cursor:pointer;white-space:nowrap;}
+      .fm-tabs button.fm-sel{background:var(--card-background-color,#fff);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+      @container (max-width: 420px){ .fm-tabs button{font-size:.8rem;padding:9px 2px;} }
+      .fm-hint{background:var(--fm-k1);border-radius:14px;padding:10px 14px;font-size:.88rem;line-height:1.4;margin-bottom:14px;}
+      .fm-grp{margin-bottom:18px;}
+      .fm-gh{display:flex;align-items:center;justify-content:space-between;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--secondary-text-color);margin:0 2px 8px;}
+      .fm-gn{color:var(--fm-kt,var(--fm-k));letter-spacing:0;text-transform:none;font-size:.82rem;}
+
+      /* Erste Male: offene Plätze im Album gestrichelt, Gesammeltes als Sticker in der Kinderfarbe */
+      .fm-stickers{display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));gap:10px;}
+      .fm-st{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;min-height:112px;padding:12px 6px 10px;border-radius:18px;cursor:pointer;
+        border:2px dashed var(--divider-color);background:transparent;color:var(--primary-text-color);font:inherit;transition:transform .15s;-webkit-tap-highlight-color:transparent;}
+      .fm-st:active{transform:scale(.93);}
+      .fm-st-e{font-size:2.1rem;line-height:1.15;opacity:.55;filter:saturate(.5);}
+      .fm-st-t{font-size:.76rem;font-weight:600;line-height:1.15;text-align:center;color:var(--secondary-text-color);}
+      .fm-st.fm-on{border:2px solid var(--fm-k);background:linear-gradient(160deg,var(--fm-k1),var(--fm-k2));box-shadow:0 3px 10px var(--fm-k2);}
+      .fm-st.fm-on .fm-st-e{opacity:1;transform:rotate(-6deg);filter:drop-shadow(0 0 1px #fff) drop-shadow(0 3px 3px rgba(0,0,0,.2));}
+      .fm-st.fm-on .fm-st-t{color:var(--primary-text-color);font-weight:700;}
+      .fm-st-d{margin-top:auto;font-size:.7rem;font-weight:800;color:var(--fm-kt,var(--fm-k));background:var(--card-background-color,#fff);border-radius:999px;padding:1px 8px;}
+      .fm-st-star{position:absolute;top:-9px;right:-5px;font-size:1.15rem;transform:rotate(14deg);}
+      .fm-add{border-style:dashed;border-color:var(--fm-k3);}
+      .fm-add .fm-st-e{opacity:1;filter:none;color:var(--fm-kt,var(--fm-k));font-weight:400;}
+      .fm-add .fm-st-t{color:var(--fm-kt,var(--fm-k));font-weight:700;}
+      .fm-others{position:absolute;top:6px;left:6px;display:flex;gap:2px;}
+      .fm-od{width:17px;height:17px;border-radius:50%;color:#fff;font-size:.6rem;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;}
+      .fm-pop{animation:fm-pop .75s cubic-bezier(.3,1.7,.5,1);}
+      @keyframes fm-pop{0%{transform:scale(.6) rotate(-8deg);}60%{transform:scale(1.12) rotate(3deg);}100%{transform:none;}}
+
+      /* Entwicklung */
+      .fm-bands{position:relative;display:flex;gap:6px;overflow-x:auto;padding:10px 2px 8px;margin:-10px -2px 4px;scrollbar-width:none;}
+      .fm-bands::-webkit-scrollbar{display:none;}
+      .fm-band{position:relative;flex:none;border:2px solid transparent;border-radius:999px;padding:7px 13px;cursor:pointer;
+        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.88rem;font-weight:700;}
+      .fm-band small{color:var(--fm-kt,var(--fm-k));font-weight:800;font-size:.78rem;}
+      .fm-band.fm-sel{border-color:var(--fm-k);background:var(--fm-k1);}
+      .fm-jetzt{position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--fm-k);color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:1px 6px;}
+      .fm-bandhead{margin:6px 2px 12px;}
+      .fm-bt{font-size:1.1rem;font-weight:800;}
+      .fm-bs{font-size:.86rem;font-weight:700;color:var(--fm-kt,var(--fm-k));margin-top:2px;}
+      .fm-alles{background:linear-gradient(90deg,var(--fm-k1),var(--fm-k2));border-radius:14px;padding:10px 14px;font-weight:800;margin-bottom:12px;}
+      .fm-area{margin-bottom:14px;}
+      .fm-row{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;border:1.5px solid var(--divider-color);border-radius:14px;padding:10px 12px;margin-bottom:6px;cursor:pointer;
+        background:transparent;color:var(--primary-text-color);font:inherit;font-size:.92rem;line-height:1.3;transition:transform .12s;-webkit-tap-highlight-color:transparent;}
+      .fm-row:active{transform:scale(.98);}
+      .fm-bub{flex:none;width:28px;height:28px;box-sizing:border-box;border-radius:50%;border:2px dashed var(--secondary-text-color);opacity:.5;
+        display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:.95rem;}
+      .fm-row.fm-on{background:linear-gradient(100deg,var(--fm-k2),var(--fm-k1));border-color:var(--fm-k3);}
+      .fm-row.fm-on .fm-bub{border:none;opacity:1;background:var(--fm-k);box-shadow:0 2px 6px var(--fm-k3);}
+      .fm-rt{flex:1;min-width:0;}
+      .fm-rd{flex:none;font-size:.78rem;font-weight:800;color:var(--fm-kt,var(--fm-k));}
+      .fm-row .fm-others{position:static;}
+
+      /* Bewegung: Zeitfenster als Balken, Punkte zeigen, wann es so weit war */
+      .fm-motor{display:flex;flex-direction:column;gap:8px;}
+      .fm-mo,.fm-axis{display:grid;grid-template-columns:1fr;column-gap:14px;row-gap:8px;}
+      .fm-mo{width:100%;border:none;border-radius:14px;padding:10px 14px;cursor:pointer;text-align:left;font:inherit;
+        background:var(--secondary-background-color);color:var(--primary-text-color);-webkit-tap-highlight-color:transparent;}
+      .fm-mo:active{transform:scale(.99);}
+      .fm-axis{padding:0 14px;}
+      .fm-axl{display:none;font-size:.7rem;color:var(--secondary-text-color);text-align:right;}
+      @container (min-width: 560px){ .fm-mo,.fm-axis{grid-template-columns:230px 1fr;align-items:center;} .fm-axl{display:block;} }
+      .fm-ml{display:flex;align-items:center;gap:8px;font-size:.92rem;font-weight:700;min-width:0;}
+      .fm-mi{font-size:1.35rem;flex:none;}
+      .fm-mt{min-width:0;}
+      .fm-md{margin-left:auto;font-size:.76rem;font-weight:800;color:var(--fm-kt,var(--fm-k));white-space:nowrap;}
+      .fm-track{position:relative;height:28px;border-radius:14px;background:var(--card-background-color,#fff);}
+      .fm-win{position:absolute;top:5px;bottom:5px;border-radius:9px;--w1:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 18%,transparent);--w2:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 42%,transparent);
+        background:linear-gradient(90deg,var(--w1,var(--fm-k1)),var(--w2,var(--fm-k3)) 50%,var(--w1,var(--fm-k1)));}
+      .fm-mo.fm-on .fm-win{--w1:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 30%,transparent);}
+      .fm-now{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;border-radius:1px;background:var(--primary-text-color);opacity:.7;pointer-events:none;}
+      .fm-ticks .fm-nowl{font-weight:800;color:var(--primary-text-color);}
+      .fm-dot{position:absolute;top:50%;transform:translate(-50%,-50%);width:20px;height:20px;box-sizing:border-box;border-radius:50%;color:#fff;font-size:.6rem;font-weight:800;
+        display:flex;align-items:center;justify-content:center;border:2px solid var(--card-background-color,#fff);box-shadow:0 1px 3px rgba(0,0,0,.25);}
+      .fm-dot.fm-me{width:26px;height:26px;font-size:.78rem;box-shadow:0 0 0 3px var(--fm-k3),0 1px 3px rgba(0,0,0,.25);}
+      .fm-ticks{position:relative;height:16px;font-size:.7rem;color:var(--secondary-text-color);font-variant-numeric:tabular-nums;}
+      .fm-ticks span{position:absolute;transform:translateX(-50%);}
+      .fm-quelle{font-size:.72rem;line-height:1.45;color:var(--secondary-text-color);opacity:.85;margin-top:12px;}
+
+      /* Dialog */
+      .fm-ov{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fm-fade .2s;}
+      @keyframes fm-fade{from{opacity:0;}}
+      .fm-sheet{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:24px;width:100%;max-width:420px;max-height:calc(100vh - 32px);overflow:auto;
+        box-shadow:0 16px 50px rgba(0,0,0,.3);animation:fm-up .4s cubic-bezier(.3,1.4,.5,1);}
+      @keyframes fm-up{from{transform:translateY(30px) scale(.94);opacity:0;}}
+      .fm-sh-top{position:relative;overflow:hidden;text-align:center;padding:22px 18px 16px;background:linear-gradient(170deg,var(--fm-k3),var(--fm-k1) 65%,transparent);}
+      .fm-sh-e{display:inline-block;font-size:3.6rem;line-height:1.1;animation:fm-hop 1.6s ease-in-out infinite;filter:drop-shadow(0 4px 6px rgba(0,0,0,.15));}
+      @keyframes fm-hop{0%,100%{transform:translateY(0) rotate(-5deg);}50%{transform:translateY(-8px) rotate(5deg);}}
+      .fm-sh-cheer{font-size:1.5rem;font-weight:800;margin-top:6px;color:var(--fm-kt,var(--fm-k));}
+      .fm-sh-t{font-size:1rem;font-weight:700;margin-top:2px;}
+      .fm-sh-other{display:flex;align-items:center;justify-content:center;gap:6px;font-size:.84rem;color:var(--secondary-text-color);margin-top:8px;}
+      .fm-spark{position:absolute;font-size:1.1rem;animation:fm-twinkle 1.8s ease-in-out infinite;}
+      @keyframes fm-twinkle{0%,100%{opacity:.25;transform:scale(.7);}50%{opacity:1;transform:scale(1.15);}}
+      .fm-sh-body{padding:2px 18px 0;}
+      .fm-lbl{display:block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--secondary-text-color);margin:14px 0 6px;}
+      .fm-opt{text-transform:none;letter-spacing:0;font-weight:600;opacity:.8;}
+      .fm-two{display:flex;gap:10px;} .fm-emo{flex:0 0 76px;} .fm-emo .fm-in{text-align:center;font-size:1.3rem;padding:7px;} .fm-grow{flex:1;min-width:0;}
+      .fm-when{display:flex;gap:6px;}
+      .fm-when button{flex:none;border:2px solid transparent;border-radius:10px;padding:8px 12px;font-weight:700;font-size:.9rem;cursor:pointer;
+        background:var(--secondary-background-color);color:var(--primary-text-color);}
+      .fm-when button.fm-sel{border-color:var(--fm-k);background:var(--fm-k1);}
+      .fm-when .fm-in{flex:1;}
+      .fm-in{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--divider-color);border-radius:10px;
+        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
+      .fm-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fm-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum sonst breiter als der Dialog */
+      textarea.fm-in{resize:vertical;}
+      .fm-age{min-height:1.1em;font-size:.84rem;font-weight:700;color:var(--fm-kt,var(--fm-k));margin-top:7px;}
+      .fm-check{display:flex;align-items:center;gap:9px;font-size:.9rem;margin-top:9px;cursor:pointer;}
+      .fm-check input{width:19px;height:19px;margin:0;accent-color:var(--fm-k);flex:none;}
+      .fm-foot{display:flex;gap:8px;align-items:center;padding:18px;}
+      .fm-flex{flex:1;}
+      .fm-btn{border:none;border-radius:12px;padding:12px 16px;font-weight:700;font-size:.95rem;cursor:pointer;background:var(--secondary-background-color);color:var(--primary-text-color);}
+      .fm-ok{background:var(--fm-k);color:#fff;box-shadow:0 4px 12px var(--fm-k3);}
+      .fm-del{background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;padding-left:2px;padding-right:2px;}
+
+      /* Konfetti */
+      .fm-fx{position:fixed;inset:0;pointer-events:none;z-index:1000;overflow:hidden;}
+      .fm-cf{position:absolute;display:block;border-radius:2px;}
+      .fm-cf-e{font-size:20px;line-height:1;}
+      @media (prefers-reduced-motion: reduce){ .fm-sh-e,.fm-spark,.fm-pop,.fm-bump,.fm-sheet,.fm-ov{animation:none !important;} }
+    </style>`;
+  }
+  getCardSize() { return 10; }
+}
+if (!customElements.get("fp-milestone-card")) {
+  customElements.define("fp-milestone-card", FpMilestoneCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "fp-milestone-card", name: "FP Milestone Card", description: "Meilensteine je Kind zum Abhaken: Erste Male, Entwicklung nach Alter, Bewegung mit WHO-Zeitfenstern" });
+}
+})();
+
+
+/* ===== fp-baby-overview-card v6 (aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+// Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card), Windeln
+// (fp-diaper-card), Gewicht (fp-weight-card) und Meilensteine (fp-milestone-card), dazu den
+// eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
+// Schreibt selbst Windeln, Fläschchen und Gewichte im Format jener Karten und schaltet den
+// Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
+(() => {
+const U = window.__fpUtils;
+const MIN = 60000, STD = 3600000, TAG = 86400000;
+const WT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+const KIDCOLORS = ["#4A7A3A", "#7A4A78", "#3A6A8A", "#A0603A"];
+const LADETAGE = 28;   // für Muster: zwei Wochen und die zwei davor zum Vergleich
+// Kleine eigene Symbole für die Leiste unten, 24er-Raster.
+const ICO = {
+  heute: '<path d="M4 11.2 12 4l8 7.2V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/>',
+  muster: '<rect x="4" y="11" width="4" height="9" rx="1.5"/><rect x="10" y="5" width="4" height="15" rx="1.5"/><rect x="16" y="8" width="4" height="12" rx="1.5"/>',
+  wachstum: '<path d="M3 20h18" stroke-width="2" stroke="currentColor" fill="none"/><path d="m4 16 5-5 4 3 7-8" stroke-width="2.4" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  momente: '<rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="2" fill="var(--b-bar)"/><path d="m5 18 5-5 3 3 2-2 4 4z" fill="var(--b-bar)"/>',
+};
+const SPARK = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2c.7 5.2 4.5 9.1 10 10-5.5.9-9.3 4.8-10 10-.7-5.2-4.5-9.1-10-10 5.5-.9 9.3-4.8 10-10Z"/></svg>';
+
+class FpBabyOverviewCard extends HTMLElement {
+  setConfig(config) {
+    if (!config || !Array.isArray(config.kids) || !config.kids.length) throw new Error("fp-baby-overview-card braucht kids");
+    this.config = Object.assign({
+      weight_calendar: "",       // Kalender der fp-weight-card (alle Kinder)
+      milestone_calendar: "",    // Kalender der fp-milestone-card (alle Kinder)
+      appearance: "dark",        // dark (wie Buma), light oder auto (folgt dem Theme)
+      chat: true,                // ✦ „Frag nach“
+      ai_entity: "",             // ai_task-Entity für den Chat; leer = die in HA voreingestellte
+      days: 14,                  // so viele Tage bekommt die KI
+      growth_data: "",           // optional: Perzentilkurven wie bei der fp-weight-card (dazu je Kind birth, ga, sex)
+      memories_path: "",         // optional: Tab mit der Meilensteinkarte, erscheint unten als „Momente“
+      bottle_presets: [40, 60, 90, 120],
+      reminder_hours: 3,         // ab hier ist die Mahlzeit „fällig“, wie in der Stillkarte
+      meal_pause_minutes: 45,    // höchstens so viel Pause zwischen zwei Einträgen derselben Mahlzeit
+      bottle_minutes: 15,        // Fläschchen stehen mit „fertig um“: so viel früher war ihr Beginn
+    }, config);
+    this.config.kids = this.config.kids.map((k, i) => Object.assign({}, k, {
+      key: String(k.key || k.name || `kind_${i + 1}`), name: String(k.name || k.key || `Kind ${i + 1}`),
+      color: k.color || KIDCOLORS[i % KIDCOLORS.length] }));
+    this._built = false; this._d = null; this._sig = ""; this._chat = []; this._busy = false;
+    this._pfx = `fp-overview:${this.config.kids.map(k => k.key).join(",")}`;
+    this._kind = this._pref("kind", "");
+    if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
+    const v = this._pref("view", "heute");
+    this._view = v === "muster" || v === "wachstum" ? v : "heute";
+    this._filter = this._pref("filter", "alle");
+    this._spanne = this._pref("spanne", "7") === "14" ? 14 : 7;
+    this._off = 0;   // 0 = heute, -1 = gestern …
+    this._wAlle = false;   // Wachstum: alle Messungen statt der letzten
+    this._ref = null;
+    if (this.config.growth_data) this._loadRef();
+  }
+  // Referenzkurven wie in der fp-weight-card; beide Karten teilen sich den Abruf über window.__fpGrowth.
+  async _loadRef() {
+    const url = this.config.growth_data, cache = (window.__fpGrowth = window.__fpGrowth || {});
+    try {
+      cache[url] = cache[url] || fetch(url, { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+      this._ref = await cache[url];
+    } catch (e) {
+      delete cache[url];
+      U.toast(this, "Perzentilkurven konnten nicht geladen werden");
+      this._ref = null;
+    }
+    this._paint(true);
+  }
+  set hass(hass) {
+    this._hass = hass;
+    // Verglichen wird mit dem, was die Karte zuletzt gesehen hat — nicht mit dem vorigen hass-Objekt.
+    const kids = this.config.kids, lauf = kids.map(k => this._laeuft(k)), schlaf = kids.map(k => this._schlaeft(k));
+    const sig = JSON.stringify([lauf, schlaf, kids.map((k, i) => [this._seite(k), lauf[i] ? this._beginn(k) : 0, schlaf[i] ? this._schlafBeginn(k) : 0]), this._dunkel()]);
+    const vorher = this._lauf, vorherS = this._schlaf;
+    this._lauf = lauf; this._schlaf = schlaf;
+    if (!this._built) { this._swSig = sig; this._build(); this._load(); return; }
+    // Beim Stopp schreibt die Automation den Termin erst nach ein paar Sekunden — mehrfach nachladen.
+    const gestoppt = (alt, neu) => alt && alt.some((v, i) => v && !neu[i]);
+    if (gestoppt(vorher, lauf) || gestoppt(vorherS, schlaf)) this._nachladen([3000, 8000, 20000, 40000]);
+    if (sig !== this._swSig) { this._swSig = sig; this._paint(true); }
+  }
+  _nachladen(zeiten) {
+    (this._nachT || []).forEach(clearTimeout);
+    this._nachT = zeiten.map(ms => setTimeout(() => this._load(), ms));
+  }
+  connectedCallback() {
+    if (!this._timer) this._timer = setInterval(() => this._tick(), 1000);
+    // Die Wachstumskurve wird für ihre echte Breite gezeichnet, sonst schrumpft am Handy die Schrift mit.
+    if (!this._ro && window.ResizeObserver) { this._ro = new ResizeObserver(() => { if (this._view === "wachstum") this._zeichne(); }); this._ro.observe(this); }
+  }
+  disconnectedCallback() {
+    clearInterval(this._timer); this._timer = null; (this._nachT || []).forEach(clearTimeout);
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+  }
+  // Jede Sekunde nur die laufenden Uhren; jede halbe Minute die „her“-Zeiten, jede Minute die Kalender.
+  _tick() {
+    this._t = (this._t || 0) + 1;
+    this.querySelectorAll(".fo-uhr[data-ab]").forEach(el => { el.textContent = this._uhr((Date.now() - Number(el.dataset.ab)) / 1000); });
+    this.querySelectorAll(".fo-dauer[data-ab]").forEach(el => { el.textContent = this._hDauer(Date.now() - Number(el.dataset.ab)); });   // Schlaf: ohne Sekunden
+    if (this._t % 30 === 0) this._paint();
+    if (this._t % 60 === 0) this._load();
+  }
+  _dunkel() {
+    const a = this.config.appearance;
+    if (a === "light") return false;
+    if (a === "auto") return !!(this._hass && this._hass.themes && this._hass.themes.darkMode);
+    return true;
+  }
+  _pref(n, d) { try { return localStorage.getItem(`${this._pfx}:${n}`) || d; } catch (e) { return d; } }
+  _setPref(n, v) { try { localStorage.setItem(`${this._pfx}:${n}`, v); } catch (e) { /* nur Komfort */ } }
+
+  // ---------- Hilfen ----------
+  _p(n) { return String(n).padStart(2, "0"); }
+  _hm(d) { return `${this._p(d.getHours())}:${this._p(d.getMinutes())}`; }
+  _dm(d) { return `${d.getDate()}.${d.getMonth() + 1}.`; }
+  _dmy(d) { return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`; }
+  _tag(d) { return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
+  _mitternacht(d, plus) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + (plus || 0)); }
+  _day(s) { const [y, m, d] = String(s).slice(0, 10).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1, 12); }
+  _local(d, sep) { return `${d.getFullYear()}-${this._p(d.getMonth() + 1)}-${this._p(d.getDate())}${sep}${this._hm(d)}:${this._p(d.getSeconds())}`; }
+  _hDauer(ms) { const m = Math.max(0, Math.round(ms / MIN)); return `${Math.floor(m / 60)}:${this._p(m % 60)} h`; }
+  _minText(ms) { const m = Math.max(0, Math.round(ms / MIN)); return m < 60 ? `${m} Min` : this._hDauer(ms); }
+  _uhr(sek) { const s = Math.max(0, Math.floor(sek)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}:${this._p(m)}:${this._p(s % 60)}` : `${m}:${this._p(s % 60)}`; }
+  _vor(t) {
+    const m = Math.floor((Date.now() - t) / MIN);
+    if (m < 1) return "gerade eben";
+    if (m < 60) return `vor ${m} Min`;
+    if (m < 24 * 60) return `vor ${Math.floor(m / 60)}:${this._p(m % 60)} h`;   // kurz, wie die große Zahl oben
+    const tg = Math.round(m / 1440);
+    return `vor ${tg} ${tg === 1 ? "Tag" : "Tagen"}`;
+  }
+  _wann(t) { const d = new Date(t); return this._tag(d) === this._tag(new Date()) ? this._hm(d) : `${this._dm(d)} ${this._hm(d)}`; }
+  _kg(g) { return (g / 1000).toLocaleString("de-AT", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + " kg"; }
+  _kid(key) { return this.config.kids.find(k => k.key === key) || this.config.kids[0]; }
+  _tint(c, a) {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c || "").trim());
+    if (!m) return `color-mix(in srgb, ${c} ${Math.round(a * 100)}%, transparent)`;
+    let h = m[1]; if (h.length === 3) h = h.split("").map(x => x + x).join("");
+    const n = parseInt(h, 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  _kidStyle(k) {
+    return `--k:${U.esc(k.color)};--k1:${this._tint(k.color, .1)};--k2:${this._tint(k.color, .22)};--k3:${this._tint(k.color, .4)};--kt:color-mix(in srgb, ${U.esc(k.color)} 62%, var(--primary-text-color))`;
+  }
+  _median(a) { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y), i = (s.length - 1) / 2; return (s[Math.floor(i)] + s[Math.ceil(i)]) / 2; }
+  _quantil(a, q) { const s = a.slice().sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.max(0, Math.round((s.length - 1) * q)))]; }
+
+  // Alter wie in der Meilensteinkarte: ab drei Wochen zu früh zusätzlich korrigiert.
+  _frueh(kid) {
+    if (!kid.ga) return 0;
+    const [w, d] = String(kid.ga).split("+").map(Number), ga = (w || 40) * 7 + (d || 0);
+    return ga < 259 ? 280 - ga : 0;
+  }
+  _alter(kid, korr) {
+    if (!kid.birth) return "";
+    const b = this._day(kid.birth); if (korr) b.setDate(b.getDate() + this._frueh(kid));
+    const d = this._day(this._local(new Date(), " ")), tage = Math.round((d - b) / TAG);
+    if (tage < 0) return "";
+    let m = (d.getFullYear() - b.getFullYear()) * 12 + d.getMonth() - b.getMonth();
+    if (d.getDate() < b.getDate()) m--;
+    if (m < 2) { const w = Math.floor(tage / 7); return w < 2 ? `${tage} ${tage === 1 ? "Tag" : "Tage"}` : `${w} Wochen`; }
+    if (m < 24) return `${m} ${m === 1 ? "Monat" : "Monate"}`;
+    const j = Math.floor(m / 12), r = m % 12;
+    return `${j} ${j === 1 ? "Jahr" : "Jahre"}${r ? ` ${r} M.` : ""}`;
+  }
+  _alterText(kid) {
+    const a = this._alter(kid, false), k = this._frueh(kid) ? this._alter(kid, true) : "";
+    return a ? `${a}${k && k !== a ? ` · korrigiert ${k}` : ""}` : "";
+  }
+
+  // ---------- Daten ----------
+  _start(ev) { return new Date((ev.start && (ev.start.dateTime || ev.start.date)) || ev.start); }
+  _ende(ev) { return new Date((ev.end && (ev.end.dateTime || ev.end.date)) || ev.end); }
+  _datum(ev) { const s = (ev.start && (ev.start.date || ev.start.dateTime)) || ev.start; return this._day(String(s).slice(0, 10)); }
+  _meta(ev) { try { return JSON.parse(ev.description || "{}") || {}; } catch (x) { return {}; } }
+  // Wie fp-feeding-card: fehlt die Beschreibung, wird aus der Überschrift geraten.
+  _parseFeed(ev) {
+    const meta = this._meta(ev), sum = String(ev.summary || "");
+    if (meta.typ === "windel") return null;
+    const typ = meta.typ || (/fl[äa]sch/i.test(sum) ? "flasche" : "stillen");
+    let ml = Number(meta.ml) || 0;
+    if (!ml) { const m = sum.match(/(\d+)\s*ml/i); if (m) ml = Number(m[1]); }
+    const seite = meta.seite || (/rechts/i.test(sum) ? "rechts" : /links/i.test(sum) ? "links" : "");
+    return { start: this._start(ev), end: this._ende(ev), typ, ml, seite };
+  }
+  _parseDiaper(ev) {
+    const meta = this._meta(ev), sum = String(ev.summary || "");
+    const art = meta.art || (/beides|\+/.test(sum) ? "beides" : /voll/i.test(sum) ? "voll" : "nass");
+    return { start: this._start(ev), art };
+  }
+  _parseSleep(ev) {
+    const meta = this._meta(ev);
+    if (meta.typ && meta.typ !== "schlaf") return null;   // fremde Termine im selben Kalender überspringen
+    return { uid: ev.uid, start: this._start(ev), end: this._ende(ev), auto: !!meta.auto };
+  }
+  _parseWeight(ev) {
+    const meta = this._meta(ev), sum = String(ev.summary || "");
+    const kid = this.config.kids.find(k => (k.weight_key || k.key) === meta.kind) || this.config.kids.find(k => sum.toLowerCase().startsWith(k.name.toLowerCase()));
+    let g = Number(meta.g) || 0;
+    if (!g) { const m = sum.match(/([\d.,]+)\s*(kg|g)\b/i); if (m) { const n = Number(m[1].replace(",", ".")); g = Math.round(/kg/i.test(m[2]) || n < 30 ? n * 1000 : n); } }
+    return kid && g > 0 ? { uid: ev.uid, kind: kid.key, g, date: this._datum(ev) } : null;
+  }
+  _parseMilestone(ev) {
+    const meta = this._meta(ev);
+    if (meta.typ !== "meilenstein" || !meta.kind) return null;
+    const kid = this.config.kids.find(k => (k.milestone_key || k.key) === meta.kind); if (!kid) return null;
+    // Titel steht nach „Name: “, das Symbol davor — so braucht es den Katalog der Meilensteinkarte nicht.
+    const sum = String(ev.summary || ""), i = sum.indexOf(": ");
+    const t = meta.t || (i >= 0 ? sum.slice(i + 2) : sum), e = meta.e || (sum.split(" ")[0] || "⭐");
+    return { kind: kid.key, t, e, date: this._datum(ev) };
+  }
+
+  async _load() {
+    if (!this._hass) return;
+    const jetzt = new Date(), von = this._mitternacht(jetzt, -Math.max(LADETAGE, Number(this.config.days || 14))), bis = this._mitternacht(jetzt, 1);
+    let fehler = 0;
+    const holen = async (cal, ab) => {
+      if (!cal) return [];
+      try {
+        const evts = await this._hass.callApi("GET", `calendars/${cal}?start=${encodeURIComponent(ab.toISOString())}&end=${encodeURIComponent(bis.toISOString())}`);
+        return Array.isArray(evts) ? evts : [];
+      } catch (e) { fehler++; return null; }
+    };
+    const alt = this._d || { kids: {}, weights: [], milestones: [] }, d = { kids: {}, weights: alt.weights, milestones: alt.milestones };
+    const lange = new Date(2015, 0, 1);
+    await Promise.all([
+      ...this.config.kids.map(async k => {
+        const [f, w, sl] = await Promise.all([holen(k.feeding_calendar, von), holen(k.diaper_calendar, von), holen(k.sleep_calendar, von)]);
+        const a = alt.kids[k.key] || { feeds: [], diapers: [], sleeps: [] };
+        d.kids[k.key] = {
+          feeds: f ? f.map(x => this._parseFeed(x)).filter(x => x && !isNaN(x.start)).sort((x, y) => x.start - y.start) : a.feeds,
+          diapers: w ? w.map(x => this._parseDiaper(x)).filter(x => !isNaN(x.start)).sort((x, y) => x.start - y.start) : a.diapers,
+          sleeps: sl ? sl.map(x => this._parseSleep(x)).filter(x => x && !isNaN(x.start) && !isNaN(x.end)).sort((x, y) => x.start - y.start) : (a.sleeps || []),
+        };
+      }),
+      holen(this.config.weight_calendar, lange).then(r => { if (r) d.weights = r.map(x => this._parseWeight(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
+      holen(this.config.milestone_calendar, lange).then(r => { if (r) d.milestones = r.map(x => this._parseMilestone(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
+    ]);
+    if (fehler && this._loadedOnce) U.toast(this, "Einige Einträge konnten nicht geladen werden");
+    this._loadedOnce = true;   // allerersten Ladefehler (Startup-Flackern) nicht melden
+    this._d = d;
+    this._paint();
+  }
+
+  // Mahlzeiten wie in der Stillkarte: Einträge mit höchstens meal_pause_minutes Pause gehören zusammen.
+  _mahlzeiten(feeds) {
+    const pause = Number(this.config.meal_pause_minutes) * MIN, flasche = Number(this.config.bottle_minutes) * MIN, out = [];
+    let ende = 0;
+    feeds.map(e => ({ e, ab: e.typ === "flasche" ? +e.start - flasche : +e.start })).sort((a, b) => a.ab - b.ab).forEach(({ e, ab }) => {
+      if (!out.length || ab - ende > pause) out.push({ start: ab, end: ab, geschaetzt: e.typ === "flasche", evs: [] });
+      const m = out[out.length - 1];
+      m.evs.push(e); m.end = Math.max(m.end, +e.end, ab); ende = Math.max(ende, +e.end);
+    });
+    return out;
+  }
+  _laeuft(kid) { const s = this._hass && kid.switch && this._hass.states[kid.switch]; return !!s && s.state === "on"; }
+  _beginn(kid) {
+    const s = this._hass && kid.start && this._hass.states[kid.start];
+    const t = s && s.attributes ? Number(s.attributes.timestamp) * 1000 : 0;
+    const sw = this._hass && kid.switch && this._hass.states[kid.switch], lc = sw && sw.last_changed ? Date.parse(sw.last_changed) : 0;
+    // Direkt nach dem Einschalten steht im Helfer noch der Beginn der vorigen Mahlzeit, bis die Automation ihn setzt.
+    if (t > 0 && (!lc || t >= lc - MIN)) return t;
+    return lc || Date.now();
+  }
+  _seite(kid) { const s = this._hass && kid.side && this._hass.states[kid.side]; return s ? s.state : ""; }
+  _schlaeft(kid) { const s = this._hass && kid.sleep_switch && this._hass.states[kid.sleep_switch]; return !!s && s.state === "on"; }
+  // Beginn aus dem Helfer. Nur in der ersten Minute nach dem Einschalten kann dort noch der vorige
+  // Schlaf stehen — dann gilt der Schaltzeitpunkt. Später nicht mehr, denn nach dem nächtlichen
+  // Neustart steht last_changed auf dem Neustart, der Helfer aber weiter richtig.
+  _schlafBeginn(kid) {
+    const s = this._hass && kid.sleep_start && this._hass.states[kid.sleep_start];
+    const t = s && s.attributes ? Number(s.attributes.timestamp) * 1000 : 0;
+    const sw = this._hass && kid.sleep_switch && this._hass.states[kid.sleep_switch], lc = sw && sw.last_changed ? Date.parse(sw.last_changed) : 0;
+    if (t > 0 && !(lc && Date.now() - lc < MIN && t < lc - MIN)) return t;
+    return lc || Date.now();
+  }
+  _ueber(a, b, t0, t1) { return Math.max(0, Math.min(b, t1) - Math.max(a, t0)); }
+
+  // Alles, was eine Spalte zeigt — und was die KI als Zusammenfassung bekommt.
+  _vm(kid) {
+    const raw = (this._d && this._d.kids[kid.key]) || { feeds: [], diapers: [], sleeps: [] };
+    const jetzt = Date.now(), heute0 = +this._mitternacht(new Date());
+    const meals = this._mahlzeiten(raw.feeds), letzte = meals[meals.length - 1] || null;
+    const heute = raw.feeds.filter(e => +e.start >= heute0), mealsHeute = meals.filter(m => m.start >= heute0);
+    const still = heute.filter(e => e.typ === "stillen").reduce((s, e) => s + Math.max(0, e.end - e.start), 0);
+    const ml = heute.filter(e => e.typ === "flasche").reduce((s, e) => s + (e.ml || 0), 0);
+    const wHeute = raw.diapers.filter(e => +e.start >= heute0);
+    const weights = ((this._d && this._d.weights) || []).filter(w => w.kind === kid.key);
+    const ms = ((this._d && this._d.milestones) || []).filter(m => m.kind === kid.key);
+    // Laufender Schlaf als offener Abschnitt bis jetzt, damit Summen und Streifen ihn mitzählen.
+    const schlaeft = this._schlaeft(kid), schlafAb = schlaeft ? this._schlafBeginn(kid) : 0;
+    const schlaf = schlaeft ? (raw.sleeps || []).concat([{ start: new Date(schlafAb), end: new Date(jetzt), laeuft: true }]) : (raw.sleeps || []);
+    return {
+      schlaf, schlaeft, schlafAb, schlafProg: this._schlafPrognose(schlaf, jetzt, schlaeft),
+      kid, meals, letzte, mealsHeute, still, ml, raw,
+      nass: wHeute.filter(e => e.art !== "voll").length, voll: wHeute.filter(e => e.art !== "nass").length,
+      windel: raw.diapers[raw.diapers.length - 1] || null,
+      stuhl: raw.diapers.filter(e => e.art !== "nass").pop() || null,
+      weights, ms, prog: this._prognose(meals, jetzt),
+    };
+  }
+
+  // Nächste Mahlzeit: Median der Abstände (Beginn zu Beginn) der letzten 72 h, getrennt nach
+  // Tag und Nacht (22–6 Uhr), Spanne vom 25. bis zum 75. Perzentil. Ab vier Abständen.
+  _prognose(meals, jetzt) {
+    const nacht = t => { const h = new Date(t).getHours(); return h >= 22 || h < 6; };
+    const ab = jetzt - 72 * STD, paare = [];
+    for (let i = 1; i < meals.length; i++) {
+      const a = meals[i - 1].start, b = meals[i].start;
+      if (a >= ab && b - a <= 8 * STD) paare.push({ n: nacht(a), d: b - a });
+    }
+    const letzte = meals[meals.length - 1]; if (!letzte) return null;
+    let set = paare.filter(p => p.n === nacht(letzte.start)).map(p => p.d), teil = nacht(letzte.start) ? "nachts" : "tagsüber";
+    if (set.length < 4) { set = paare.map(p => p.d); teil = ""; }
+    if (set.length < 4) return null;
+    const med = this._median(set), lo = Math.min(this._quantil(set, .25), med - 10 * MIN), hi = Math.max(this._quantil(set, .75), med + 10 * MIN);
+    return { t: letzte.start + med, lo: letzte.start + lo, hi: letzte.start + hi, med, teil };
+  }
+
+  // Nächster Schlaf wie bei Napper und Buma über die Wachzeit: Median der Wachphasen (Aufwachen bis
+  // nächstes Einschlafen) der letzten 72 h, getrennt nach Tag und Nacht (22–6 Uhr), ab drei Wachphasen.
+  // Bewusst ohne Alterstabelle: dafür gibt es keine belastbare Quelle, die Vorhersage kommt nur aus den eigenen Daten.
+  _schlafPrognose(schlaf, jetzt, schlaeft) {
+    if (schlaeft || !schlaf.length) return null;
+    const nacht = t => { const h = new Date(t).getHours(); return h >= 22 || h < 6; };
+    const ab = jetzt - 72 * STD, paare = [];
+    for (let i = 1; i < schlaf.length; i++) {
+      const a = +schlaf[i - 1].end, b = +schlaf[i].start;
+      if (a >= ab && b > a && b - a <= 8 * STD) paare.push({ n: nacht(a), d: b - a });
+    }
+    const l = +schlaf[schlaf.length - 1].end;
+    let set = paare.filter(p => p.n === nacht(l)).map(p => p.d), teil = nacht(l) ? "nachts" : "tagsüber";
+    if (set.length < 3) { set = paare.map(p => p.d); teil = ""; }
+    if (set.length < 3) return null;
+    const med = this._median(set), lo = Math.min(this._quantil(set, .25), med - 10 * MIN), hi = Math.max(this._quantil(set, .75), med + 10 * MIN);
+    return { lo: l + lo, hi: l + hi, med, teil };
+  }
+
+  // Nacht = 19 bis 7 Uhr, benannt nach dem Morgen. Längste Pause zwischen zwei Mahlzeiten,
+  // die beide zwischen 18 und 8 Uhr beginnen.
+  _naechte(meals, n) {
+    const out = [], jetzt = new Date();
+    let morgen = this._mitternacht(jetzt); if (jetzt.getHours() < 7) morgen = this._mitternacht(jetzt, -1);
+    for (let i = 0; i < n; i++) {
+      const m0 = this._mitternacht(morgen, -i), von = +m0 - 6 * STD, bis = +m0 + 8 * STD;
+      const st = meals.filter(m => m.start >= von && m.start < bis).map(m => m.start);
+      let best = 0, a = 0;
+      for (let j = 1; j < st.length; j++) if (st[j] - st[j - 1] > best) { best = st[j] - st[j - 1]; a = st[j - 1]; }
+      const inNacht = meals.filter(m => m.start >= +m0 - 5 * STD && m.start < +m0 + 7 * STD).length;
+      out.push({ morgen: m0, n: inNacht, best, von: a, bis: a + best, daten: st.length > 0 });
+    }
+    return out;
+  }
+
+  // Bemerkt: ein paar freundliche Beobachtungen ohne KI, aus den eigenen Daten gerechnet.
+  _bemerkt(vm) {
+    const out = [], jetzt = new Date(), heute0 = this._mitternacht(jetzt), seit = jetzt - heute0;
+    const alle = this._naechte(vm.meals, 14), l = alle[0];
+    if (l && l.daten && l.best) {
+      const frueher = alle.slice(1).filter(x => x.daten && x.best).map(x => x.best);
+      let t = `🌙 Längste Pause letzte Nacht: <b>${this._hDauer(l.best)}</b>`;
+      if (frueher.length >= 3 && l.best > Math.max(...frueher)) t += ` – die längste seit ${frueher.length + 1} Nächten 🎉`;
+      else if (frueher.length >= 3) t += ` <span>(sonst ~${this._hDauer(this._median(frueher.slice(0, 7)))})</span>`;
+      out.push(t);
+    }
+    // Schlaf der letzten Nacht (19–7 Uhr), auf die Nacht zugeschnitten
+    if (vm.schlaf.length) {
+      let m0 = this._mitternacht(jetzt); if (jetzt.getHours() < 7) m0 = this._mitternacht(jetzt, -1);
+      const von = +m0 - 5 * STD, bis = Math.min(+m0 + 7 * STD, +jetzt);
+      const teile = vm.schlaf.map(e => ({ a: Math.max(+e.start, von), b: Math.min(+e.end, bis) })).filter(x => x.b > x.a);
+      if (teile.length) {
+        const lang = teile.reduce((m, x) => (x.b - x.a > m.b - m.a ? x : m)), sum = teile.reduce((s2, x) => s2 + x.b - x.a, 0);
+        out.push(`😴 Längster Schlaf letzte Nacht: <b>${this._hDauer(lang.b - lang.a)}</b> <span>(${this._hm(new Date(lang.a))}–${this._hm(new Date(lang.b))}, insgesamt ${this._hDauer(sum)})</span>`);
+      }
+    }
+    // Vergleich mit den Vortagen bis zur selben Uhrzeit — sonst wirkt der Vormittag immer „zu wenig“.
+    const vortage = [];
+    for (let i = 1; i <= 7; i++) {
+      const t0 = +this._mitternacht(jetzt, -i), t1 = t0 + seit;
+      const hatDaten = vm.meals.some(m => m.start >= t0 && m.start < t0 + TAG) || vm.raw.diapers.some(e => +e.start >= t0 && +e.start < t0 + TAG);
+      if (hatDaten) vortage.push({ m: vm.meals.filter(m => m.start >= t0 && m.start < t1).length,
+        w: vm.raw.diapers.filter(e => +e.start >= t0 && +e.start < t1 && e.art !== "voll").length });
+    }
+    if (vortage.length >= 3 && vm.meals.length) {
+      const s = Math.round(this._median(vortage.map(v => v.m)));
+      out.push(`🍼 Bis jetzt <b>${vm.mealsHeute.length}</b> ${vm.mealsHeute.length === 1 ? "Mahlzeit" : "Mahlzeiten"} <span>(sonst um diese Zeit ~${s})</span>`);
+    }
+    if (vortage.length >= 3 && vm.raw.diapers.length) {
+      const s = Math.round(this._median(vortage.map(v => v.w)));
+      out.push(`💧 <b>${vm.nass}</b> nasse ${vm.nass === 1 ? "Windel" : "Windeln"} bis jetzt <span>(sonst ~${s})</span>`);
+    }
+    const w = vm.weights;
+    if (w.length >= 2) {
+      const a = w[w.length - 1], vor = w.slice().reverse().find(x => a.date - x.date >= 5 * TAG) || w[w.length - 2], dg = a.g - vor.g;
+      out.push(`⚖️ <b>${dg >= 0 ? "+" : "−"}${Math.abs(dg)} g</b> seit ${this._dm(vor.date)}`);
+    }
+    const neu = vm.ms.filter(m => jetzt - m.date < 14 * TAG).pop();
+    if (neu) {
+      const n = Math.round((+heute0 - +this._mitternacht(neu.date)) / TAG);
+      out.push(`${U.esc(neu.e)} Neu: <b>${U.esc(neu.t)}</b> <span>(${n <= 0 ? "heute" : n === 1 ? "gestern" : `vor ${n} Tagen`})</span>`);
+    }
+    return out;
+  }
+
+  // „8 Mon. 28 T.“ wie Buma („3mo 11d“).
+  _alterKurz(kid, korr) {
+    if (!kid.birth) return "";
+    const b = this._day(kid.birth); if (korr) b.setDate(b.getDate() + this._frueh(kid));
+    const d = this._day(this._local(new Date(), " ")), tage = Math.round((d - b) / TAG);
+    if (tage < 0) return "";
+    let m = (d.getFullYear() - b.getFullYear()) * 12 + d.getMonth() - b.getMonth();
+    if (d.getDate() < b.getDate()) m--;
+    const anker = new Date(b); anker.setMonth(anker.getMonth() + m);
+    const t = Math.round((d - anker) / TAG);
+    if (m < 1) return tage < 14 ? `${tage} T.` : `${Math.floor(tage / 7)} Wo. ${tage % 7} T.`;
+    if (m < 24) return `${m} Mon.${t ? ` ${t} T.` : ""}`;
+    return `${Math.floor(m / 12)} J. ${m % 12} Mon.`;
+  }
+  _alterZeile(kid) {
+    const a = this._alterKurz(kid, false), k = this._frueh(kid) ? this._alterKurz(kid, true) : "";
+    return a ? `${a}${k && k !== a ? ` · korr. ${k.replace(/ \d+ T\.$/, "")}` : ""}` : "";
+  }
+  _avatar(kid, px) {
+    let bild = kid.picture || "";
+    const st = !bild && kid.entity && this._hass && this._hass.states[kid.entity];
+    if (st && st.attributes && st.attributes.entity_picture) bild = st.attributes.entity_picture;
+    return `<span class="fo-av" style="width:${px}px;height:${px}px;font-size:${Math.round(px * .42)}px;background:${U.esc(kid.color)}">${bild
+      ? `<img src="${U.esc(bild)}" alt="">` : U.esc(kid.name.slice(0, 1))}</span>`;
+  }
+  _her(ms) { return ms < TAG ? this._hDauer(ms) : `${Math.floor(ms / TAG)} T. ${Math.floor((ms % TAG) / STD)} h`; }
+  _farbe(typ) { return { stillen: "var(--c-nurse)", flasche: "var(--c-bottle)", nass: "var(--c-diaper)", voll: "var(--c-stool)", beides: "var(--c-stool)" }[typ] || "var(--b-mut)"; }
+
+  // Nächste Windel wie die nächste Mahlzeit: übliche Abstände der letzten 72 h, Spanne 25.–75. Perzentil.
+  _prognoseWindel(w, jetzt) {
+    const ab = jetzt - 72 * STD, d = [];
+    for (let i = 1; i < w.length; i++) if (+w[i - 1].start >= ab && w[i].start - w[i - 1].start <= 8 * STD) d.push(w[i].start - w[i - 1].start);
+    const l = w[w.length - 1];
+    if (!l || d.length < 4) return null;
+    const med = this._median(d);
+    return { t: +l.start + med, lo: +l.start + Math.min(this._quantil(d, .25), med - 15 * MIN), hi: +l.start + Math.max(this._quantil(d, .75), med + 15 * MIN), med };
+  }
+
+  // Muster über n abgeschlossene Tage (ab gestern zurück), dazu die n Tage davor zum Vergleich.
+  _muster(vm, n) {
+    const h0 = +this._mitternacht(new Date());
+    const tag = i => {
+      const t0 = h0 - i * TAG, t1 = t0 + TAG;
+      const m = vm.meals.filter(x => x.start >= t0 && x.start < t1).length;
+      const f = vm.raw.feeds.filter(e => +e.start >= t0 && +e.start < t1), w = vm.raw.diapers.filter(e => +e.start >= t0 && +e.start < t1);
+      return { m, still: f.filter(e => e.typ === "stillen").reduce((s, e) => s + Math.max(0, e.end - e.start), 0),
+        ml: f.filter(e => e.typ === "flasche").reduce((s, e) => s + (e.ml || 0), 0), w: w.length, voll: w.filter(e => e.art !== "nass").length,
+        daten: m > 0 || w.length > 0,
+        // Schlaf am Kalendertag und in der Nacht davor (19–7 Uhr); eigene Datenmarke, damit Schlaf allein die Mahlzeiten-Schnitte nicht verzerrt
+        schlaf: vm.schlaf.reduce((s, e) => s + this._ueber(+e.start, +e.end, t0, t1), 0),
+        nacht: vm.schlaf.reduce((s, e) => s + this._ueber(+e.start, +e.end, t0 - 5 * STD, t0 + 7 * STD), 0) };
+    };
+    const A = [], B = [];
+    for (let i = 1; i <= n; i++) { A.push(tag(i)); B.push(tag(i + n)); }
+    const mit = arr => arr.filter(x => x.daten), schnitt = (arr, k) => { const a = mit(arr); return a.length ? a.reduce((s, x) => s + x[k], 0) / a.length : 0; };
+    const mitS = A.filter(x => x.schlaf > 0), schnittS = k => mitS.length ? mitS.reduce((s, x) => s + x[k], 0) / mitS.length : 0;
+    const von = h0 - n * TAG, abst = [];
+    for (let i = 1; i < vm.meals.length; i++) {
+      const a = vm.meals[i - 1].start, b = vm.meals[i].start;
+      if (a >= von && b < h0 && b - a <= 8 * STD) abst.push(b - a);
+    }
+    const naechte = this._naechte(vm.meals, 2 * n + 1).slice(1);   // die laufende Nacht nicht mitzählen, wenn sie noch nicht vorbei ist
+    const nA = naechte.slice(0, n).filter(x => x.daten && x.best).map(x => x.best), nB = naechte.slice(n).filter(x => x.daten && x.best).map(x => x.best);
+    return { n, tageA: mit(A).length, tageB: mit(B).length, mA: schnitt(A, "m"), mB: schnitt(B, "m"), still: schnitt(A, "still"), ml: schnitt(A, "ml"),
+      flaschenTage: A.filter(x => x.ml > 0).length, w: schnitt(A, "w"), voll: schnitt(A, "voll"),
+      p25: abst.length >= 6 ? this._quantil(abst, .25) : 0, p75: abst.length >= 6 ? this._quantil(abst, .75) : 0,
+      nachtA: nA.length >= 3 ? this._median(nA) : 0, nachtB: nB.length >= 3 ? this._median(nB) : 0,
+      schlafTage: mitS.length, schlaf: schnittS("schlaf"), schlafNacht: schnittS("nacht") };
+  }
+  _komma(x) { return (Math.round(x * 10) / 10).toLocaleString("de-AT"); }
+  // Überschrift und ein, zwei Sätze wie „A bit of everything“ in Buma — gerechnet, nicht erfunden.
+  _musterText(s) {
+    if (s.tageA < 2) return { h: "Noch zu wenig Einträge", t: "Sobald ein paar Tage protokolliert sind, steht hier, wie sich der Rhythmus entwickelt." };
+    const naechteLaenger = s.nachtA && s.nachtB && s.nachtA - s.nachtB >= 15 * MIN;
+    const gleich = s.p75 && s.p75 - s.p25 <= 50 * MIN;
+    const h = naechteLaenger ? "Die Nächte werden länger 🌙" : gleich ? "Ein gleichmäßiger Rhythmus" : "Ein bisschen von allem";
+    const t = [s.schlafTage >= 2
+      ? `${this._komma(s.mA)} Mahlzeiten, ${this._komma(s.w)} Windeln und ${this._hDauer(s.schlaf)} Schlaf am Tag in den letzten ${s.n} Tagen.`
+      : `${this._komma(s.mA)} Mahlzeiten und ${this._komma(s.w)} Windeln am Tag in den letzten ${s.n} Tagen.`];
+    if (s.tageB >= s.n / 2 && s.mB) {
+      const p = Math.round((s.mA - s.mB) / s.mB * 100);
+      t.push(Math.abs(p) >= 5 ? `Das sind etwa ${Math.abs(p)} % ${p > 0 ? "mehr" : "weniger"} Mahlzeiten als davor.` : "Ungefähr so viele wie davor.");
+    }
+    if (naechteLaenger) t.push(`Die längste Pause pro Nacht liegt jetzt bei etwa ${this._hDauer(s.nachtA)} statt ${this._hDauer(s.nachtB)}.`);
+    else if (s.p75) t.push(gleich ? `Die Abstände sind recht gleich, meist ${this._hDauer(s.p25)}–${this._hDauer(s.p75)}.` : `Die Abstände schwanken, meist ${this._hDauer(s.p25)}–${this._hDauer(s.p75)}.`);
+    return { h, t: t.join(" ") };
+  }
+
+  // ---------- Aufbau ----------
+  _build() {
+    this._built = true;
+    this.innerHTML = `
+      <ha-card class="fo-card">
+        <div class="fo-sky"></div>
+        <div class="fo-top"></div>
+        <div class="fo-body"><div class="fo-laden">Einträge werden geladen …</div></div>
+        <nav class="fo-tabbar"></nav>
+      </ha-card>${this._styles()}`;
+    this._card = this.querySelector(".fo-card");
+    this._card.addEventListener("click", ev => this._klick(ev));
+  }
+  _klick(ev) {
+    const z = sel => ev.target.closest(sel);
+    let b;
+    if ((b = z(".fo-spark"))) { this._openChat(); return; }
+    if ((b = z(".fo-kidbtn"))) { const m = this.querySelector(".fo-menu"); if (m) m.hidden = !m.hidden; return; }
+    if ((b = z("[data-kind-sel]"))) { this._kind = b.dataset.kindSel; this._setPref("kind", this._kind); this._paint(true); return; }
+    if ((b = z("[data-off]"))) { this._off = Math.min(0, Math.max(-(LADETAGE - 1), this._off + Number(b.dataset.off))); this._paint(true); return; }
+    if ((b = z("[data-view]"))) { this._view = b.dataset.view; this._setPref("view", this._view); this._off = 0; this._paint(true); window.scrollTo && this._card.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
+    if ((b = z("[data-nav]"))) { const p = this.config[b.dataset.nav]; if (p) { history.pushState(null, "", p); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); } return; }
+    if ((b = z("[data-f]"))) { this._filter = b.dataset.f; this._setPref("filter", this._filter); this._paint(true); return; }
+    if ((b = z("[data-sp]"))) { this._spanne = Number(b.dataset.sp); this._setPref("spanne", String(this._spanne)); this._paint(true); return; }
+    if ((b = z("[data-schlaf]"))) { this._schlafToggle(b.dataset.schlaf); return; }
+    if ((b = z("[data-schlaf-neu]"))) { this._sheetSchlaf(null, null); return; }
+    if ((b = z("[data-suid]"))) {
+      const kid = this._kid(b.dataset.kind), e = this._vm(kid).schlaf.find(x => x.uid === b.dataset.suid);
+      if (e) this._sheetSchlaf(kid, e); return;
+    }
+    if ((b = z("[data-walle]"))) { this._wAlle = !this._wAlle; this._paint(true); return; }
+    if ((b = z("[data-wuid]"))) { const w = ((this._d && this._d.weights) || []).find(x => x.uid === b.dataset.wuid); if (w) this._sheetWiegen(this._kid(w.kind), w); return; }
+    if ((b = z("[data-act]"))) {
+      const kid = this._kid(b.dataset.kind);
+      if (b.dataset.act === "still") this._toggle(kid);
+      if (b.dataset.act === "windel") this._sheetWindel(kid);
+      if (b.dataset.act === "flasche") this._sheetFlasche(kid);
+      if (b.dataset.act === "wiegen") this._sheetWiegen(kid, null);
+      return;
+    }
+    const m = this.querySelector(".fo-menu"); if (m && !m.hidden) m.hidden = true;
+  }
+
+  _paint(force) {
+    if (!this._built || !this._d) return;
+    if (this._view === "wachstum" && !this.config.weight_calendar) this._view = "heute";
+    const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
+    const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
+      kids.map(k => [this._laeuft(k), this._seite(k), this._schlaeft(k)]),
+      vms.map(v => [v.raw.feeds.length, v.raw.diapers.length, v.letzte && v.letzte.start, v.windel && +v.windel.start, v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length,
+        v.schlaf.filter(x => !x.laeuft).map(x => `${x.uid}:${+x.start}:${+x.end}`).join()])]);
+    if (!force && sig === this._sig) return;
+    this._sig = sig;
+    this._card.classList.toggle("fo-light", !dunkel);
+    this._card.classList.toggle("fo-multi", kids.length > 1);
+    this.querySelector(".fo-top").innerHTML = this._kopf();
+    const body = this.querySelector(".fo-body");
+    // Jede Spalte besteht aus denselben Bausteinen in derselben Reihenfolge (leere bleiben als Platzhalter
+    // stehen). Am Tablet teilen sich die Spalten die Zeilenhöhen (Subgrid), so steht nebeneinander, was zusammengehört.
+    const teile = vms.map(vm => this._view === "muster" ? this._musterSpalte(vm) : this._view === "wachstum" ? this._wachstumSpalte(vm) : this._heuteSpalte(vm));
+    const multi = kids.length > 1, n = Math.max(...teile.map(t => t.length));
+    const spalten = vms.map((vm, i) => `<section class="fo-col${vm.kid.key === this._kind ? " fo-sel" : ""}">
+      ${multi ? `<div class="fo-blk"><div class="fo-colhead">${this._avatar(vm.kid, 30)}<b>${U.esc(vm.kid.name)}</b><small>${this._alterZeile(vm.kid)}</small></div></div>` : ""}
+      ${Array.from({ length: n }, (_, j) => `<div class="fo-blk">${teile[i][j] || ""}</div>`).join("")}</section>`).join("");
+    const kopf = this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav() + (this._off === 0 ? this._schlafLeiste() : "");
+    body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
+    const views = [["heute", "Heute"], ["muster", "Muster"]];
+    if (this.config.weight_calendar) views.push(["wachstum", "Wachstum"]);
+    const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
+    if (this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
+    this.querySelector(".fo-tabbar").innerHTML = tabs.join("");
+    if (this._view === "wachstum") this._zeichne();
+  }
+
+  // Kopf wie in Buma: Foto, Name mit ⌄ zum Wechseln, Alter; rechts ✦ für „Frag nach“.
+  // Am Tablet stehen Zwillinge nebeneinander — dann zeigt der Kopf beide.
+  _kopf() {
+    const kids = this.config.kids, k = this._kid(this._kind);
+    const gleichAlt = kids.every(x => x.birth === kids[0].birth && x.ga === kids[0].ga);
+    const einer = `<div class="fo-who fo-who-one"><button class="fo-kidbtn" type="button">${this._avatar(k, 46)}<span class="fo-wn"><b>${U.esc(k.name)}${kids.length > 1 ? `<i class="fo-caret">⌄</i>` : ""}</b><small>${this._alterZeile(k)}</small></span></button>
+      ${kids.length > 1 ? `<div class="fo-menu" hidden>${kids.map(x => `<button type="button" data-kind-sel="${U.esc(x.key)}" class="${x.key === k.key ? "fo-on" : ""}">${this._avatar(x, 28)}${U.esc(x.name)}</button>`).join("")}</div>` : ""}</div>`;
+    const alle = kids.length > 1 ? `<div class="fo-who fo-who-all"><span class="fo-avs">${kids.map(x => this._avatar(x, 46)).join("")}</span>
+      <span class="fo-wn"><b>${kids.map(x => U.esc(x.name)).join(" & ")}</b><small>${gleichAlt ? this._alterZeile(kids[0]) : ""}</small></span></div>` : "";
+    return einer + alle + (this.config.chat ? `<button class="fo-spark" type="button" aria-label="Frag nach" title="Frag nach">${SPARK}</button>` : "");
+  }
+  _tagNav() {
+    const d = this._mitternacht(new Date(), this._off);
+    const name = this._off === 0 ? "Heute" : this._off === -1 ? "Gestern" : d.toLocaleDateString("de-AT", { weekday: "short", day: "numeric", month: "short" });
+    return `<div class="fo-daynav"><button type="button" data-off="-1" aria-label="Tag zurück" ${this._off <= -(LADETAGE - 1) ? "disabled" : ""}>‹</button>
+      <span>${name}</span><button type="button" data-off="1" aria-label="Tag vor" ${this._off >= 0 ? "disabled" : ""}>›</button></div>`;
+  }
+
+  // Schlaf wie bei Napper und Buma per Knopf: „Beide schlafen“ und je Kind, über den Spalten,
+  // damit am Handy auch das gerade nicht gezeigte Kind erreichbar ist. Schläft ein Kind, ist sein
+  // Knopf gefüllt und zeigt die Dauer; die kleine Zeile sagt, was der nächste Tipp tut.
+  _schlafLeiste() {
+    const kids = this.config.kids.filter(k => k.sleep_switch);
+    if (!kids.length) return "";
+    const jetzt = Date.now(), an = kids.filter(k => this._schlaeft(k)), alle = an.length === kids.length;
+    const knopf = (key, emoji, text, sub, aktiv) => `<button type="button" class="fo-sl${aktiv ? " fo-sl-an" : ""}" data-schlaf="${U.esc(key)}">
+      <span class="fo-sle">${emoji}</span><span class="fo-slx"><span class="fo-slt">${text}</span>${sub ? `<span class="fo-sls">${sub}</span>` : ""}</span></button>`;
+    const zwei = kids.length === 2, beideText = zwei ? "Beide schlafen" : "Alle schlafen";
+    const beide = kids.length > 1 ? knopf("*", alle ? "💤" : "😴", beideText,
+      alle ? `☀️ ${zwei ? "Beide" : "Alle"} aufgewacht` : an.length ? `${an.map(k => U.esc(k.name)).join(", ")} schläft schon` : "", alle) : "";
+    const einzeln = kids.map(k => {
+      if (this._schlaeft(k)) {
+        const ab = this._schlafBeginn(k);
+        return knopf(k.key, "💤", `${U.esc(k.name)} · <span class="fo-dauer" data-ab="${ab}">${this._hDauer(jetzt - ab)}</span>`, "☀️ Aufgewacht", true);
+      }
+      const l = this._vm(k).schlaf.slice(-1)[0], wach = l && jetzt - l.end < TAG ? `wach seit ${this._hDauer(jetzt - l.end)}` : "";
+      return knopf(k.key, "😴", `${U.esc(k.name)} schläft`, wach, false);
+    }).join("");
+    const plus = this.config.kids.some(k => k.sleep_calendar) ? `<button type="button" class="fo-sl-plus" data-schlaf-neu aria-label="Schlaf nachtragen" title="Schlaf nachtragen">＋</button>` : "";
+    // Am Handy zwei Reihen (oben „Beide schlafen“, darunter je Kind), am Tablet eine.
+    return `<div class="fo-sleep">${beide ? `<div class="fo-sl-row">${beide}${plus}</div><div class="fo-sl-row">${einzeln}</div>` : `<div class="fo-sl-row">${einzeln}${plus}</div>`}</div>`;
+  }
+
+  // ---------- Heute ----------
+  // Feste Bausteine: Schnellknöpfe, Hauptkarte, Jetzt, Tageszahlen, Streifen, Wachstum/Momente, Einträge.
+  _heuteSpalte(vm) {
+    const k = vm.kid, jetzt = Date.now(), heute = this._off === 0, tag = this._mitternacht(new Date(), this._off);
+    const b = ["", "", ""];
+    if (heute) {
+      const lauf = this._laeuft(k), ab = lauf ? this._beginn(k) : 0;
+      b[0] = `<div class="fo-quick">
+        ${k.switch ? `<button class="fo-q${lauf ? " fo-q-run" : ""}" style="--q:var(--c-nurse)" data-act="still" data-kind="${U.esc(k.key)}"><span class="fo-qe">${lauf ? "⏸" : "🤱"}</span>${lauf ? `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>` : "<span>Stillen</span>"}</button>` : ""}
+        ${k.diaper_calendar ? `<button class="fo-q" style="--q:var(--c-diaper)" data-act="windel" data-kind="${U.esc(k.key)}"><span class="fo-qe">💩</span><span>Windel</span></button>` : ""}
+        ${k.feeding_calendar ? `<button class="fo-q" style="--q:var(--c-bottle)" data-act="flasche" data-kind="${U.esc(k.key)}"><span class="fo-qe">🍼</span><span>Fläschchen</span></button>` : ""}
+      </div>`;
+      b[1] = this._naechsteKarte(vm, lauf, ab);
+      b[2] = this._jetztKarten(vm, lauf, ab);
+    }
+    // Zahlen, Streifen und Einträge des gewählten Tags
+    const t0 = +tag, t1 = t0 + TAG;
+    const meals = vm.meals.filter(m => m.start >= t0 && m.start < t1), fe = vm.raw.feeds.filter(e => +e.start >= t0 && +e.start < t1);
+    const wi = vm.raw.diapers.filter(e => +e.start >= t0 && +e.start < t1);
+    const still = fe.filter(e => e.typ === "stillen").reduce((s, e) => s + Math.max(0, e.end - e.start), 0), ml = fe.filter(e => e.typ === "flasche").reduce((s, e) => s + (e.ml || 0), 0);
+    const schlafTag = vm.schlaf.reduce((s, e) => s + this._ueber(+e.start, +e.end, t0, t1), 0), sl = vm.schlaf.filter(e => +e.start >= t0 && +e.start < t1);
+    // Immer dieselben Zahlen (nach Konfiguration, nicht nach Daten), gleich breit
+    const pills = [
+      k.feeding_calendar ? `<div><b>${still ? this._hDauer(still) : "–"}</b><span>gestillt</span></div>` : "",
+      k.feeding_calendar ? `<div><b>${meals.length}</b><span>${meals.length === 1 ? "Mahlzeit" : "Mahlzeiten"}</span></div>` : "",
+      k.feeding_calendar ? `<div><b>${ml ? `${ml} ml` : "–"}</b><span>Fläschchen</span></div>` : "",
+      k.diaper_calendar ? `<div><b>${wi.length}</b><span>${wi.length === 1 ? "Windel" : "Windeln"}</span></div>` : "",
+      k.sleep_calendar || k.sleep_switch ? `<div><b>${schlafTag ? this._hDauer(schlafTag) : "–"}</b><span>geschlafen</span></div>` : "",
+    ].filter(Boolean);
+    return [...b, `<div class="fo-pills" style="--n:${pills.length}">${pills.join("")}</div>`, this._streifen(vm, tag, "alle", true),
+      heute ? this._miniKarten(vm) : "", this._liste(vm, fe, wi, sl)];
+  }
+
+  // Die hervorgehobene Karte — bei Buma „Next sleep“, hier die nächste Mahlzeit.
+  _naechsteKarte(vm, lauf, ab) {
+    const jetzt = Date.now(), l = vm.letzte, p = vm.prog, k = vm.kid;
+    const zuletzt = l ? `${l.evs.map(e => e.typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""}` : `Stillen${e.seite ? ` ${e.seite}` : ""} ${this._minText(e.end - e.start)}`).join(" + ")} um ${l.geschaetzt ? "ca. " : ""}${this._wann(l.start)}` : "";
+    if (lauf) {
+      const s = this._seite(k);
+      return `<div class="fo-next fo-next-run"><div class="fo-nl"><i class="fo-puls"></i>Stillt gerade</div>
+        <div class="fo-nb fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</div>
+        <div class="fo-ns">${s ? `${U.esc(s)} · ` : ""}seit ${this._hm(new Date(ab))}</div>
+        <button class="fo-nbtn" type="button" data-act="still" data-kind="${U.esc(k.key)}">■ Stoppen</button></div>`;
+    }
+    if (!l) return `<div class="fo-next"><div class="fo-nl">Mahlzeiten</div><div class="fo-nb">–</div><div class="fo-ns">Noch nichts eingetragen</div></div>`;
+    const seit = jetzt - l.start;
+    if (!p || seit > 8 * STD) {
+      return `<div class="fo-next"><div class="fo-nl">Letzte Mahlzeit</div><div class="fo-nb">${this._her(seit)} her</div><div class="fo-nf">${U.esc(zuletzt)}</div></div>`;
+    }
+    const big = jetzt < p.lo ? `${this._hm(new Date(p.lo))} – ${this._hm(new Date(p.hi))}` : jetzt <= p.hi ? `jetzt – ${this._hm(new Date(p.hi))}` : "Fällig";
+    return `<div class="fo-next${jetzt > p.hi ? " fo-next-due" : ""}"><div class="fo-nl">Nächste Mahlzeit</div>
+      <div class="fo-nb">${big}</div>
+      <div class="fo-ns">satt seit ${this._hDauer(seit)} · Abstand ${p.teil ? `${p.teil} ` : ""}meist ~${this._hDauer(p.med)}</div>
+      <div class="fo-nf">Zuletzt ${U.esc(zuletzt)}</div></div>`;
+  }
+
+  // „Right now“: je Art, wie lange es her ist, und wann es wieder so weit sein dürfte.
+  _jetztKarten(vm, lauf, ab) {
+    const k = vm.kid, jetzt = Date.now(), karten = [];
+    // Welche Karten es gibt, hängt nur an der Konfiguration — so stehen sie bei Zwillingen auf einer Linie.
+    // Die untere Zeile ist immer da (notfalls leer), damit alle Karten gleich hoch sind.
+    const karte = (farbe, titel, wert, unter, naechst, faellig) => `<div class="fo-nc${faellig ? " fo-due" : ""}">
+      <div class="fo-ncl"><i style="background:${farbe}"></i>${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div>
+      <div class="fo-ncn">${naechst || "&nbsp;"}</div></div>`;
+    const spanne = p => `Nächste ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}`;
+    // Unter einem Tag „1:47 h her“, sonst Wochentag und Uhrzeit statt „2 T. 11 h“
+    const her = t => { const d = jetzt - t; if (d < TAG) return [this._her(d), "her"]; const n = Math.floor(d / TAG); return [`${WT[new Date(t).getDay()]} ${this._hm(new Date(t))}`, `vor ${n} ${n === 1 ? "Tag" : "Tagen"}`]; };
+    const leer = (farbe, titel, text) => karte(farbe, titel, "–", text, "");
+    if (k.sleep_calendar || k.sleep_switch) {
+      const l = vm.schlaf[vm.schlaf.length - 1], p = vm.schlafProg;
+      if (vm.schlaeft) karten.push(karte("var(--c-sleep)", "Schlaf", `<span class="fo-dauer" data-ab="${vm.schlafAb}">${this._hDauer(jetzt - vm.schlafAb)}</span>`, `schläft seit ${this._hm(new Date(vm.schlafAb))}`, ""));
+      else if (l && jetzt - l.end < TAG) {
+        const lang = p && jetzt > p.hi && jetzt - l.end <= 8 * STD;
+        karten.push(karte("var(--c-sleep)", "Schlaf", this._her(jetzt - l.end), `wach seit ${this._hm(new Date(l.end))}`,
+          lang ? `<span class="fo-due-t">Länger wach als sonst</span>` : p ? `Schlaf ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}` : "", lang));
+      } else karten.push(leer("var(--c-sleep)", "Schlaf", l ? "länger nichts eingetragen" : "noch nichts eingetragen"));
+    }
+    if (k.feeding_calendar || k.switch) {
+      const st = vm.raw.feeds.filter(e => e.typ === "stillen").pop(), l = vm.letzte;
+      const ziel = Number(k.reminder_hours || this.config.reminder_hours) * STD, faellig = !lauf && l && jetzt - l.start >= ziel && jetzt - l.start <= 8 * STD;
+      if (lauf) karten.push(karte("var(--c-nurse)", "Stillen", `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>`, "läuft gerade", ""));
+      else if (st) { const [w, u] = her(+st.start); karten.push(karte("var(--c-nurse)", "Stillen", w, u, faellig ? `<span class="fo-due-t">Fällig</span>` : vm.prog && jetzt < vm.prog.hi ? spanne(vm.prog) : "", faellig)); }
+      else karten.push(leer("var(--c-nurse)", "Stillen", "noch nichts eingetragen"));
+    }
+    if (k.feeding_calendar) {
+      const fl = vm.raw.feeds.filter(e => e.typ === "flasche").pop();
+      if (fl) { const [w, u] = her(+fl.start); karten.push(karte("var(--c-bottle)", "Fläschchen", w, `${u}${fl.ml ? ` · ${fl.ml} ml` : ""}`, "")); }
+      else karten.push(leer("var(--c-bottle)", "Fläschchen", "noch keins"));
+    }
+    if (k.diaper_calendar) {
+      if (vm.windel) {
+        const p = this._prognoseWindel(vm.raw.diapers, jetzt), faellig = p && jetzt > p.hi && jetzt - vm.windel.start <= 8 * STD, [w, u] = her(+vm.windel.start);
+        // Stuhl als Zeile in der Windelkarte statt als fünfte Karte
+        const stuhl = !vm.stuhl ? "noch kein Stuhl" : vm.stuhl === vm.windel ? "mit Stuhl" : `Stuhl ${her(+vm.stuhl.start)[1] === "her" ? `vor ${this._her(jetzt - vm.stuhl.start)}` : her(+vm.stuhl.start)[0]}`;
+        karten.push(karte("var(--c-diaper)", "Windel", w, `${u} · ${stuhl}`, faellig ? `<span class="fo-due-t">Fällig</span>` : p ? spanne(p) : "", faellig));
+      } else karten.push(leer("var(--c-diaper)", "Windel", "noch nichts eingetragen"));
+    }
+    return karten.length ? `<div class="fo-sec">Jetzt</div><div class="fo-nowgrid">${karten.join("")}</div>` : "";
+  }
+
+  // Ein Tag als Streifen von 0 bis 24 Uhr: Stillen rosa, Fläschchen orange, Windeln als schmale Striche.
+  _streifen(vm, tag, filter, ticks) {
+    const t0 = +tag, t1 = t0 + TAG, pos = t => Math.max(0, Math.min(100, (t - t0) / TAG * 100));
+    const teile = [];
+    if (filter === "alle" || filter === "schlaf") {
+      vm.schlaf.filter(e => +e.end > t0 && +e.start < t1).forEach(e => teile.push(`<i class="fo-s${filter === "schlaf" ? " fo-s1" : ""}" style="left:${pos(+e.start).toFixed(2)}%;width:${Math.max(.5, pos(+e.end) - pos(+e.start)).toFixed(2)}%" title="${this._hm(e.start)}–${e.laeuft ? "jetzt" : this._hm(e.end)} Schlaf"></i>`));
+    }
+    if (filter === "alle" || filter === "stillen" || filter === "flasche") {
+      vm.raw.feeds.filter(e => (filter === "alle" || e.typ === filter) && +e.end >= t0 && +e.start < t1).forEach(e => {
+        const flasche = e.typ === "flasche", a = flasche ? +e.start - 10 * MIN : +e.start, b = flasche ? +e.start : Math.max(+e.end, +e.start + 4 * MIN);
+        teile.push(`<i class="fo-b" style="left:${pos(a).toFixed(2)}%;width:${Math.max(.7, pos(b) - pos(a)).toFixed(2)}%;background:${this._farbe(e.typ)}" title="${this._hm(e.start)} ${flasche ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""}` : `Stillen ${this._minText(e.end - e.start)}`}"></i>`);
+      });
+    }
+    if (filter === "alle" || filter === "windel") {
+      vm.raw.diapers.filter(e => +e.start >= t0 && +e.start < t1).forEach(e =>
+        teile.push(`<i class="fo-w" style="left:${pos(+e.start).toFixed(2)}%;background:${this._farbe(e.art)}" title="${this._hm(e.start)} Windel ${e.art}"></i>`));
+    }
+    const now = Date.now() >= t0 && Date.now() < t1 ? `<i class="fo-jetzt" style="left:${pos(Date.now()).toFixed(2)}%"></i>` : "";
+    return `<div class="fo-strip${ticks ? " fo-strip-l" : ""}"><div class="fo-track">${teile.join("")}${now}</div>${ticks ? this._ticks() : ""}</div>`;
+  }
+  _ticks() { return `<div class="fo-ticks">${[0, 6, 12, 18, 24].map(h => `<span style="left:${h / 24 * 100}%">${h}</span>`).join("")}</div>`; }
+
+  _liste(vm, fe, wi, sl) {
+    const z = [
+      ...(sl || []).map(e => ({ t: +e.start, f: "var(--c-sleep)", s: e.laeuft ? "Schläft" : `Schlaf bis ${this._hm(e.end)}`, d: this._minText(e.end - e.start), uid: e.laeuft ? "" : e.uid })),
+      ...fe.map(e => ({ t: +e.start, f: this._farbe(e.typ), s: e.typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""}` : `Stillen${e.seite ? ` ${e.seite}` : ""}`, d: e.typ === "flasche" ? "" : this._minText(e.end - e.start) })),
+      ...wi.map(e => ({ t: +e.start, f: this._farbe(e.art), s: `Windel ${e.art === "beides" ? "nass + voll" : e.art}`, d: "" })),
+    ].sort((a, b) => b.t - a.t);
+    if (!z.length) return `<div class="fo-leer">An diesem Tag ist nichts eingetragen.</div>`;
+    // Schlafphasen lassen sich per Tipp ändern; Stillen und Windeln bleiben bei ihren Karten.
+    const zeile = x => `<i style="background:${x.f}"></i><span>${U.esc(x.s)}</span><small>${x.d}</small><time>${this._hm(new Date(x.t))}</time>`;
+    return `<div class="fo-sec">Einträge</div><div class="fo-list">${z.map(x => x.uid
+      ? `<button type="button" class="fo-li fo-wli" data-suid="${U.esc(x.uid)}" data-kind="${U.esc(vm.kid.key)}">${zeile(x)}</button>`
+      : `<div class="fo-li">${zeile(x)}</div>`).join("")}</div>`;
+  }
+
+  // Wachstum und Momente — in Buma eigene Bereiche, hier zwei kleine Karten.
+  _miniKarten(vm) {
+    const w = vm.weights, wl = w[w.length - 1], vor = wl && (w.slice().reverse().find(x => wl.date - x.date >= 5 * TAG) || w[w.length - 2]), mz = vm.ms[vm.ms.length - 1];
+    const karten = [];
+    if (this.config.weight_calendar) karten.push(`<div class="fo-mini" data-view="wachstum"><span class="fo-mi">⚖️</span><div><small>Wachstum</small><b>${wl ? this._kg(wl.g) : "–"}</b>
+      <span>${wl ? `${vor ? `${wl.g - vor.g >= 0 ? "+" : "−"}${Math.abs(wl.g - vor.g)} g seit ${this._dm(vor.date)}` : `am ${this._dm(wl.date)}`}` : "noch nicht gewogen"}</span></div></div>`);
+    if (this.config.milestone_calendar) karten.push(`<div class="fo-mini"${this.config.memories_path ? ` data-nav="memories_path"` : ""}><span class="fo-mi">${mz ? U.esc(mz.e) : "⭐"}</span><div><small>Momente</small><b>${mz ? U.esc(mz.t) : "–"}</b>
+      <span>${mz ? `am ${this._dm(mz.date)}` : "noch kein Meilenstein"}</span></div></div>`);
+    return karten.length ? `<div class="fo-minis">${karten.join("")}</div>` : "";
+  }
+
+  // ---------- Muster ----------
+  _musterKopf() {
+    const chips = [["alle", "Alle", ""], ["stillen", "Stillen", "var(--c-nurse)"], ["flasche", "Fläschchen", "var(--c-bottle)"], ["windel", "Windel", "var(--c-diaper)"]];
+    if (this.config.kids.some(k => k.sleep_calendar)) chips.push(["schlaf", "Schlaf", "var(--c-sleep)"]);
+    return `<div class="fo-mtitle"><b>Muster</b><span>Jeder Tag nebeneinander</span></div>
+      <div class="fo-mctl"><div class="fo-seg"><button type="button" data-sp="7" class="${this._spanne === 7 ? "fo-on" : ""}">Woche</button><button type="button" data-sp="14" class="${this._spanne === 14 ? "fo-on" : ""}">2 Wochen</button></div>
+      <div class="fo-chips">${chips.map(([f, t, c]) => `<button type="button" data-f="${f}" class="${this._filter === f ? "fo-on" : ""}" style="--chip:${c || "var(--b-acc)"}">${c ? `<i></i>` : ""}${t}</button>`).join("")}</div></div>`;
+  }
+  _musterSpalte(vm) {
+    const n = this._spanne, s = this._muster(vm, n), txt = this._musterText(s), f = this._filter;
+    const p = s.p75 ? `meist alle ${this._hDauer(s.p25)}–${this._hDauer(s.p75)}` : "";
+    const avg = f === "stillen" ? [`Ø ${this._hDauer(s.still)} am Tag gestillt`, p]
+      : f === "flasche" ? [`Ø ${Math.round(s.ml)} ml Fläschchen am Tag`, `an ${s.flaschenTage} von ${n} Tagen`]
+      : f === "windel" ? [`Ø ${this._komma(s.w)} Windeln am Tag`, `davon ${this._komma(s.voll)} mit Stuhl`]
+      : f === "schlaf" ? (s.schlafTage ? [`Ø ${this._hDauer(s.schlaf)} Schlaf am Tag`, `nachts (19–7 Uhr) ~${this._hDauer(s.schlafNacht)}`] : ["Noch kein Schlaf eingetragen", ""])
+      : [`Ø ${this._komma(s.mA)} Mahlzeiten am Tag`, `und ${this._komma(s.w)} Windeln${p ? `, ${p}` : ""}`];
+    const h0 = this._mitternacht(new Date()), rows = [];
+    for (let i = 0; i < n; i++) {
+      const d = this._mitternacht(h0, -i), t0 = +d, t1 = t0 + TAG;
+      const fe = vm.raw.feeds.filter(e => +e.start >= t0 && +e.start < t1), wi = vm.raw.diapers.filter(e => +e.start >= t0 && +e.start < t1);
+      const summe = f === "stillen" ? (() => { const x = fe.filter(e => e.typ === "stillen").reduce((a, e) => a + Math.max(0, e.end - e.start), 0); return x ? this._hDauer(x) : "–"; })()
+        : f === "flasche" ? (() => { const x = fe.filter(e => e.typ === "flasche").reduce((a, e) => a + (e.ml || 0), 0); return x ? `${x} ml` : "–"; })()
+        : f === "windel" ? (wi.length ? `${wi.length}` : "–")
+        : f === "schlaf" ? (() => { const x = vm.schlaf.reduce((a, e) => a + this._ueber(+e.start, +e.end, t0, t1), 0); return x ? this._hDauer(x) : "–"; })()
+        : (() => { const x = vm.meals.filter(m => m.start >= t0 && m.start < t1).length; return x ? `${x} ×` : "–"; })();
+      rows.push(`<div class="fo-row"><span class="fo-rl">${i === 0 ? "Heute" : `${WT[d.getDay()]} ${d.getDate()}.`}</span>${this._streifen(vm, d, f, false)}<span class="fo-rt">${summe}</span></div>`);
+    }
+    const bem = this._bemerkt(vm);
+    return [`<div class="fo-mcard"><div class="fo-mh">${U.esc(txt.h)}</div><div class="fo-mt">${U.esc(txt.t)}</div></div>`,
+      `<div class="fo-avg"><b>${avg[0]}</b>${avg[1] ? `<span> ${avg[1]}</span>` : ""}</div>
+      <div class="fo-hint">Tage schwanken – der Trend zählt mehr als ein einzelner Tag.</div>`,
+      `<div class="fo-rows"><div class="fo-row fo-row-ticks"><span class="fo-rl"></span>${this._ticks()}<span class="fo-rt"></span></div>${rows.join("")}</div>`,
+      bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>` : ""];
+  }
+
+  // ---------- Wachstum ----------
+  // Perzentilen wie in der fp-weight-card: bis 64 Wochen ab Beginn der Schwangerschaft
+  // INTERGROWTH-21st für Frühgeborene, danach WHO mit L/M/S nach korrigiertem Alter.
+  _pmaTage(kid, t) {
+    const [w, d] = String(kid.ga || "40+0").split("+").map(Number);
+    return (w || 40) * 7 + (d || 0) + (t - this._day(kid.birth)) / TAG;
+  }
+  _refAt(sex, pma) {
+    const ref = this._ref; if (!ref || !ref.who) return null;
+    const lerp = (rows, v, i) => {
+      if (v < rows[0][0] || v > rows[rows.length - 1][0]) return null;
+      const k = rows.findIndex(r => r[0] >= v); if (k <= 0) return rows[Math.max(0, k)][i];
+      const a = rows[k - 1], b = rows[k], f = (v - a[0]) / (b[0] - a[0]);
+      return a[i] + f * (b[i] - a[i]);
+    };
+    const pre = ref.preterm && ref.preterm[sex], wPma = pma / 7;
+    if (pre && pre.length && wPma >= pre[0][0] && wPma <= pre[pre.length - 1][0]) return [1, 2, 3, 4, 5].map(i => lerp(pre, wPma, i) * 1000);
+    const who = ref.who[sex], alter = pma - 280;
+    if (!who || alter < 0) return null;
+    const rows = alter <= 91 ? who.w : who.mo, v = alter <= 91 ? alter / 7 : alter / 30.4375;
+    const L = lerp(rows, v, 1), M = lerp(rows, v, 2), S = lerp(rows, v, 3);
+    if (L == null) return null;
+    return [-1.8808, -1.2816, 0, 1.2816, 1.8808].map(z => M * Math.pow(1 + L * S * z, 1 / L) * 1000);
+  }
+  _hatRef(kid) { return !!(this._ref && kid.birth && kid.sex); }
+  // Ungefähre Perzentile als Zahl, zwischen den fünf Linien linear verteilt; 2 heißt unter P3, 98 über P97.
+  _pz(kid, w) {
+    if (!this._hatRef(kid)) return null;
+    const c = this._refAt(kid.sex, this._pmaTage(kid, +w.date)); if (!c) return null;
+    const P = [3, 10, 50, 90, 97];
+    if (w.g < c[0]) return 2;
+    if (w.g > c[4]) return 98;
+    for (let i = 1; i < 5; i++) if (w.g <= c[i]) return Math.round(P[i - 1] + (w.g - c[i - 1]) / (c[i] - c[i - 1]) * (P[i] - P[i - 1]));
+    return null;
+  }
+  _pzText(p) { return p == null ? "" : p <= 2 ? "unter P3" : p >= 98 ? "über P97" : `≈ P${p}`; }
+  _g(d) { return `${d >= 0 ? "+" : "−"}${Math.abs(Math.round(d))} g`; }
+  _alterAm(kid, d) {
+    if (!kid.birth) return "";
+    const tage = Math.round((d - this._day(kid.birth)) / TAG);
+    if (tage < 0) return "";
+    if (tage === 0) return "bei der Geburt";
+    if (tage < 14) return `mit ${tage} ${tage === 1 ? "Tag" : "Tagen"}`;
+    if (tage < 61) return `mit ${Math.floor(tage / 7)} Wochen`;
+    const m = Math.floor(tage / 30.4375);
+    return m < 24 ? `mit ${m} Monaten` : `mit ${Math.floor(m / 12)} Jahren`;
+  }
+  // Der erste Wert am Tag der Geburt (± 1 Tag) gilt als Geburtsgewicht.
+  _geburtsgewicht(kid, w) { return kid.birth ? w.find(x => Math.abs(x.date - this._day(kid.birth)) <= 1.5 * TAG) || null : null; }
+
+  _wachstumKopf() {
+    return `<div class="fo-mtitle"><b>Wachstum</b><span>Gewicht nach Alter${this._ref ? ", mit Perzentilkurven" : ""}</span></div>`;
+  }
+  _wachstumSpalte(vm) {
+    const k = vm.kid, w = vm.weights, l = w[w.length - 1], kk = U.esc(k.key);
+    const wiegen = `<button class="fo-nbtn" type="button" data-act="wiegen" data-kind="${kk}">⚖️ Wiegen</button>`;
+    if (!l) return [`<div class="fo-next"><div class="fo-nl">Gewicht</div><div class="fo-nb">–</div>
+      <div class="fo-ns">Noch nicht gewogen. Am besten mit dem Geburtsgewicht anfangen.</div>${wiegen}</div>`];
+    const vor = w.slice(0, -1).reverse().find(x => l.date - x.date >= 5 * TAG) || w[w.length - 2];
+    const tage = vor ? Math.max(1, Math.round((l.date - vor.date) / TAG)) : 0;
+    const geb = this._geburtsgewicht(k, w), erst = geb || w[0], pzL = this._pz(k, l), alt = this._alterAm(k, l.date);
+    const b = [`<div class="fo-next"><div class="fo-nl">Aktuelles Gewicht</div>
+      <div class="fo-nb">${this._kg(l.g)}</div>
+      <div class="fo-ns">am ${this._dm(l.date)}${alt ? ` · ${alt}` : ""}${pzL != null ? ` · ${this._pzText(pzL)}` : ""}</div>
+      ${vor ? `<div class="fo-nf">${this._g(l.g - vor.g)} seit ${this._dm(vor.date)} · Ø ${this._g((l.g - vor.g) / tage)} am Tag</div>` : ""}
+      ${wiegen}</div>`];
+    // Kennzahlen: Zunahme seit der Geburt, Schnitt pro Woche, Perzentile jetzt und damals
+    const karte = (titel, wert, unter) => `<div class="fo-nc"><div class="fo-ncl">${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div></div>`;
+    const karten = [], seit = geb ? "seit der Geburt" : `seit ${this._dm(erst.date)}`;
+    if (w.length > 1) {
+      karten.push(karte(geb ? "Seit der Geburt" : `Seit ${this._dm(erst.date)}`, this._g(l.g - erst.g), `${geb ? "Geburtsgewicht" : "erste Messung"} ${this._kg(erst.g)}`));
+      karten.push(karte("Pro Woche", `Ø ${this._g((l.g - erst.g) / Math.max(1, (l.date - erst.date) / TAG) * 7)}`, seit));
+    }
+    const pzE = w.length > 1 ? this._pz(k, erst) : null;
+    if (pzL != null) karten.push(karte("Perzentile", this._pzText(pzL), pzE != null ? `${geb ? "bei der Geburt" : `am ${this._dm(erst.date)}`} ${this._pzText(pzE)}` : "nach Alter"));
+    b.push(karten.length ? `<div class="fo-nowgrid fo-gtiles">${karten.join("")}</div>` : "");
+    // Kurve: wird nach dem Einfügen für die echte Breite gezeichnet (_zeichne)
+    b.push(`<div class="fo-sec">Verlauf</div><div class="fo-gcard" style="${this._kidStyle(k)}"><div class="fo-gchart" data-kind="${kk}"></div>
+      ${this._hatRef(k) ? `<div class="fo-gleg"><span><i class="fo-gl-line"></i>${U.esc(k.name)}</span><span><i class="fo-gl-band"></i>P3–P97</span><span><i class="fo-gl-mid"></i>P50</span></div>` : ""}</div>`);
+    const bem = this._wBemerkt(k, w, geb, l);
+    b.push(bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(x => `<div>${x}</div>`).join("")}</div>` : "");
+    const liste = w.slice().reverse(), zeig = this._wAlle ? liste : liste.slice(0, 6);
+    b.push(`<div class="fo-sec">Messungen</div><div class="fo-list">${zeig.map(x => {
+      const i = w.indexOf(x), p = i > 0 ? w[i - 1] : null, pz = this._pz(k, x);
+      return `<button class="fo-li fo-wli" type="button" data-wuid="${U.esc(x.uid)}"><i style="background:${U.esc(k.color)}"></i><span>${this._kg(x.g)}${x === geb ? "<em>Geburt</em>" : ""}</span>
+        <small>${[p ? this._g(x.g - p.g) : "", this._pzText(pz)].filter(Boolean).join(" · ")}</small><time>${this._dm(x.date)}</time></button>`;
+    }).join("")}</div>${liste.length > 6 ? `<button class="fo-more" type="button" data-walle>${this._wAlle ? "Weniger zeigen" : `Alle ${liste.length} Messungen`}</button>` : ""}`);
+    b.push(!this._hatRef(k) ? "" : `<div class="fo-quelle">Kurven P3–P97: ${this._ref.preterm && Object.keys(this._ref.preterm).length
+      ? "INTERGROWTH-21st für Frühgeborene bis 64 Wochen nach Beginn der Schwangerschaft, danach WHO" : "WHO"} nach korrigiertem Alter. Einzelne Messungen schwanken – der Verlauf zählt.</div>`);
+    return b;
+  }
+  // Gerechnete Beobachtungen, keine Bewertung: Tiefpunkt nach der Geburt, Geburtsgewicht wieder erreicht, Kilomarken.
+  _wBemerkt(k, w, geb, l) {
+    const out = [];
+    if (geb) {
+      const tief = w.filter(x => x.date > geb.date && x.date - geb.date <= 21 * TAG).reduce((m, x) => (!m || x.g < m.g ? x : m), null);
+      if (tief && tief.g < geb.g) {
+        out.push(`Tiefster Wert ${this._kg(tief.g)} am ${this._dm(tief.date)} <span>– ${this._komma((geb.g - tief.g) / geb.g * 100)} % unter dem Geburtsgewicht</span>`);
+        const zurueck = w.find(x => x.date > tief.date && x.g >= geb.g);
+        if (zurueck) out.push(`Geburtsgewicht wieder erreicht am ${this._dm(zurueck.date)} <span>– ${this._alterAm(k, zurueck.date)}</span>`);
+        else if (l.g < geb.g) out.push(`Noch ${geb.g - l.g} g bis zum Geburtsgewicht <span>(${this._kg(geb.g)})</span>`);
+      }
+      const doppelt = l.g >= 2 * geb.g && w.find(x => x.g >= 2 * geb.g);
+      if (doppelt) out.push(`Geburtsgewicht verdoppelt am ${this._dm(doppelt.date)} <span>– ${this._alterAm(k, doppelt.date)}</span>`);
+    }
+    const marke = Math.floor(l.g / 1000) * 1000, erreicht = marke >= 1000 && w[0].g < marke && w.find(x => x.g >= marke);
+    if (erreicht && l.date - erreicht.date <= 14 * TAG) out.push(`${marke / 1000} kg geschafft am ${this._dm(erreicht.date)} 🎉`);
+    const her = Math.round((this._day(this._local(new Date(), " ")) - l.date) / TAG);
+    if (her >= 7) out.push(`Zuletzt vor ${her} Tagen gewogen`);
+    return out;
+  }
+  _zeichne() {
+    this.querySelectorAll(".fo-gchart[data-kind]").forEach(el => {
+      const W = Math.round(el.clientWidth);
+      if (!W || (el.dataset.w === String(W) && el.firstChild)) return;   // ausgeblendete Spalte oder schon passend
+      el.dataset.w = String(W);
+      el.innerHTML = this._kurve(this._vm(this._kid(el.dataset.kind)), W);
+    });
+  }
+  // Gewicht über dem Alter: Perzentilbänder in der Kinderfarbe, ein Stück Kurve voraus, Linie bei heute.
+  _kurve(vm, W) {
+    const k = vm.kid, w = vm.weights;
+    if (!w.length) return "";
+    const H = 230, L = 38, R = 34, T = 22, B = 26;
+    const geb = k.birth ? +this._day(k.birth) : null, jetzt = Date.now();
+    const t0 = geb != null ? Math.min(geb, +w[0].date) : +w[0].date - 2 * TAG;
+    const tEnde = Math.max(jetzt, +w[w.length - 1].date), t1 = tEnde + Math.max(4 * TAG, (tEnde - t0) * .12);
+    const ref = [];
+    if (this._hatRef(k)) {
+      const n = Math.max(2, Math.min(200, Math.round((t1 - t0) / TAG)));
+      for (let i = 0; i <= n; i++) { const t = t0 + (t1 - t0) * i / n, c = this._refAt(k.sex, this._pmaTage(k, t)); if (c) ref.push({ t, c }); }
+    }
+    let g0 = Math.min(...w.map(x => x.g), ...ref.map(p => p.c[0])), g1 = Math.max(...w.map(x => x.g), ...ref.map(p => p.c[4]));
+    const span = Math.max(g1 - g0, 300), step = [100, 200, 250, 500, 1000, 2000].find(s => span / s <= 6) || 2000;
+    g0 = Math.floor((g0 - span * .05) / step) * step; g1 = Math.ceil((g1 + span * .05) / step) * step;
+    const x = t => +(L + (t - t0) / (t1 - t0) * (W - L - R)).toFixed(1), y = g => +(T + (1 - (g - g0) / (g1 - g0)) * (H - T - B)).toFixed(1);
+    let s = "";
+    for (let g = g0; g <= g1 + .5; g += step) s += `<line class="fo-ggrid" x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}"/><text class="fo-gy" x="${L - 7}" y="${y(g) + 4}">${(g / 1000).toLocaleString("de-AT", { maximumFractionDigits: 2 })}</text>`;
+    s += `<text class="fo-gy fo-gunit" x="${L - 7}" y="${T - 9}">kg</text>`;
+    // Achse nach Alter: Wochen in den ersten drei Monaten, danach Monate; ohne Geburtstag nach Datum.
+    const platz = Math.max(2, Math.floor((W - L - R) / 64)), ticks = [];
+    if (geb == null) {
+      const st = Math.max(1, Math.ceil((t1 - t0) / TAG / platz));
+      for (let d = 0; t0 + d * TAG <= t1; d += st) ticks.push([t0 + d * TAG, this._dm(new Date(t0 + d * TAG))]);
+    } else if ((t1 - geb) / TAG <= 98) {
+      const st = Math.max(1, Math.ceil((t1 - geb) / TAG / 7 / platz));
+      for (let i = 0; geb + i * 7 * TAG <= t1; i += st) ticks.push([geb + i * 7 * TAG, i ? `${i} Wo.` : "Geburt"]);
+    } else {
+      const st = [1, 2, 3, 6, 12].find(m => (t1 - geb) / TAG / 30.4375 / m <= platz) || 12;
+      for (let i = 0; i <= 240; i += st) {
+        const d = new Date(geb); d.setMonth(d.getMonth() + i); if (+d > t1) break;
+        ticks.push([+d, !i ? "Geburt" : i % 12 ? `${i} Mon.` : `${i / 12} J.`]);
+      }
+    }
+    s += ticks.map(([t, txt]) => `<text class="fo-gx" x="${x(t)}" y="${H - 7}">${txt}</text>`).join("");
+    if (ref.length > 1) {
+      const band = (lo, hi) => ref.map(p => `${x(p.t)},${y(p.c[hi])}`).join(" ") + " " + ref.slice().reverse().map(p => `${x(p.t)},${y(p.c[lo])}`).join(" ");
+      const e = ref[ref.length - 1];
+      s += `<polygon class="fo-gb1" points="${band(0, 4)}"/><polygon class="fo-gb2" points="${band(1, 3)}"/><polyline class="fo-gmid" points="${ref.map(p => `${x(p.t)},${y(p.c[2])}`).join(" ")}"/>`
+        + [[0, "P3"], [2, "P50"], [4, "P97"]].map(([i, t]) => `<text class="fo-gp" x="${x(e.t) + 4}" y="${y(e.c[i]) + 3.5}">${t}</text>`).join("");
+    }
+    s += `<line class="fo-gheute" x1="${x(jetzt)}" x2="${x(jetzt)}" y1="${T}" y2="${H - B}"/><text class="fo-gheutel" x="${x(jetzt)}" y="${T - 9}">heute</text>`;
+    if (w.length > 1) s += `<polyline class="fo-gline" points="${w.map(p => `${x(+p.date)},${y(p.g)}`).join(" ")}"/>`;
+    s += w.map((p, i) => {
+      const letzt = i === w.length - 1, cx = x(+p.date), cy = y(p.g);
+      return `<g class="fo-gpt" data-wuid="${U.esc(p.uid)}"><title>${U.esc(`${this._kg(p.g)} am ${this._dmy(p.date)}`)}</title><circle cx="${cx}" cy="${cy}" r="14" fill="transparent"/>`
+        + `${letzt ? `<circle class="fo-ghalo" cx="${cx}" cy="${cy}" r="11"/>` : ""}<circle class="fo-gdot" cx="${cx}" cy="${cy}" r="${letzt ? 6 : 4}"/></g>`;
+    }).join("");
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gewichtsverlauf ${U.esc(k.name)}">${s}</svg>`;
+  }
+
+  // ---------- Schreiben ----------
+  _toggle(kid) {
+    if (!kid.switch) return;
+    const laeuft = this._laeuft(kid);
+    if (laeuft && Date.now() - this._beginn(kid) < 30000) U.toast(this, "Unter 30 Sekunden – als Fehltipp verworfen, nicht protokolliert");
+    this._hass.callService("input_boolean", laeuft ? "turn_off" : "turn_on", { entity_id: kid.switch })
+      .catch(() => U.toast(this, "Stillen konnte nicht umgeschaltet werden"));
+  }
+  // „*“ = alle mit Schlafschalter: schläft noch keiner oder nur einer, legen sich alle hin; schlafen alle, wachen alle auf.
+  // Die Karte schaltet nur — den Termin schreibt wie beim Stillen die Protokoll-Automation.
+  _schlafToggle(key) {
+    const kids = this.config.kids.filter(k => k.sleep_switch), ziel = key === "*" ? kids : kids.filter(k => k.key === key);
+    if (!ziel.length) return;
+    const an = !ziel.every(k => this._schlaeft(k)), betroffen = ziel.filter(k => this._schlaeft(k) !== an);
+    if (!an && betroffen.some(k => Date.now() - this._schlafBeginn(k) < MIN)) U.toast(this, "Unter einer Minute – als Fehltipp verworfen, nicht protokolliert");
+    this._hass.callService("input_boolean", an ? "turn_on" : "turn_off", { entity_id: betroffen.map(k => k.sleep_switch) })
+      .catch(() => U.toast(this, "Schlaf konnte nicht umgeschaltet werden"));
+  }
+  async _eintrag(cal, summary, meta, start, okText) {
+    try {
+      await this._hass.callService("calendar", "create_event", {
+        entity_id: cal, summary, description: JSON.stringify(meta),
+        start_date_time: this._local(start, " "), end_date_time: this._local(new Date(+start + MIN), " "),
+      });
+      U.toast(this, okText);
+      this._load();
+      return true;
+    } catch (e) { U.toast(this, "Konnte nicht gespeichert werden"); return false; }
+  }
+
+  // ---------- Blätter (Windel, Fläschchen, Frag nach) ----------
+  _closeSheet() { if (this._ov) { this._ov.remove(); this._ov = null; this._chatOffen = false; } }
+  _sheet(inner, cls) {
+    this._closeSheet();
+    const ov = document.createElement("div");
+    ov.className = "fo-ov";
+    ov.innerHTML = `<div class="fo-sheet ${cls || ""}" role="dialog">${inner}</div>`;
+    ov.addEventListener("click", ev => { if (ev.target === ov || ev.target.closest(".fo-x")) this._closeSheet(); });
+    this._card.appendChild(ov); this._ov = ov;
+    return ov;
+  }
+  _sheetWindel(kid) {
+    const ov = this._sheet(`<div class="fo-sh-head"><b>💩 Windel · ${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-big3"><button type="button" data-art="nass" style="--q:var(--c-diaper)"><span>💧</span>Nass</button><button type="button" data-art="voll" style="--q:var(--c-stool)"><span>💩</span>Voll</button><button type="button" data-art="beides" style="--q:var(--c-stool)"><span>💧💩</span>Beides</button></div>`);
+    ov.querySelectorAll("[data-art]").forEach(b => b.addEventListener("click", () => {
+      if (this._sperre) return;   // Doppeltipp = eine Windel
+      this._sperre = true; setTimeout(() => { this._sperre = false; }, 1500);
+      const art = b.dataset.art, text = art === "beides" ? "nass + voll" : art;
+      this._closeSheet();
+      this._eintrag(kid.diaper_calendar, `Windel ${text}`, { typ: "windel", art }, new Date(), `${kid.name}: Windel ${text} eingetragen ✓`);
+    }));
+  }
+  _sheetFlasche(kid) {
+    const pre = (this.config.bottle_presets || []).map(Number).filter(x => x > 0), jetzt = new Date();
+    let ml = pre[0] || 0;
+    const ov = this._sheet(`<div class="fo-sh-head"><b>🍼 Fläschchen · ${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-lbl">Menge</div>
+      <div class="fo-mls">${pre.map(x => `<button type="button" data-ml="${x}">${x} ml</button>`).join("")}<input class="fo-in fo-mlin" type="number" inputmode="numeric" min="1" max="400" placeholder="ml"></div>
+      <div class="fo-lbl">Fertig getrunken um</div>
+      <input class="fo-in fo-zeit" type="time" value="${this._hm(jetzt)}">
+      <button class="fo-ok" type="button">Eintragen</button>`);
+    const mark = () => ov.querySelectorAll("[data-ml]").forEach(b => b.classList.toggle("fo-on", Number(b.dataset.ml) === ml));
+    ov.querySelectorAll("[data-ml]").forEach(b => b.addEventListener("click", () => { ml = Number(b.dataset.ml); ov.querySelector(".fo-mlin").value = ""; mark(); }));
+    ov.querySelector(".fo-mlin").addEventListener("input", e => { ml = Number(e.target.value) || 0; mark(); });
+    mark();
+    ov.querySelector(".fo-ok").addEventListener("click", () => {
+      if (!(ml > 0 && ml <= 400)) { U.toast(this, "Bitte eine Menge angeben"); return; }
+      const [h, m] = String(ov.querySelector(".fo-zeit").value || "").split(":").map(Number);
+      const start = new Date(); start.setHours(h || 0, m || 0, 0, 0);
+      if (start - Date.now() > 5 * MIN) start.setDate(start.getDate() - 1);   // eine Uhrzeit nach „jetzt“ meint gestern Abend
+      this._closeSheet();
+      this._eintrag(kid.feeding_calendar, `Fläschchen ${ml} ml`, { typ: "flasche", ml }, start, `${kid.name}: Fläschchen ${ml} ml eingetragen ✓`);
+    });
+  }
+  // Wiegen und Ändern im Format der fp-weight-card: Ganztagstermin „Name 3450 g“, höchstens ein Wert je Kind und Tag.
+  _sheetWiegen(kid, e) {
+    const heute = this._isoTag(new Date());
+    const ov = this._sheet(`<div class="fo-sh-head"><b>⚖️ ${e ? "Gewicht ändern" : "Wiegen"} · ${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-lbl">Gewicht</div>
+      <input class="fo-in fo-gin" type="text" inputmode="decimal" placeholder="z. B. 3450 oder 3,45" value="${e ? e.g : ""}">
+      <div class="fo-sh-hint">Gramm oder Kilo – „3450“ und „3,45“ ergeben dasselbe.</div>
+      <div class="fo-lbl">Datum</div>
+      <input class="fo-in fo-datum" type="date" value="${e ? this._isoTag(e.date) : heute}" max="${heute}">
+      <button class="fo-ok" type="button">${e ? "Speichern" : "Eintragen"}</button>
+      ${e ? `<button class="fo-del" type="button">Messung löschen</button>` : ""}`);
+    if (!e) setTimeout(() => { const i = ov.querySelector(".fo-gin"); if (i) i.focus(); }, 50);
+    ov.querySelector(".fo-ok").addEventListener("click", async () => {
+      const g = this._gramm(ov.querySelector(".fo-gin").value), ds = ov.querySelector(".fo-datum").value;
+      if (!ds) { U.toast(this, "Bitte ein Datum wählen"); return; }
+      if (g < 500 || g > 30000) { U.toast(this, "Das Gewicht sieht nicht richtig aus – bitte prüfen"); return; }
+      if (ds > heute) { U.toast(this, "Das Datum liegt in der Zukunft"); return; }
+      const date = this._day(ds);
+      const gleich = ((this._d && this._d.weights) || []).find(x => x.kind === kid.key && this._isoTag(x.date) === ds && (!e || x.uid !== e.uid));
+      this._closeSheet();
+      let ok;
+      if (e) ok = await this._gewichtAendern(e, kid, date, g);
+      else if (gleich) { ok = await this._gewichtAendern(gleich, kid, date, g); if (ok) U.toast(this, `Wert vom ${this._dmy(date)} ersetzt`); }
+      else { ok = await this._gewichtNeu(kid, date, g); if (ok) U.toast(this, `${kid.name}: ${this._kg(g)} eingetragen ✓`); }
+      if (ok) this._load();
+    });
+    if (e) ov.querySelector(".fo-del").addEventListener("click", async () => {
+      if (!window.confirm(`${kid.name}: ${this._kg(e.g)} vom ${this._dmy(e.date)} löschen?`)) return;
+      this._closeSheet();
+      if (await this._gewichtLoeschen(e.uid)) this._load();
+    });
+  }
+  // Schlaf nachtragen (auch für beide auf einmal) oder eine Schlafphase ändern bzw. löschen.
+  _sheetSchlaf(kid, e) {
+    const kids = this.config.kids.filter(k => k.sleep_calendar);
+    if (!kids.length) return;
+    let key = (kid || kids[0]).key;
+    const jetzt = new Date(), von = e ? new Date(e.start) : new Date(+jetzt - STD), bis = e ? new Date(e.end) : jetzt;
+    const wahl = !e && kids.length > 1 ? `<div class="fo-lbl">Kind</div><div class="fo-mls fo-kids">${kids.map(k => `<button type="button" data-k="${U.esc(k.key)}">${U.esc(k.name)}</button>`).join("")}${kids.length === 2 ? `<button type="button" data-k="*">Beide</button>` : ""}</div>` : "";
+    const ov = this._sheet(`<div class="fo-sh-head"><b>😴 ${e ? `Schlaf ändern · ${U.esc(kid.name)}` : "Schlaf nachtragen"}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      ${wahl}
+      <div class="fo-lbl">Eingeschlafen</div>
+      <div class="fo-zeitrow"><input class="fo-in fo-vd" type="date" value="${this._isoTag(von)}" max="${this._isoTag(jetzt)}"><input class="fo-in fo-vz" type="time" value="${this._hm(von)}"></div>
+      <div class="fo-lbl">Aufgewacht</div>
+      <input class="fo-in fo-bz" type="time" value="${this._hm(bis)}">
+      <div class="fo-sh-hint">Liegt das Aufwachen vor dem Einschlafen, war es am nächsten Tag.</div>
+      <button class="fo-ok" type="button">${e ? "Speichern" : "Eintragen"}</button>
+      ${e ? `<button class="fo-del" type="button">Schlaf löschen</button>` : ""}`);
+    const mark = () => ov.querySelectorAll("[data-k]").forEach(b => b.classList.toggle("fo-on", b.dataset.k === key));
+    ov.querySelectorAll("[data-k]").forEach(b => b.addEventListener("click", () => { key = b.dataset.k; mark(); }));
+    mark();
+    ov.querySelector(".fo-ok").addEventListener("click", async () => {
+      const ds = ov.querySelector(".fo-vd").value, vz = ov.querySelector(".fo-vz").value, bz = ov.querySelector(".fo-bz").value;
+      if (!ds || !vz || !bz) { U.toast(this, "Bitte Datum und beide Uhrzeiten angeben"); return; }
+      const a = this._day(ds), [vh, vmi] = vz.split(":").map(Number), [bh, bm] = bz.split(":").map(Number);
+      a.setHours(vh, vmi || 0, 0, 0);
+      const b = new Date(a); b.setHours(bh, bm || 0, 0, 0);
+      if (b <= a) b.setDate(b.getDate() + 1);   // über Mitternacht
+      if (b - Date.now() > 5 * MIN) { U.toast(this, "Das Aufwachen liegt in der Zukunft"); return; }
+      if (b - a > 16 * STD) { U.toast(this, "Länger als 16 Stunden – bitte die Zeiten prüfen"); return; }
+      const ziel = e ? [kid] : key === "*" ? kids : [this._kid(key)];
+      // Wie die Kollisionsprüfung bei Napper: keine zwei Schlafphasen eines Kinds übereinander.
+      for (const k of ziel) {
+        const x = this._vm(k).schlaf.find(y => (!e || y.uid !== e.uid) && +y.start < +b && +y.end > +a);
+        if (x) { U.toast(this, `${k.name}: überschneidet sich mit ${this._hm(x.start)}–${x.laeuft ? "jetzt" : this._hm(x.end)}`); return; }
+      }
+      this._closeSheet();
+      let ok = true;
+      for (const k of ziel) ok = (e ? await this._schlafAendern(e, k, a, b) : await this._schlafNeu(k, a, b)) && ok;
+      if (ok) U.toast(this, e ? "Schlaf geändert ✓" : `${ziel.map(k => k.name).join(" und ")}: Schlaf ${this._hm(a)}–${this._hm(b)} eingetragen ✓`);
+      this._load();
+    });
+    if (e) ov.querySelector(".fo-del").addEventListener("click", async () => {
+      if (!window.confirm(`${kid.name}: Schlaf ${this._hm(e.start)}–${this._hm(e.end)} löschen?`)) return;
+      this._closeSheet();
+      if (await this._schlafLoeschen(kid, e.uid)) this._load();
+    });
+  }
+  async _schlafNeu(kid, a, b) {
+    try {
+      await this._hass.callService("calendar", "create_event", { entity_id: kid.sleep_calendar, summary: "Schlaf", description: JSON.stringify({ typ: "schlaf", auto: false }),
+        start_date_time: this._local(a, " "), end_date_time: this._local(b, " ") });
+      return true;
+    } catch (x) { U.toast(this, "Schlaf konnte nicht gespeichert werden"); return false; }
+  }
+  async _schlafLoeschen(kid, uid, leise) {
+    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: kid.sleep_calendar, uid }); return true; }
+    catch (x) { if (!leise) U.toast(this, "Schlaf konnte nicht gelöscht werden"); return false; }
+  }
+  // Ändern entfernt die Markierung „automatisch beendet“, wie bei der Stillkarte.
+  async _schlafAendern(alt, kid, a, b) {
+    try {
+      await this._hass.callWS({ type: "calendar/event/update", entity_id: kid.sleep_calendar, uid: alt.uid,
+        event: { summary: "Schlaf", description: JSON.stringify({ typ: "schlaf", auto: false }), dtstart: this._local(a, "T"), dtend: this._local(b, "T") } });
+      return true;
+    } catch (x) {
+      if (!(await this._schlafNeu(kid, a, b))) return false;
+      if (!(await this._schlafLoeschen(kid, alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
+      return true;
+    }
+  }
+  _isoTag(d) { return `${d.getFullYear()}-${this._p(d.getMonth() + 1)}-${this._p(d.getDate())}`; }
+  // Eingabe in Gramm oder Kilo: "3450", "3,45", "3.45 kg" → 3450
+  _gramm(v) {
+    const n = Number(String(v || "").trim().toLowerCase().replace(/\s*(kg|g)$/, "").replace(",", "."));
+    return isFinite(n) && n > 0 ? Math.round(n < 30 ? n * 1000 : n) : 0;
+  }
+  _gewichtEv(kid, date, g) {
+    const nach = new Date(date); nach.setDate(nach.getDate() + 1);
+    return { summary: `${kid.name} ${g} g`, description: JSON.stringify({ typ: "gewicht", kind: kid.weight_key || kid.key, g }), von: this._isoTag(date), bis: this._isoTag(nach) };
+  }
+  async _gewichtNeu(kid, date, g) {
+    const d = this._gewichtEv(kid, date, g);
+    try {
+      await this._hass.callService("calendar", "create_event", { entity_id: this.config.weight_calendar, summary: d.summary, description: d.description, start_date: d.von, end_date: d.bis });
+      return true;
+    } catch (x) { U.toast(this, "Gewicht konnte nicht gespeichert werden"); return false; }
+  }
+  async _gewichtLoeschen(uid, leise) {
+    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this.config.weight_calendar, uid }); return true; }
+    catch (x) { if (!leise) U.toast(this, "Messung konnte nicht gelöscht werden"); return false; }
+  }
+  async _gewichtAendern(alt, kid, date, g) {
+    const d = this._gewichtEv(kid, date, g);
+    try {
+      await this._hass.callWS({ type: "calendar/event/update", entity_id: this.config.weight_calendar, uid: alt.uid,
+        event: { summary: d.summary, description: d.description, dtstart: d.von, dtend: d.bis } });
+      return true;
+    } catch (x) {
+      // Rückfall wie in der Gewichtskarte: neu anlegen, dann alt löschen — und laut sagen, falls der alte bleibt.
+      if (!(await this._gewichtNeu(kid, date, g))) return false;
+      if (!(await this._gewichtLoeschen(alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
+      return true;
+    }
+  }
+
+  _openChat() {
+    const ov = this._sheet(`<div class="fo-sh-head"><b class="fo-sh-ai">${SPARK} Frag nach</b><button class="fo-neu" type="button" hidden>Neues Gespräch</button><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-sh-sub">Antworten aus euren Einträgen – kein ärztlicher Rat</div>
+      <div class="fo-msgs"></div><div class="fo-sugg"></div>
+      <form class="fo-ask"><input class="fo-in" type="text" enterkeyhint="send" autocomplete="off" placeholder="Frag etwas, z. B. „Wie war die letzte Nacht?“"><button class="fo-send" type="submit" aria-label="Fragen">➤</button></form>`, "fo-chat");
+    this._chatOffen = true;
+    ov.querySelector(".fo-ask").addEventListener("submit", ev => {
+      ev.preventDefault();
+      const inp = ov.querySelector(".fo-ask .fo-in"), q = inp.value.trim();
+      if (q) { inp.value = ""; this._frage(q); }
+    });
+    ov.querySelector(".fo-sugg").addEventListener("click", ev => { const b = ev.target.closest("button"); if (b) this._frage(b.textContent); });
+    ov.querySelector(".fo-neu").addEventListener("click", () => { if (!this._busy) { this._chat = []; this._paintChat(); } });
+    this._paintChat();
+  }
+  _paintSugg() {
+    const box = this._chatOffen && this._ov.querySelector(".fo-sugg"); if (!box) return;
+    const kids = this.config.kids, n = kids.map(k => k.name);
+    const s = ["Wie war die letzte Nacht?", "Fasse den heutigen Tag zusammen", "Siehst du ein Muster bei den Abständen?"];
+    if (kids.length === 2) s.push(`Vergleiche ${n[0]} und ${n[1]} diese Woche`);
+    if (kids.some(k => k.sleep_calendar)) s.push(kids.length === 2 ? `Wie haben ${n[0]} und ${n[1]} geschlafen?` : `Wie hat ${n[0]} geschlafen?`);
+    if (this.config.weight_calendar) s.push("Wie entwickelt sich das Gewicht?");
+    box.innerHTML = s.map(x => `<button type="button">${U.esc(x)}</button>`).join("");
+    box.hidden = this._chat.length > 0;
+  }
+  _paintChat() {
+    const box = this._chatOffen && this._ov.querySelector(".fo-msgs"); if (!box) return;
+    box.innerHTML = this._chat.map(m => `<div class="fo-msg fo-${m.role}">${m.role === "ai" ? this._md(m.text) : U.esc(m.text)}</div>`).join("")
+      + (this._busy ? `<div class="fo-msg fo-ai fo-tipp"><i></i><i></i><i></i></div>` : "");
+    box.hidden = !this._chat.length && !this._busy;
+    box.scrollTop = box.scrollHeight;
+    this._ov.querySelector(".fo-neu").hidden = !this._chat.length;
+    this._paintSugg();
+  }
+  // Ein kleines, sicheres Markdown: erst alles maskieren, dann **fett** und Aufzählungen.
+  _md(txt) {
+    const zeilen = U.esc(String(txt || "").trim()).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").split(/\n/);
+    let html = "", liste = false;
+    for (const z of zeilen) {
+      const m = z.match(/^\s*(?:[-•*]|\d+[.)])\s+(.*)$/);
+      if (m) { if (!liste) { html += "<ul>"; liste = true; } html += `<li>${m[1]}</li>`; continue; }
+      if (liste) { html += "</ul>"; liste = false; }
+      if (z.trim()) html += `<p>${z.replace(/^#+\s*/, "")}</p>`;
+    }
+    return html + (liste ? "</ul>" : "");
+  }
+  async _frage(q) {
+    if (this._busy) return;
+    if (!this._d) { U.toast(this, "Die Einträge laden noch – gleich nochmal versuchen"); return; }
+    this._chat.push({ role: "me", text: q }); this._busy = true; this._paintChat();
+    try {
+      const data = { task_name: "Frag nach", instructions: this._prompt(q) };
+      if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+      const r = await this._hass.callService("ai_task", "generate_data", data, undefined, false, true);
+      let txt = r && r.response && r.response.data;
+      if (txt && typeof txt === "object") txt = txt.text || JSON.stringify(txt);
+      if (!txt) throw new Error("leer");
+      this._chat.push({ role: "ai", text: String(txt) });
+    } catch (e) {
+      this._chat.push({ role: "ai", text: "Das hat leider nicht geklappt. Ist eine KI (ai_task) in Home Assistant eingerichtet?" });
+    }
+    this._busy = false;
+    this._chat = this._chat.slice(-12);
+    this._paintChat();
+  }
+  _prompt(q) {
+    const jetzt = new Date(), kids = this.config.kids;
+    const verlauf = this._chat.slice(0, -1).slice(-8).map(m => `${m.role === "me" ? "Eltern" : "Assistent"}: ${m.text}`).join("\n");
+    return [
+      `Du bist der freundliche Assistent im Familienplaner einer Familie mit ${kids.length === 1 ? "einem Baby" : kids.length === 2 ? "zwei Babys" : `${kids.length} Kindern`} (${kids.map(k => k.name).join(", ")}).`,
+      "Die Eltern fragen nach den protokollierten Daten: Stillen, Fläschchen, Windeln, Schlaf, Gewicht und Meilensteine.",
+      "Regeln:",
+      "- Antworte auf Deutsch (österreichisch), warm und kurz: höchstens 6 Sätze oder eine kurze Liste.",
+      "- Stütze dich nur auf die Daten unten. Rechne sorgfältig und nenne konkrete Zahlen und Uhrzeiten. Wenn die Daten etwas nicht hergeben, sag das ehrlich.",
+      "- Bei Fragen nach Mustern: vergleiche Tage und Nächte miteinander und nenne, worauf du dich stützt. Lücken in den Daten können auch vergessene Einträge sein.",
+      "- Keine Diagnosen. Wirkt etwas besorgniserregend (z. B. deutlich weniger nasse Windeln, Gewichtsverlust, sehr lange Pausen bei einem Neugeborenen), empfiehl freundlich, mit Hebamme oder Kinderärztin zu sprechen.",
+      "- Format: einfacher Text, Aufzählungen mit „- “, Wichtiges mit **fett**. Keine Tabellen, keine Überschriften.",
+      "",
+      `Jetzt ist ${jetzt.toLocaleDateString("de-AT", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}, ${this._hm(jetzt)} Uhr.`,
+      "",
+      "DATEN",
+      this._kontext(),
+      verlauf ? `\nBISHERIGES GESPRÄCH\n${verlauf}` : "",
+      `\nFRAGE DER ELTERN: ${q}`,
+    ].join("\n");
+  }
+  // Alles als knappe Textzeilen: Tageswerte für zwei Wochen (vorgerechnet, damit die KI nicht
+  // selbst zählen muss), Nächte, und die einzelnen Einträge der letzten drei Tage.
+  _kontext() {
+    const L = [], jetzt = new Date(), tage = Number(this.config.days || 14);
+    const tagName = d => `${WT[d.getDay()]} ${this._dm(d)}`;
+    for (const kid of this.config.kids) {
+      const vm = this._vm(kid), raw = vm.raw;
+      L.push(`\n## ${kid.name}`);
+      if (kid.birth) L.push(`Geboren ${this._dmy(this._day(kid.birth))}${kid.ga ? ` in SSW ${kid.ga}` : ""}, heute ${this._alterText(kid)} alt.`);
+      if (this._laeuft(kid)) L.push(`Gerade läuft: Stillen seit ${this._hm(new Date(this._beginn(kid)))}${this._seite(kid) ? ` (${this._seite(kid)})` : ""}.`);
+      if (kid.feeding_calendar || kid.diaper_calendar) {
+        L.push(`Tageswerte (0–24 Uhr; eine Mahlzeit = Einträge mit höchstens ${this.config.meal_pause_minutes} Min Pause; Abstand = Beginn zu Beginn):`);
+        L.push("Tag | Mahlzeiten | gestillt Min | Fläschchen ml | Ø Abstand | längster Abstand | Windeln nass/voll");
+        for (let i = tage - 1; i >= 0; i--) {
+          const d0 = this._mitternacht(jetzt, -i), t0 = +d0, t1 = t0 + TAG;
+          const ms = vm.meals.filter(m => m.start >= t0 && m.start < t1);
+          const idx = vm.meals.map((m, j) => j).filter(j => vm.meals[j].start >= t0 && vm.meals[j].start < t1 && j > 0);
+          const abst = idx.map(j => ({ d: vm.meals[j].start - vm.meals[j - 1].start, a: vm.meals[j - 1].start })).filter(x => x.d <= 8 * STD);
+          const lang = abst.reduce((b, x) => x.d > (b ? b.d : 0) ? x : b, null);
+          const fe = raw.feeds.filter(e => +e.start >= t0 && +e.start < t1);
+          const st = Math.round(fe.filter(e => e.typ === "stillen").reduce((s, e) => s + Math.max(0, e.end - e.start), 0) / MIN);
+          const ml = fe.filter(e => e.typ === "flasche").reduce((s, e) => s + (e.ml || 0), 0);
+          const wi = raw.diapers.filter(e => +e.start >= t0 && +e.start < t1);
+          if (!ms.length && !wi.length) { L.push(`${tagName(d0)} | keine Einträge`); continue; }
+          L.push(`${tagName(d0)}${i === 0 ? " (bis jetzt)" : ""} | ${ms.length} | ${st} | ${ml} | ${abst.length ? this._hDauer(abst.reduce((s, x) => s + x.d, 0) / abst.length) : "–"} | ${lang ? `${this._hDauer(lang.d)} ab ${this._hm(new Date(lang.a))}` : "–"} | ${wi.filter(e => e.art !== "voll").length}/${wi.filter(e => e.art !== "nass").length}`);
+        }
+        const n = this._naechte(vm.meals, 7).filter(x => x.daten);
+        if (n.length) {
+          L.push("Nächte (19–7 Uhr, benannt nach dem Morgen):");
+          n.forEach(x => L.push(`Nacht auf ${tagName(x.morgen)}: ${x.n} Mahlzeiten, längste Pause ${x.best ? `${this._hDauer(x.best)} (${this._hm(new Date(x.von))}–${this._hm(new Date(x.bis))})` : "–"}`));
+        }
+        if (vm.prog) L.push(`Typischer Abstand zuletzt: ${this._hDauer(vm.prog.med)}; nächste Mahlzeit erwartet etwa ${this._hm(new Date(vm.prog.t))}.`);
+        const ab = +this._mitternacht(jetzt, -2);
+        const einzel = [
+          ...raw.feeds.filter(e => +e.start >= ab).map(e => ({ t: +e.start, s: e.typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""} (Uhrzeit = fertig getrunken)` : `Stillen${e.seite ? ` ${e.seite}` : ""} bis ${this._hm(e.end)} (${Math.round((e.end - e.start) / MIN)} Min)` })),
+          ...raw.diapers.filter(e => +e.start >= ab).map(e => ({ t: +e.start, s: `Windel ${e.art}` })),
+        ].sort((a, b) => a.t - b.t);
+        if (einzel.length) { L.push("Einzelne Einträge seit vorgestern:"); einzel.forEach(x => L.push(`${tagName(new Date(x.t))} ${this._hm(new Date(x.t))} ${x.s}`)); }
+      }
+      if (kid.sleep_calendar || kid.sleep_switch) {
+        if (vm.schlaeft) L.push(`Gerade läuft: Schlaf seit ${this._hm(new Date(vm.schlafAb))}.`);
+        L.push("Schlaf je Tag (0–24 Uhr, Schlaf über Mitternacht aufgeteilt; nachts = 19–7 Uhr vor dem Morgen dieses Tags):");
+        L.push("Tag | Schlaf gesamt | nachts | Schlafphasen | längste");
+        for (let i = tage - 1; i >= 0; i--) {
+          const d0 = this._mitternacht(jetzt, -i), t0 = +d0, t1 = t0 + TAG;
+          const ph = vm.schlaf.filter(e => +e.end > t0 && +e.start < t1);
+          if (!vm.schlaf.length || t1 <= +vm.schlaf[0].start) continue;   // vor dem ersten Eintrag wurde noch nicht protokolliert
+          if (!ph.length) { L.push(`${tagName(d0)} | kein Schlaf eingetragen`); continue; }
+          const sum = ph.reduce((a, e) => a + this._ueber(+e.start, +e.end, t0, t1), 0), nacht = vm.schlaf.reduce((a, e) => a + this._ueber(+e.start, +e.end, t0 - 5 * STD, t0 + 7 * STD), 0);
+          const lang = ph.reduce((m, e) => (e.end - e.start > m.end - m.start ? e : m));
+          L.push(`${tagName(d0)}${i === 0 ? " (bis jetzt)" : ""} | ${this._hDauer(sum)} | ${this._hDauer(nacht)} | ${ph.length} | ${this._hDauer(lang.end - lang.start)} ab ${+lang.start < t0 ? `${WT[lang.start.getDay()]} ` : ""}${this._hm(lang.start)}`);
+        }
+        const ab2 = +this._mitternacht(jetzt, -2), neu = vm.schlaf.filter(e => +e.end >= ab2);
+        if (neu.length) { L.push("Schlafphasen seit vorgestern:"); neu.forEach(e => L.push(`${tagName(new Date(e.start))} ${this._hm(e.start)}–${e.laeuft ? "jetzt" : this._hm(e.end)} (${this._hDauer(e.end - e.start)})${e.auto ? " automatisch beendet, Ende unsicher" : ""}`)); }
+        if (vm.schlafProg) L.push(`Typische Wachzeit zuletzt: ${this._hDauer(vm.schlafProg.med)}; nächster Schlaf erwartet etwa ${this._hm(new Date(vm.schlafProg.lo))}–${this._hm(new Date(vm.schlafProg.hi))}.`);
+      }
+      if (vm.weights.length) L.push(`Gewicht: ${vm.weights.map(w => `${this._dmy(w.date)} ${w.g} g`).join("; ")}`);
+      if (vm.ms.length) L.push(`Meilensteine: ${vm.ms.map(m => `${this._dmy(m.date)} ${m.t}`).join("; ")}`);
+    }
+    return L.join("\n");
+  }
+
+  _styles() {
+    return `<style>
+      /* Farben wie Buma: dunkel mit Lachs als Akzent, je Art eine eigene Farbe. */
+      .fo-card{--b-bg:#1C1917;--b-card:#27221F;--b-card2:#322B27;--b-line:rgba(255,255,255,.07);--b-text:#F4EEE6;--b-mut:#9C9289;--b-faint:#6E655E;
+        --b-acc:#E8957A;--b-acc2:rgba(232,149,122,.16);--b-due:#3A2722;--b-sky:#203052;--b-bar:#2C2522;--b-track:#2E2724;--b-shadow:rgba(0,0,0,.45);
+        --c-nurse:#E77BB4;--c-bottle:#F0A73F;--c-diaper:#5DB36E;--c-stool:#B07A4A;--c-sleep:#8F8CF0;
+        position:relative;padding:18px 16px 14px;background:var(--b-bg);color:var(--b-text);border-radius:22px;container:fo-card / inline-size;}
+      .fo-card.fo-light{--b-bg:#FBF6EF;--b-card:#F1E9DF;--b-card2:#E7DDD0;--b-line:rgba(60,40,20,.09);--b-text:#2B2420;--b-mut:#7A7067;--b-faint:#A89E94;
+        --b-acc:#C9674A;--b-acc2:rgba(201,103,74,.12);--b-due:#F7E0D6;--b-sky:#D6E0F2;--b-bar:#FFFFFF;--b-track:#EAE2D6;--b-shadow:rgba(70,50,30,.18);
+        --c-nurse:#D9619E;--c-bottle:#E0921F;--c-diaper:#3F9A52;--c-stool:#9A6438;--c-sleep:#6662D6;}
+      :where(.fo-card) button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;}   /* ohne Gewicht, damit Klassen mit eigener Schriftgröße gewinnen */
+      .fo-sky{position:absolute;left:0;right:0;top:0;height:200px;border-radius:22px 22px 0 0;pointer-events:none;
+        background:linear-gradient(180deg,var(--b-sky) 0%,color-mix(in srgb,var(--b-sky) 45%,var(--b-bg)) 45%,var(--b-bg) 100%);}
+      .fo-top,.fo-body,.fo-tabbar{position:relative;}
+      .fo-laden,.fo-leer{padding:24px 8px;text-align:center;color:var(--b-mut);font-size:.9rem;}
+
+      /* Kopf */
+      .fo-top{display:flex;align-items:center;gap:10px;min-height:50px;}
+      .fo-who{display:flex;align-items:center;gap:12px;position:relative;flex:1;min-width:0;}
+      .fo-who-all{display:none;}
+      .fo-card.fo-multi .fo-who-all{display:none;}
+      @container fo-card (min-width: 680px){ .fo-card.fo-multi .fo-who-one{display:none;} .fo-card.fo-multi .fo-who-all{display:flex;} }
+      .fo-kidbtn{display:flex;align-items:center;gap:12px;border:none;background:transparent;padding:0;cursor:pointer;text-align:left;}
+      .fo-wn{display:flex;flex-direction:column;min-width:0;}
+      .fo-wn b{font-size:1.45rem;font-weight:800;letter-spacing:-.01em;line-height:1.15;}
+      .fo-wn small{font-size:.86rem;color:var(--b-mut);font-weight:600;}
+      .fo-caret{font-style:normal;font-size:1rem;margin-left:6px;color:var(--b-mut);}
+      .fo-av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:800;flex:none;overflow:hidden;}
+      .fo-av img{width:100%;height:100%;object-fit:cover;}
+      .fo-avs{display:flex;} .fo-avs .fo-av{box-shadow:0 0 0 2px var(--b-bg);} .fo-avs .fo-av+.fo-av{margin-left:-12px;}
+      .fo-menu{position:absolute;top:56px;left:0;z-index:5;display:flex;flex-direction:column;gap:2px;padding:6px;border-radius:16px;background:var(--b-card2);box-shadow:0 10px 30px var(--b-shadow);}
+      .fo-menu[hidden]{display:none;}
+      .fo-menu button{display:flex;align-items:center;gap:10px;border:none;background:transparent;padding:8px 14px 8px 8px;border-radius:12px;font-weight:700;cursor:pointer;}
+      .fo-menu button.fo-on{background:var(--b-card);}
+      .fo-spark{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-acc);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+      .fo-spark:active{background:var(--b-acc2);}
+
+      /* Tag blättern */
+      .fo-daynav{display:flex;align-items:center;justify-content:center;gap:28px;margin:14px 0 12px;font-weight:700;font-size:1rem;}
+      .fo-daynav span{min-width:110px;text-align:center;}
+      .fo-daynav button{border:none;background:transparent;font-size:1.6rem;line-height:1;width:40px;height:36px;border-radius:12px;color:var(--b-mut);cursor:pointer;}
+      .fo-daynav button:disabled{opacity:.25;cursor:default;}
+
+      /* Spalten: Zwillinge am Tablet nebeneinander, am Handy eins mit Wechsel im Kopf */
+      .fo-grid{display:grid;grid-template-columns:1fr;gap:22px;}
+      @container fo-card (min-width: 680px){
+        .fo-card.fo-multi .fo-grid{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));grid-template-rows:repeat(var(--rows),auto);row-gap:0;}
+        .fo-card.fo-multi .fo-col{display:grid;grid-template-rows:subgrid;grid-row:span var(--rows);}
+      }
+      .fo-blk{display:flex;flex-direction:column;min-width:0;}
+      .fo-blk > .fo-next,.fo-blk > .fo-mcard,.fo-blk > .fo-nowgrid,.fo-blk > .fo-minis{flex:1;}   /* nebeneinander gleich hoch */
+      @container fo-card (max-width: 679px){ .fo-card.fo-multi .fo-col:not(.fo-sel){display:none;} .fo-colhead{display:none !important;} }
+      .fo-col{min-width:0;}
+      .fo-colhead{display:flex;align-items:center;gap:10px;margin:0 2px 12px;}
+      .fo-colhead b{font-size:1.1rem;font-weight:800;} .fo-colhead small{color:var(--b-mut);font-weight:600;font-size:.8rem;}
+
+      /* Schlafleiste: Beide schlafen und je Kind */
+      /* So kräftig wie die Schnellknöpfe, damit sie nachts im Halbdunkel sofort zu finden sind.
+         Wach: volle Schlaffarbe. Schläft: dunkel mit leuchtendem Rand und großer Dauer. */
+      .fo-sleep{display:flex;flex-direction:column;gap:10px;margin:0 0 18px;}
+      .fo-sl-row{display:flex;gap:10px;}
+      @container fo-card (min-width: 680px){ .fo-sleep{flex-direction:row;} .fo-sl-row{display:contents;} .fo-sl-plus{order:9;} }
+      .fo-sl{flex:1 1 0;min-width:0;min-height:76px;display:flex;align-items:center;gap:12px;border:none;border-radius:18px;padding:12px 16px;cursor:pointer;text-align:left;
+        background:var(--c-sleep);color:#1C1917 !important;box-shadow:0 4px 16px color-mix(in srgb,var(--c-sleep) 40%,transparent);}
+      .fo-card.fo-light .fo-sl{color:#fff !important;}
+      .fo-sl:active{transform:scale(.97);}
+      .fo-sl.fo-sl-an,.fo-card.fo-light .fo-sl.fo-sl-an{background:color-mix(in srgb,var(--c-sleep) 24%,var(--b-bg));color:var(--b-text) !important;
+        box-shadow:inset 0 0 0 3px var(--c-sleep),0 0 22px color-mix(in srgb,var(--c-sleep) 45%,transparent);}
+      .fo-sle{font-size:2rem;line-height:1;flex:none;}
+      .fo-slx{display:flex;flex-direction:column;min-width:0;}
+      .fo-slt{font-weight:800;font-size:1.08rem;line-height:1.2;font-variant-numeric:tabular-nums;}
+      .fo-sls{font-size:.84rem;opacity:.8;font-variant-numeric:tabular-nums;margin-top:2px;}
+      .fo-sl-an .fo-sls{color:var(--c-sleep);opacity:1;font-weight:700;}
+      /* Handy: in der Reihe je Kind Symbol über dem Text, sonst bricht „Kind B schläft“ um */
+      @container fo-card (max-width: 679px){ .fo-sl-row + .fo-sl-row .fo-sl{flex-direction:column;justify-content:center;gap:6px;padding:12px 8px;text-align:center;}
+        .fo-sl-row + .fo-sl-row .fo-slx{align-items:center;} }
+      .fo-sl-plus{flex:none;width:56px;min-height:76px;border:none;border-radius:18px;background:var(--b-card);color:var(--b-mut) !important;font-size:1.5rem;cursor:pointer;}
+      .fo-s{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--c-sleep);opacity:.4;}
+      .fo-s.fo-s1{opacity:.9;}
+      .fo-zeitrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+      .fo-kids button.fo-on{background:var(--c-sleep);color:#1C1917 !important;}
+
+      /* Schnellknöpfe */
+      .fo-quick{display:flex;gap:10px;margin-bottom:14px;}
+      .fo-q{flex:1 1 0;min-width:0;height:68px;border:none;border-radius:16px;background:var(--q);color:#1C1917 !important;cursor:pointer;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.74rem;font-weight:700;box-shadow:0 4px 14px color-mix(in srgb,var(--q) 35%,transparent);}
+      .fo-q:active{transform:scale(.95);}
+      .fo-qe{font-size:1.45rem;line-height:1;}
+      .fo-q-run{outline:3px solid color-mix(in srgb,var(--q) 45%,transparent);outline-offset:2px;font-variant-numeric:tabular-nums;font-size:.9rem;}
+
+      /* „Nächste Mahlzeit“ */
+      .fo-next{border-radius:20px;padding:16px 18px;background:var(--b-card);border:1.5px solid var(--b-acc);box-shadow:0 8px 24px var(--b-shadow);}
+      .fo-nl{display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--b-acc);}
+      .fo-nb{font-size:2rem;font-weight:800;letter-spacing:-.01em;line-height:1.15;margin-top:4px;font-variant-numeric:tabular-nums;}
+      .fo-next-due .fo-nb{color:var(--b-acc);}
+      .fo-ns{font-size:.92rem;color:var(--b-mut);margin-top:4px;}
+      .fo-nf{font-size:.88rem;color:var(--b-faint);margin-top:6px;}
+      .fo-nbtn{margin-top:12px;border:none;border-radius:12px;padding:10px 16px;background:var(--b-acc2);color:var(--b-acc) !important;font-weight:800;cursor:pointer;}
+      .fo-puls{width:9px;height:9px;border-radius:50%;background:var(--c-nurse);animation:fo-puls 1.4s ease-in-out infinite;}
+      @keyframes fo-puls{50%{transform:scale(1.7);opacity:.35;}}
+
+      /* Jetzt */
+      .fo-sec{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--b-faint);margin:18px 2px 8px;}
+      .fo-nowgrid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:10px;}
+      .fo-nowgrid>:last-child:nth-child(odd){grid-column:span 2;}
+      .fo-nc{display:flex;flex-direction:column;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
+      .fo-nc.fo-due{background:var(--b-due);}
+      .fo-ncl{display:flex;align-items:center;gap:7px;font-size:.84rem;color:var(--b-mut);font-weight:600;}
+      .fo-ncl i{width:9px;height:9px;border-radius:50%;flex:none;}
+      .fo-ncb{font-size:1.55rem;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.1;}
+      .fo-ncs{font-size:.8rem;color:var(--b-mut);}
+      .fo-ncn{font-size:.78rem;color:var(--b-faint);margin-top:auto;padding-top:8px;}
+      .fo-due-t{color:var(--b-acc);font-weight:700;font-size:.86rem;}
+
+      /* Tageszahlen */
+      .fo-pills{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:8px;margin-top:16px;}
+      .fo-pills div{display:flex;flex-direction:column;align-items:center;border-radius:14px;padding:9px 4px;background:var(--b-card);}
+      .fo-pills b{font-size:1.15rem;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;}
+      .fo-pills span{font-size:.72rem;color:var(--b-mut);font-weight:600;white-space:nowrap;}
+      @container fo-card (max-width: 420px){ .fo-pills b{font-size:1rem;} .fo-pills span{font-size:.66rem;} }
+
+      /* Streifen */
+      .fo-strip{position:relative;flex:1;min-width:0;}
+      .fo-strip-l{margin-top:14px;}
+      .fo-track{position:relative;height:16px;border-radius:5px;background:var(--b-track);overflow:hidden;}
+      .fo-strip-l .fo-track{height:36px;border-radius:8px;}
+      .fo-b{position:absolute;top:0;bottom:0;border-radius:2px;}
+      .fo-w{position:absolute;top:0;bottom:0;width:3px;margin-left:-1.5px;border-radius:2px;}
+      .fo-jetzt{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--b-acc);}
+      .fo-ticks{position:relative;height:16px;font-size:.68rem;color:var(--b-faint);font-variant-numeric:tabular-nums;flex:1;}
+      .fo-ticks span{position:absolute;top:2px;transform:translateX(-50%);}
+      .fo-ticks span:first-child{transform:none;} .fo-ticks span:last-child{transform:translateX(-100%);}
+
+      /* Einträge */
+      .fo-list{border-radius:16px;background:var(--b-card);padding:4px 14px;}
+      .fo-li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b-line);font-size:.9rem;}
+      .fo-li:last-child{border-bottom:none;}
+      .fo-li i{width:9px;height:9px;border-radius:50%;flex:none;}
+      .fo-li span{flex:1;min-width:0;font-weight:600;} .fo-li small{color:var(--b-mut);} .fo-li time{color:var(--b-mut);font-variant-numeric:tabular-nums;min-width:42px;text-align:right;}
+
+      /* Wachstum & Momente */
+      .fo-minis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
+      .fo-mini{display:flex;align-items:center;gap:12px;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
+      .fo-mini[data-nav],.fo-mini[data-view]{cursor:pointer;}
+      .fo-mi{font-size:1.6rem;flex:none;}
+      .fo-mini div{display:flex;flex-direction:column;min-width:0;}
+      .fo-mini small{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--b-faint);}
+      .fo-mini b{font-size:1rem;font-weight:800;overflow-wrap:anywhere;}
+      .fo-mini div span{font-size:.78rem;color:var(--b-mut);}
+
+      /* Muster */
+      .fo-mtitle{display:flex;flex-direction:column;margin:16px 2px 12px;}
+      .fo-mtitle b{font-size:1.5rem;font-weight:800;} .fo-mtitle span{color:var(--b-mut);font-size:.9rem;}
+      .fo-mctl{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:16px;}
+      .fo-seg{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--b-card);}
+      .fo-seg button{border:none;background:transparent;border-radius:999px;padding:6px 14px;font-weight:700;font-size:.86rem;color:var(--b-mut) !important;cursor:pointer;}
+      .fo-seg button.fo-on{background:var(--b-acc2);color:var(--b-acc) !important;}
+      .fo-chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;max-width:100%;padding-bottom:2px;} .fo-chips::-webkit-scrollbar{display:none;}
+      .fo-chips button{flex:none;display:flex;align-items:center;gap:7px;border:none;border-radius:999px;padding:8px 14px;background:var(--b-card);font-weight:700;font-size:.88rem;cursor:pointer;}
+      .fo-chips i{width:9px;height:9px;border-radius:50%;background:var(--chip);}
+      .fo-chips button.fo-on{background:var(--chip);color:#1C1917 !important;} .fo-chips button.fo-on i{background:#1C1917;opacity:.35;}
+      .fo-mcard{border-radius:20px;padding:16px 18px;background:var(--b-card);}
+      .fo-mh{font-size:1.2rem;font-weight:800;}
+      .fo-mt{font-size:.92rem;color:var(--b-mut);line-height:1.45;margin-top:6px;}
+      .fo-avg{margin-top:16px;font-size:.95rem;} .fo-avg span{color:var(--b-mut);}
+      .fo-hint{font-size:.8rem;color:var(--c-diaper);margin-top:4px;opacity:.9;}
+      .fo-rows{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+      .fo-row{display:flex;align-items:center;gap:10px;}
+      .fo-rl{flex:0 0 48px;font-size:.84rem;font-weight:700;color:var(--b-mut);font-variant-numeric:tabular-nums;}
+      .fo-rt{flex:0 0 58px;text-align:right;font-size:.84rem;font-weight:700;font-variant-numeric:tabular-nums;}
+      .fo-row .fo-track{height:22px;}
+      .fo-row-ticks .fo-ticks{height:14px;}
+      .fo-ins{display:flex;flex-direction:column;gap:6px;}
+      .fo-ins div{border-radius:14px;padding:10px 12px;background:var(--b-card);font-size:.88rem;line-height:1.35;}
+      .fo-ins span{color:var(--b-mut);}
+
+      /* Wachstum: Kurve in der Kinderfarbe, im Dunkeln aufgehellt */
+      .fo-gtiles{margin-top:10px;}
+      .fo-gcard{border-radius:20px;padding:12px 8px 10px;background:var(--b-card);--kl:color-mix(in srgb,var(--k) 55%,var(--b-text));}
+      .fo-card.fo-light .fo-gcard{--kl:var(--k);}
+      .fo-gchart{height:230px;}
+      .fo-gchart svg{display:block;overflow:visible;}
+      .fo-ggrid{stroke:var(--b-line);stroke-width:1;}
+      .fo-gy{font-size:11px;fill:var(--b-faint);text-anchor:end;font-variant-numeric:tabular-nums;}
+      .fo-gunit{font-weight:800;}
+      .fo-gx{font-size:11px;fill:var(--b-faint);text-anchor:middle;}
+      .fo-gb1{fill:var(--kl);opacity:.1;} .fo-gb2{fill:var(--kl);opacity:.14;}
+      .fo-gmid{fill:none;stroke:var(--kl);stroke-width:1.2;stroke-dasharray:4 4;opacity:.6;}
+      .fo-gp{font-size:10px;fill:var(--b-mut);}
+      .fo-gheute{stroke:var(--b-acc);stroke-width:1.5;}
+      .fo-gheutel{font-size:10.5px;font-weight:800;fill:var(--b-acc);text-anchor:middle;}
+      .fo-gline{fill:none;stroke:var(--kl);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round;}
+      .fo-gdot{fill:var(--kl);stroke:var(--b-card);stroke-width:2;}
+      .fo-ghalo{fill:var(--kl);opacity:.25;}
+      .fo-gpt{cursor:pointer;}
+      .fo-gleg{display:flex;flex-wrap:wrap;gap:6px 16px;padding:4px 10px 0;font-size:.76rem;color:var(--b-mut);}
+      .fo-gleg span{display:flex;align-items:center;gap:6px;}
+      .fo-gleg i{display:inline-block;width:16px;}
+      .fo-gl-line{height:3px;border-radius:2px;background:var(--kl);}
+      .fo-gl-band{height:10px;border-radius:3px;background:var(--kl);opacity:.3;}
+      .fo-gl-mid{border-top:1.5px dashed var(--kl);opacity:.8;}
+      .fo-wli{width:100%;border:none;border-bottom:1px solid var(--b-line);background:transparent;text-align:left;cursor:pointer;}
+      .fo-wli em{font-style:normal;font-size:.72rem;font-weight:800;color:var(--b-acc);margin-left:8px;}
+      .fo-more{display:block;margin:8px auto 0;border:none;background:transparent;color:var(--b-acc) !important;font-weight:700;font-size:.86rem;cursor:pointer;}
+      .fo-quelle{font-size:.72rem;line-height:1.45;color:var(--b-faint);margin-top:12px;}
+
+      /* Leiste unten */
+      .fo-tabbar{position:sticky;bottom:12px;z-index:4;display:flex;gap:4px;width:max-content;max-width:100%;margin:22px auto 0;padding:6px;border-radius:999px;
+        background:var(--b-bar);box-shadow:0 10px 30px var(--b-shadow);border:1px solid var(--b-line);}
+      .fo-tabbar:empty{display:none;}
+      .fo-tabbar button{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:68px;border:none;border-radius:999px;padding:7px 12px;background:transparent;color:var(--b-mut) !important;font-size:.72rem;font-weight:700;cursor:pointer;}
+      .fo-tabbar button.fo-on{background:var(--b-card2);color:var(--b-acc) !important;}
+      .fo-tabbar svg{width:22px;height:22px;fill:currentColor;}
+
+      /* Blätter */
+      .fo-ov{position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;animation:fo-fade .2s;}
+      @keyframes fo-fade{from{opacity:0;}}
+      .fo-sheet{width:100%;max-width:560px;max-height:88vh;overflow:auto;box-sizing:border-box;background:var(--b-bg);color:var(--b-text);
+        border-radius:26px 26px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px var(--b-shadow);animation:fo-up .3s cubic-bezier(.2,.9,.3,1);}
+      @media (min-width: 700px){ .fo-ov{align-items:center;} .fo-sheet{border-radius:26px;} }
+      @keyframes fo-up{from{transform:translateY(40px);opacity:0;}}
+      .fo-sh-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+      .fo-sh-head b{flex:1;font-size:1.15rem;font-weight:800;display:flex;align-items:center;gap:8px;}
+      .fo-sh-ai svg{color:var(--b-acc);}
+      .fo-x{border:none;background:var(--b-card);width:34px;height:34px;border-radius:50%;cursor:pointer;flex:none;}
+      .fo-neu{border:none;background:transparent;color:var(--b-mut) !important;font-size:.8rem;font-weight:700;cursor:pointer;}
+      .fo-sh-sub{font-size:.8rem;color:var(--b-mut);margin:-6px 0 12px;}
+      .fo-big3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+      .fo-big3 button{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;border-radius:18px;padding:16px 6px;background:color-mix(in srgb,var(--q) 22%,var(--b-card));font-weight:800;cursor:pointer;}
+      .fo-big3 span{font-size:1.8rem;}
+      .fo-lbl{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--b-faint);margin:14px 0 8px;}
+      .fo-mls{display:flex;flex-wrap:wrap;gap:8px;}
+      .fo-mls button{border:none;border-radius:12px;padding:10px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
+      .fo-mls button.fo-on{background:var(--c-bottle);color:#1C1917 !important;}
+      .fo-mls .fo-in{width:90px;}
+      .fo-in{box-sizing:border-box;width:100%;padding:11px 12px;border:1px solid var(--b-line);border-radius:12px;background:var(--b-card);color:var(--b-text);font:inherit;font-size:1rem;}
+      .fo-in[type=time],.fo-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:dark;}
+      .fo-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum und Uhrzeit sonst breiter als das Blatt */
+      .fo-card.fo-light .fo-in[type=time],.fo-card.fo-light .fo-in[type=date]{color-scheme:light;}
+      .fo-sh-hint{font-size:.78rem;color:var(--b-mut);margin-top:6px;}
+      .fo-ok{display:block;width:100%;margin-top:18px;border:none;border-radius:14px;padding:13px;background:var(--b-acc);color:#fff !important;font-weight:800;font-size:1rem;cursor:pointer;}
+      .fo-del{display:block;width:100%;margin-top:6px;border:none;background:transparent;padding:11px;color:var(--b-mut) !important;font-weight:700;cursor:pointer;}
+
+      /* Frag nach */
+      .fo-chat{display:flex;flex-direction:column;height:min(640px,82vh);}
+      .fo-msgs{flex:1;display:flex;flex-direction:column;gap:8px;overflow-y:auto;margin-bottom:10px;min-height:0;}
+      .fo-msgs[hidden]{display:none;}
+      .fo-chat .fo-sugg{margin-top:auto;}
+      .fo-msg{max-width:88%;border-radius:18px;padding:10px 14px;font-size:.93rem;line-height:1.45;overflow-wrap:anywhere;}
+      .fo-msg p{margin:0 0 6px;} .fo-msg p:last-child{margin-bottom:0;} .fo-msg ul{margin:4px 0;padding-left:20px;} .fo-msg li{margin:2px 0;}
+      .fo-me{align-self:flex-end;background:var(--b-acc);color:#fff;border-bottom-right-radius:6px;}
+      .fo-ai{align-self:flex-start;background:var(--b-card);border-bottom-left-radius:6px;}
+      .fo-tipp{display:flex;gap:5px;padding:14px 16px;}
+      .fo-tipp i{width:8px;height:8px;border-radius:50%;background:var(--b-mut);opacity:.4;animation:fo-tipp 1.2s infinite;}
+      .fo-tipp i:nth-child(2){animation-delay:.2s;} .fo-tipp i:nth-child(3){animation-delay:.4s;}
+      @keyframes fo-tipp{30%{opacity:1;transform:translateY(-3px);}}
+      .fo-sugg{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+      .fo-sugg[hidden]{display:none;}
+      .fo-sugg button{border:1px solid var(--b-line);border-radius:999px;padding:8px 13px;background:var(--b-card);font-size:.86rem;font-weight:600;cursor:pointer;text-align:left;}
+      .fo-ask{display:flex;gap:8px;}
+      .fo-ask .fo-in{flex:1;min-width:0;}
+      .fo-send{flex:none;width:48px;border:none;border-radius:12px;background:var(--b-acc);color:#fff !important;font-size:1.1rem;cursor:pointer;}
+      @media (prefers-reduced-motion: reduce){ .fo-puls,.fo-tipp i,.fo-sheet,.fo-ov{animation:none !important;} }
+    </style>`;
+  }
+  getCardSize() { return 12; }
+}
+if (!customElements.get("fp-baby-overview-card")) {
+  customElements.define("fp-baby-overview-card", FpBabyOverviewCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "fp-baby-overview-card", name: "FP Baby Overview Card", description: "Übersicht je Kind im Stil von Buma: nächste Mahlzeit, Jetzt-Karten, Tagesstreifen, Muster und KI-Chat „Frag nach“" });
 }
 })();
