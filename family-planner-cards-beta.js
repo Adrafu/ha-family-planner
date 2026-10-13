@@ -6355,10 +6355,10 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v2 (im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card-beta v3 (Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta).
-// Schreibt selbst Windeln und Fläschchen im Format jener Karten und schaltet den
+// Schreibt selbst Windeln, Fläschchen und Gewichte im Format jener Karten und schaltet den
 // Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
 (() => {
 const U = window.__fpUtils;
@@ -6385,7 +6385,7 @@ class FpBabyOverviewCard extends HTMLElement {
       chat: true,                // ✦ „Frag nach“
       ai_entity: "",             // ai_task-Entity für den Chat; leer = die in HA voreingestellte
       days: 14,                  // so viele Tage bekommt die KI
-      growth_path: "",           // optional: Tab mit der Gewichtskarte, erscheint unten als „Wachstum“
+      growth_data: "",           // optional: Perzentilkurven wie bei der fp-weight-card-beta (dazu je Kind birth, ga, sex)
       memories_path: "",         // optional: Tab mit der Meilensteinkarte, erscheint unten als „Momente“
       bottle_presets: [40, 60, 90, 120],
       reminder_hours: 3,         // ab hier ist die Mahlzeit „fällig“, wie in der Stillkarte
@@ -6399,10 +6399,27 @@ class FpBabyOverviewCard extends HTMLElement {
     this._pfx = `fp-overview:${this.config.kids.map(k => k.key).join(",")}`;
     this._kind = this._pref("kind", "");
     if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
-    this._view = this._pref("view", "heute") === "muster" ? "muster" : "heute";
+    const v = this._pref("view", "heute");
+    this._view = v === "muster" || v === "wachstum" ? v : "heute";
     this._filter = this._pref("filter", "alle");
     this._spanne = this._pref("spanne", "7") === "14" ? 14 : 7;
     this._off = 0;   // 0 = heute, -1 = gestern …
+    this._wAlle = false;   // Wachstum: alle Messungen statt der letzten
+    this._ref = null;
+    if (this.config.growth_data) this._loadRef();
+  }
+  // Referenzkurven wie in der fp-weight-card-beta; beide Karten teilen sich den Abruf über window.__fpGrowth.
+  async _loadRef() {
+    const url = this.config.growth_data, cache = (window.__fpGrowth = window.__fpGrowth || {});
+    try {
+      cache[url] = cache[url] || fetch(url, { cache: "no-cache" }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+      this._ref = await cache[url];
+    } catch (e) {
+      delete cache[url];
+      U.toast(this, "Perzentilkurven konnten nicht geladen werden");
+      this._ref = null;
+    }
+    this._paint(true);
   }
   set hass(hass) {
     this._hass = hass;
@@ -6419,8 +6436,15 @@ class FpBabyOverviewCard extends HTMLElement {
     (this._nachT || []).forEach(clearTimeout);
     this._nachT = zeiten.map(ms => setTimeout(() => this._load(), ms));
   }
-  connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._tick(), 1000); }
-  disconnectedCallback() { clearInterval(this._timer); this._timer = null; (this._nachT || []).forEach(clearTimeout); }
+  connectedCallback() {
+    if (!this._timer) this._timer = setInterval(() => this._tick(), 1000);
+    // Die Wachstumskurve wird für ihre echte Breite gezeichnet, sonst schrumpft am Handy die Schrift mit.
+    if (!this._ro && window.ResizeObserver) { this._ro = new ResizeObserver(() => { if (this._view === "wachstum") this._zeichne(); }); this._ro.observe(this); }
+  }
+  disconnectedCallback() {
+    clearInterval(this._timer); this._timer = null; (this._nachT || []).forEach(clearTimeout);
+    if (this._ro) { this._ro.disconnect(); this._ro = null; }
+  }
   // Jede Sekunde nur die laufenden Uhren; jede halbe Minute die „her“-Zeiten, jede Minute die Kalender.
   _tick() {
     this._t = (this._t || 0) + 1;
@@ -6521,7 +6545,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const kid = this.config.kids.find(k => (k.weight_key || k.key) === meta.kind) || this.config.kids.find(k => sum.toLowerCase().startsWith(k.name.toLowerCase()));
     let g = Number(meta.g) || 0;
     if (!g) { const m = sum.match(/([\d.,]+)\s*(kg|g)\b/i); if (m) { const n = Number(m[1].replace(",", ".")); g = Math.round(/kg/i.test(m[2]) || n < 30 ? n * 1000 : n); } }
-    return kid && g > 0 ? { kind: kid.key, g, date: this._datum(ev) } : null;
+    return kid && g > 0 ? { uid: ev.uid, kind: kid.key, g, date: this._datum(ev) } : null;
   }
   _parseMilestone(ev) {
     const meta = this._meta(ev);
@@ -6784,11 +6808,14 @@ class FpBabyOverviewCard extends HTMLElement {
     if ((b = z("[data-nav]"))) { const p = this.config[b.dataset.nav]; if (p) { history.pushState(null, "", p); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); } return; }
     if ((b = z("[data-f]"))) { this._filter = b.dataset.f; this._setPref("filter", this._filter); this._paint(true); return; }
     if ((b = z("[data-sp]"))) { this._spanne = Number(b.dataset.sp); this._setPref("spanne", String(this._spanne)); this._paint(true); return; }
+    if ((b = z("[data-walle]"))) { this._wAlle = !this._wAlle; this._paint(true); return; }
+    if ((b = z("[data-wuid]"))) { const w = ((this._d && this._d.weights) || []).find(x => x.uid === b.dataset.wuid); if (w) this._sheetWiegen(this._kid(w.kind), w); return; }
     if ((b = z("[data-act]"))) {
       const kid = this._kid(b.dataset.kind);
       if (b.dataset.act === "still") this._toggle(kid);
       if (b.dataset.act === "windel") this._sheetWindel(kid);
       if (b.dataset.act === "flasche") this._sheetFlasche(kid);
+      if (b.dataset.act === "wiegen") this._sheetWiegen(kid, null);
       return;
     }
     const m = this.querySelector(".fo-menu"); if (m && !m.hidden) m.hidden = true;
@@ -6796,10 +6823,11 @@ class FpBabyOverviewCard extends HTMLElement {
 
   _paint(force) {
     if (!this._built || !this._d) return;
+    if (this._view === "wachstum" && !this.config.weight_calendar) this._view = "heute";
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
-    const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, dunkel, Math.floor(Date.now() / 30000),
+    const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
       kids.map(k => [this._laeuft(k), this._seite(k)]),
-      vms.map(v => [v.raw.feeds.length, v.raw.diapers.length, v.letzte && v.letzte.start, v.windel && +v.windel.start, v.weights.length, v.ms.length])]);
+      vms.map(v => [v.raw.feeds.length, v.raw.diapers.length, v.letzte && v.letzte.start, v.windel && +v.windel.start, v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length])]);
     if (!force && sig === this._sig) return;
     this._sig = sig;
     this._card.classList.toggle("fo-light", !dunkel);
@@ -6808,12 +6836,14 @@ class FpBabyOverviewCard extends HTMLElement {
     const body = this.querySelector(".fo-body");
     const spalten = vms.map(vm => `<section class="fo-col${vm.kid.key === this._kind ? " fo-sel" : ""}">
       ${kids.length > 1 ? `<div class="fo-colhead">${this._avatar(vm.kid, 30)}<b>${U.esc(vm.kid.name)}</b><small>${this._alterZeile(vm.kid)}</small></div>` : ""}
-      ${this._view === "muster" ? this._musterSpalte(vm) : this._heuteSpalte(vm)}</section>`).join("");
-    body.innerHTML = (this._view === "muster" ? this._musterKopf() : this._tagNav()) + `<div class="fo-grid">${spalten}</div>`;
-    const tabs = [["heute", "Heute"], ["muster", "Muster"]].map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
-    if (this.config.growth_path) tabs.push(`<button data-nav="growth_path"><svg viewBox="0 0 24 24">${ICO.wachstum}</svg><span>Wachstum</span></button>`);
+      ${this._view === "muster" ? this._musterSpalte(vm) : this._view === "wachstum" ? this._wachstumSpalte(vm) : this._heuteSpalte(vm)}</section>`).join("");
+    body.innerHTML = (this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav()) + `<div class="fo-grid">${spalten}</div>`;
+    const views = [["heute", "Heute"], ["muster", "Muster"]];
+    if (this.config.weight_calendar) views.push(["wachstum", "Wachstum"]);
+    const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
     if (this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
     this.querySelector(".fo-tabbar").innerHTML = tabs.join("");
+    if (this._view === "wachstum") this._zeichne();
   }
 
   // Kopf wie in Buma: Foto, Name mit ⌄ zum Wechseln, Alter; rechts ✦ für „Frag nach“.
@@ -6945,7 +6975,7 @@ class FpBabyOverviewCard extends HTMLElement {
   _miniKarten(vm) {
     const w = vm.weights, wl = w[w.length - 1], vor = wl && (w.slice().reverse().find(x => wl.date - x.date >= 5 * TAG) || w[w.length - 2]), mz = vm.ms[vm.ms.length - 1];
     const karten = [];
-    if (this.config.weight_calendar) karten.push(`<div class="fo-mini"${this.config.growth_path ? ` data-nav="growth_path"` : ""}><span class="fo-mi">⚖️</span><div><small>Wachstum</small><b>${wl ? this._kg(wl.g) : "–"}</b>
+    if (this.config.weight_calendar) karten.push(`<div class="fo-mini" data-view="wachstum"><span class="fo-mi">⚖️</span><div><small>Wachstum</small><b>${wl ? this._kg(wl.g) : "–"}</b>
       <span>${wl ? `${vor ? `${wl.g - vor.g >= 0 ? "+" : "−"}${Math.abs(wl.g - vor.g)} g seit ${this._dm(vor.date)}` : `am ${this._dm(wl.date)}`}` : "noch nicht gewogen"}</span></div></div>`);
     if (this.config.milestone_calendar) karten.push(`<div class="fo-mini"${this.config.memories_path ? ` data-nav="memories_path"` : ""}><span class="fo-mi">${mz ? U.esc(mz.e) : "⭐"}</span><div><small>Momente</small><b>${mz ? U.esc(mz.t) : "–"}</b>
       <span>${mz ? `am ${this._dm(mz.date)}` : "noch kein Meilenstein"}</span></div></div>`);
@@ -6982,6 +7012,177 @@ class FpBabyOverviewCard extends HTMLElement {
       <div class="fo-hint">Tage schwanken – der Trend zählt mehr als ein einzelner Tag.</div>
       <div class="fo-rows"><div class="fo-row fo-row-ticks"><span class="fo-rl"></span>${this._ticks()}<span class="fo-rt"></span></div>${rows.join("")}</div>
       ${bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>` : ""}`;
+  }
+
+  // ---------- Wachstum ----------
+  // Perzentilen wie in der fp-weight-card-beta: bis 64 Wochen ab Beginn der Schwangerschaft
+  // INTERGROWTH-21st für Frühgeborene, danach WHO mit L/M/S nach korrigiertem Alter.
+  _pmaTage(kid, t) {
+    const [w, d] = String(kid.ga || "40+0").split("+").map(Number);
+    return (w || 40) * 7 + (d || 0) + (t - this._day(kid.birth)) / TAG;
+  }
+  _refAt(sex, pma) {
+    const ref = this._ref; if (!ref || !ref.who) return null;
+    const lerp = (rows, v, i) => {
+      if (v < rows[0][0] || v > rows[rows.length - 1][0]) return null;
+      const k = rows.findIndex(r => r[0] >= v); if (k <= 0) return rows[Math.max(0, k)][i];
+      const a = rows[k - 1], b = rows[k], f = (v - a[0]) / (b[0] - a[0]);
+      return a[i] + f * (b[i] - a[i]);
+    };
+    const pre = ref.preterm && ref.preterm[sex], wPma = pma / 7;
+    if (pre && pre.length && wPma >= pre[0][0] && wPma <= pre[pre.length - 1][0]) return [1, 2, 3, 4, 5].map(i => lerp(pre, wPma, i) * 1000);
+    const who = ref.who[sex], alter = pma - 280;
+    if (!who || alter < 0) return null;
+    const rows = alter <= 91 ? who.w : who.mo, v = alter <= 91 ? alter / 7 : alter / 30.4375;
+    const L = lerp(rows, v, 1), M = lerp(rows, v, 2), S = lerp(rows, v, 3);
+    if (L == null) return null;
+    return [-1.8808, -1.2816, 0, 1.2816, 1.8808].map(z => M * Math.pow(1 + L * S * z, 1 / L) * 1000);
+  }
+  _hatRef(kid) { return !!(this._ref && kid.birth && kid.sex); }
+  // Ungefähre Perzentile als Zahl, zwischen den fünf Linien linear verteilt; 2 heißt unter P3, 98 über P97.
+  _pz(kid, w) {
+    if (!this._hatRef(kid)) return null;
+    const c = this._refAt(kid.sex, this._pmaTage(kid, +w.date)); if (!c) return null;
+    const P = [3, 10, 50, 90, 97];
+    if (w.g < c[0]) return 2;
+    if (w.g > c[4]) return 98;
+    for (let i = 1; i < 5; i++) if (w.g <= c[i]) return Math.round(P[i - 1] + (w.g - c[i - 1]) / (c[i] - c[i - 1]) * (P[i] - P[i - 1]));
+    return null;
+  }
+  _pzText(p) { return p == null ? "" : p <= 2 ? "unter P3" : p >= 98 ? "über P97" : `≈ P${p}`; }
+  _g(d) { return `${d >= 0 ? "+" : "−"}${Math.abs(Math.round(d))} g`; }
+  _alterAm(kid, d) {
+    if (!kid.birth) return "";
+    const tage = Math.round((d - this._day(kid.birth)) / TAG);
+    if (tage < 0) return "";
+    if (tage === 0) return "bei der Geburt";
+    if (tage < 14) return `mit ${tage} ${tage === 1 ? "Tag" : "Tagen"}`;
+    if (tage < 61) return `mit ${Math.floor(tage / 7)} Wochen`;
+    const m = Math.floor(tage / 30.4375);
+    return m < 24 ? `mit ${m} Monaten` : `mit ${Math.floor(m / 12)} Jahren`;
+  }
+  // Der erste Wert am Tag der Geburt (± 1 Tag) gilt als Geburtsgewicht.
+  _geburtsgewicht(kid, w) { return kid.birth ? w.find(x => Math.abs(x.date - this._day(kid.birth)) <= 1.5 * TAG) || null : null; }
+
+  _wachstumKopf() {
+    return `<div class="fo-mtitle"><b>Wachstum</b><span>Gewicht nach Alter${this._ref ? ", mit Perzentilkurven" : ""}</span></div>`;
+  }
+  _wachstumSpalte(vm) {
+    const k = vm.kid, w = vm.weights, l = w[w.length - 1], kk = U.esc(k.key);
+    const wiegen = `<button class="fo-nbtn" type="button" data-act="wiegen" data-kind="${kk}">⚖️ Wiegen</button>`;
+    if (!l) return `<div class="fo-next"><div class="fo-nl">Gewicht</div><div class="fo-nb">–</div>
+      <div class="fo-ns">Noch nicht gewogen. Am besten mit dem Geburtsgewicht anfangen.</div>${wiegen}</div>`;
+    const vor = w.slice(0, -1).reverse().find(x => l.date - x.date >= 5 * TAG) || w[w.length - 2];
+    const tage = vor ? Math.max(1, Math.round((l.date - vor.date) / TAG)) : 0;
+    const geb = this._geburtsgewicht(k, w), erst = geb || w[0], pzL = this._pz(k, l), alt = this._alterAm(k, l.date);
+    let html = `<div class="fo-next"><div class="fo-nl">Aktuelles Gewicht</div>
+      <div class="fo-nb">${this._kg(l.g)}</div>
+      <div class="fo-ns">am ${this._dm(l.date)}${alt ? ` · ${alt}` : ""}${pzL != null ? ` · ${this._pzText(pzL)}` : ""}</div>
+      ${vor ? `<div class="fo-nf">${this._g(l.g - vor.g)} seit ${this._dm(vor.date)} · Ø ${this._g((l.g - vor.g) / tage)} am Tag</div>` : ""}
+      ${wiegen}</div>`;
+    // Kennzahlen: Zunahme seit der Geburt, Schnitt pro Woche, Perzentile jetzt und damals
+    const karte = (titel, wert, unter) => `<div class="fo-nc"><div class="fo-ncl">${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div></div>`;
+    const karten = [], seit = geb ? "seit der Geburt" : `seit ${this._dm(erst.date)}`;
+    if (w.length > 1) {
+      karten.push(karte(geb ? "Seit der Geburt" : `Seit ${this._dm(erst.date)}`, this._g(l.g - erst.g), `${geb ? "Geburtsgewicht" : "erste Messung"} ${this._kg(erst.g)}`));
+      karten.push(karte("Pro Woche", `Ø ${this._g((l.g - erst.g) / Math.max(1, (l.date - erst.date) / TAG) * 7)}`, seit));
+    }
+    const pzE = w.length > 1 ? this._pz(k, erst) : null;
+    if (pzL != null) karten.push(karte("Perzentile", this._pzText(pzL), pzE != null ? `${geb ? "bei der Geburt" : `am ${this._dm(erst.date)}`} ${this._pzText(pzE)}` : "nach Alter"));
+    if (karten.length) html += `<div class="fo-nowgrid fo-gtiles">${karten.join("")}</div>`;
+    // Kurve: wird nach dem Einfügen für die echte Breite gezeichnet (_zeichne)
+    html += `<div class="fo-sec">Verlauf</div><div class="fo-gcard" style="${this._kidStyle(k)}"><div class="fo-gchart" data-kind="${kk}"></div>
+      ${this._hatRef(k) ? `<div class="fo-gleg"><span><i class="fo-gl-line"></i>${U.esc(k.name)}</span><span><i class="fo-gl-band"></i>P3–P97</span><span><i class="fo-gl-mid"></i>P50</span></div>` : ""}</div>`;
+    const bem = this._wBemerkt(k, w, geb, l);
+    if (bem.length) html += `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>`;
+    const liste = w.slice().reverse(), zeig = this._wAlle ? liste : liste.slice(0, 6);
+    html += `<div class="fo-sec">Messungen</div><div class="fo-list">${zeig.map(x => {
+      const i = w.indexOf(x), p = i > 0 ? w[i - 1] : null, pz = this._pz(k, x);
+      return `<button class="fo-li fo-wli" type="button" data-wuid="${U.esc(x.uid)}"><i style="background:${U.esc(k.color)}"></i><span>${this._kg(x.g)}${x === geb ? "<em>Geburt</em>" : ""}</span>
+        <small>${[p ? this._g(x.g - p.g) : "", this._pzText(pz)].filter(Boolean).join(" · ")}</small><time>${this._dm(x.date)}</time></button>`;
+    }).join("")}</div>${liste.length > 6 ? `<button class="fo-more" type="button" data-walle>${this._wAlle ? "Weniger zeigen" : `Alle ${liste.length} Messungen`}</button>` : ""}`;
+    if (this._hatRef(k)) html += `<div class="fo-quelle">Kurven P3–P97: ${this._ref.preterm && Object.keys(this._ref.preterm).length
+      ? "INTERGROWTH-21st für Frühgeborene bis 64 Wochen nach Beginn der Schwangerschaft, danach WHO" : "WHO"} nach korrigiertem Alter. Einzelne Messungen schwanken – der Verlauf zählt.</div>`;
+    return html;
+  }
+  // Gerechnete Beobachtungen, keine Bewertung: Tiefpunkt nach der Geburt, Geburtsgewicht wieder erreicht, Kilomarken.
+  _wBemerkt(k, w, geb, l) {
+    const out = [];
+    if (geb) {
+      const tief = w.filter(x => x.date > geb.date && x.date - geb.date <= 21 * TAG).reduce((m, x) => (!m || x.g < m.g ? x : m), null);
+      if (tief && tief.g < geb.g) {
+        out.push(`Tiefster Wert ${this._kg(tief.g)} am ${this._dm(tief.date)} <span>– ${this._komma((geb.g - tief.g) / geb.g * 100)} % unter dem Geburtsgewicht</span>`);
+        const zurueck = w.find(x => x.date > tief.date && x.g >= geb.g);
+        if (zurueck) out.push(`Geburtsgewicht wieder erreicht am ${this._dm(zurueck.date)} <span>– ${this._alterAm(k, zurueck.date)}</span>`);
+        else if (l.g < geb.g) out.push(`Noch ${geb.g - l.g} g bis zum Geburtsgewicht <span>(${this._kg(geb.g)})</span>`);
+      }
+      const doppelt = l.g >= 2 * geb.g && w.find(x => x.g >= 2 * geb.g);
+      if (doppelt) out.push(`Geburtsgewicht verdoppelt am ${this._dm(doppelt.date)} <span>– ${this._alterAm(k, doppelt.date)}</span>`);
+    }
+    const marke = Math.floor(l.g / 1000) * 1000, erreicht = marke >= 1000 && w[0].g < marke && w.find(x => x.g >= marke);
+    if (erreicht && l.date - erreicht.date <= 14 * TAG) out.push(`${marke / 1000} kg geschafft am ${this._dm(erreicht.date)} 🎉`);
+    const her = Math.round((this._day(this._local(new Date(), " ")) - l.date) / TAG);
+    if (her >= 7) out.push(`Zuletzt vor ${her} Tagen gewogen`);
+    return out;
+  }
+  _zeichne() {
+    this.querySelectorAll(".fo-gchart[data-kind]").forEach(el => {
+      const W = Math.round(el.clientWidth);
+      if (!W || (el.dataset.w === String(W) && el.firstChild)) return;   // ausgeblendete Spalte oder schon passend
+      el.dataset.w = String(W);
+      el.innerHTML = this._kurve(this._vm(this._kid(el.dataset.kind)), W);
+    });
+  }
+  // Gewicht über dem Alter: Perzentilbänder in der Kinderfarbe, ein Stück Kurve voraus, Linie bei heute.
+  _kurve(vm, W) {
+    const k = vm.kid, w = vm.weights;
+    if (!w.length) return "";
+    const H = 230, L = 38, R = 34, T = 22, B = 26;
+    const geb = k.birth ? +this._day(k.birth) : null, jetzt = Date.now();
+    const t0 = geb != null ? Math.min(geb, +w[0].date) : +w[0].date - 2 * TAG;
+    const tEnde = Math.max(jetzt, +w[w.length - 1].date), t1 = tEnde + Math.max(4 * TAG, (tEnde - t0) * .12);
+    const ref = [];
+    if (this._hatRef(k)) {
+      const n = Math.max(2, Math.min(200, Math.round((t1 - t0) / TAG)));
+      for (let i = 0; i <= n; i++) { const t = t0 + (t1 - t0) * i / n, c = this._refAt(k.sex, this._pmaTage(k, t)); if (c) ref.push({ t, c }); }
+    }
+    let g0 = Math.min(...w.map(x => x.g), ...ref.map(p => p.c[0])), g1 = Math.max(...w.map(x => x.g), ...ref.map(p => p.c[4]));
+    const span = Math.max(g1 - g0, 300), step = [100, 200, 250, 500, 1000, 2000].find(s => span / s <= 6) || 2000;
+    g0 = Math.floor((g0 - span * .05) / step) * step; g1 = Math.ceil((g1 + span * .05) / step) * step;
+    const x = t => +(L + (t - t0) / (t1 - t0) * (W - L - R)).toFixed(1), y = g => +(T + (1 - (g - g0) / (g1 - g0)) * (H - T - B)).toFixed(1);
+    let s = "";
+    for (let g = g0; g <= g1 + .5; g += step) s += `<line class="fo-ggrid" x1="${L}" x2="${W - R}" y1="${y(g)}" y2="${y(g)}"/><text class="fo-gy" x="${L - 7}" y="${y(g) + 4}">${(g / 1000).toLocaleString("de-AT", { maximumFractionDigits: 2 })}</text>`;
+    s += `<text class="fo-gy fo-gunit" x="${L - 7}" y="${T - 9}">kg</text>`;
+    // Achse nach Alter: Wochen in den ersten drei Monaten, danach Monate; ohne Geburtstag nach Datum.
+    const platz = Math.max(2, Math.floor((W - L - R) / 64)), ticks = [];
+    if (geb == null) {
+      const st = Math.max(1, Math.ceil((t1 - t0) / TAG / platz));
+      for (let d = 0; t0 + d * TAG <= t1; d += st) ticks.push([t0 + d * TAG, this._dm(new Date(t0 + d * TAG))]);
+    } else if ((t1 - geb) / TAG <= 98) {
+      const st = Math.max(1, Math.ceil((t1 - geb) / TAG / 7 / platz));
+      for (let i = 0; geb + i * 7 * TAG <= t1; i += st) ticks.push([geb + i * 7 * TAG, i ? `${i} Wo.` : "Geburt"]);
+    } else {
+      const st = [1, 2, 3, 6, 12].find(m => (t1 - geb) / TAG / 30.4375 / m <= platz) || 12;
+      for (let i = 0; i <= 240; i += st) {
+        const d = new Date(geb); d.setMonth(d.getMonth() + i); if (+d > t1) break;
+        ticks.push([+d, !i ? "Geburt" : i % 12 ? `${i} Mon.` : `${i / 12} J.`]);
+      }
+    }
+    s += ticks.map(([t, txt]) => `<text class="fo-gx" x="${x(t)}" y="${H - 7}">${txt}</text>`).join("");
+    if (ref.length > 1) {
+      const band = (lo, hi) => ref.map(p => `${x(p.t)},${y(p.c[hi])}`).join(" ") + " " + ref.slice().reverse().map(p => `${x(p.t)},${y(p.c[lo])}`).join(" ");
+      const e = ref[ref.length - 1];
+      s += `<polygon class="fo-gb1" points="${band(0, 4)}"/><polygon class="fo-gb2" points="${band(1, 3)}"/><polyline class="fo-gmid" points="${ref.map(p => `${x(p.t)},${y(p.c[2])}`).join(" ")}"/>`
+        + [[0, "P3"], [2, "P50"], [4, "P97"]].map(([i, t]) => `<text class="fo-gp" x="${x(e.t) + 4}" y="${y(e.c[i]) + 3.5}">${t}</text>`).join("");
+    }
+    s += `<line class="fo-gheute" x1="${x(jetzt)}" x2="${x(jetzt)}" y1="${T}" y2="${H - B}"/><text class="fo-gheutel" x="${x(jetzt)}" y="${T - 9}">heute</text>`;
+    if (w.length > 1) s += `<polyline class="fo-gline" points="${w.map(p => `${x(+p.date)},${y(p.g)}`).join(" ")}"/>`;
+    s += w.map((p, i) => {
+      const letzt = i === w.length - 1, cx = x(+p.date), cy = y(p.g);
+      return `<g class="fo-gpt" data-wuid="${U.esc(p.uid)}"><title>${U.esc(`${this._kg(p.g)} am ${this._dmy(p.date)}`)}</title><circle cx="${cx}" cy="${cy}" r="14" fill="transparent"/>`
+        + `${letzt ? `<circle class="fo-ghalo" cx="${cx}" cy="${cy}" r="11"/>` : ""}<circle class="fo-gdot" cx="${cx}" cy="${cy}" r="${letzt ? 6 : 4}"/></g>`;
+    }).join("");
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gewichtsverlauf ${U.esc(k.name)}">${s}</svg>`;
   }
 
   // ---------- Schreiben ----------
@@ -7047,6 +7248,72 @@ class FpBabyOverviewCard extends HTMLElement {
       this._closeSheet();
       this._eintrag(kid.feeding_calendar, `Fläschchen ${ml} ml`, { typ: "flasche", ml }, start, `${kid.name}: Fläschchen ${ml} ml eingetragen ✓`);
     });
+  }
+  // Wiegen und Ändern im Format der fp-weight-card-beta: Ganztagstermin „Name 3450 g“, höchstens ein Wert je Kind und Tag.
+  _sheetWiegen(kid, e) {
+    const heute = this._isoTag(new Date());
+    const ov = this._sheet(`<div class="fo-sh-head"><b>⚖️ ${e ? "Gewicht ändern" : "Wiegen"} · ${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-lbl">Gewicht</div>
+      <input class="fo-in fo-gin" type="text" inputmode="decimal" placeholder="z. B. 3450 oder 3,45" value="${e ? e.g : ""}">
+      <div class="fo-sh-hint">Gramm oder Kilo – „3450“ und „3,45“ ergeben dasselbe.</div>
+      <div class="fo-lbl">Datum</div>
+      <input class="fo-in fo-datum" type="date" value="${e ? this._isoTag(e.date) : heute}" max="${heute}">
+      <button class="fo-ok" type="button">${e ? "Speichern" : "Eintragen"}</button>
+      ${e ? `<button class="fo-del" type="button">Messung löschen</button>` : ""}`);
+    if (!e) setTimeout(() => { const i = ov.querySelector(".fo-gin"); if (i) i.focus(); }, 50);
+    ov.querySelector(".fo-ok").addEventListener("click", async () => {
+      const g = this._gramm(ov.querySelector(".fo-gin").value), ds = ov.querySelector(".fo-datum").value;
+      if (!ds) { U.toast(this, "Bitte ein Datum wählen"); return; }
+      if (g < 500 || g > 30000) { U.toast(this, "Das Gewicht sieht nicht richtig aus – bitte prüfen"); return; }
+      if (ds > heute) { U.toast(this, "Das Datum liegt in der Zukunft"); return; }
+      const date = this._day(ds);
+      const gleich = ((this._d && this._d.weights) || []).find(x => x.kind === kid.key && this._isoTag(x.date) === ds && (!e || x.uid !== e.uid));
+      this._closeSheet();
+      let ok;
+      if (e) ok = await this._gewichtAendern(e, kid, date, g);
+      else if (gleich) { ok = await this._gewichtAendern(gleich, kid, date, g); if (ok) U.toast(this, `Wert vom ${this._dmy(date)} ersetzt`); }
+      else { ok = await this._gewichtNeu(kid, date, g); if (ok) U.toast(this, `${kid.name}: ${this._kg(g)} eingetragen ✓`); }
+      if (ok) this._load();
+    });
+    if (e) ov.querySelector(".fo-del").addEventListener("click", async () => {
+      if (!window.confirm(`${kid.name}: ${this._kg(e.g)} vom ${this._dmy(e.date)} löschen?`)) return;
+      this._closeSheet();
+      if (await this._gewichtLoeschen(e.uid)) this._load();
+    });
+  }
+  _isoTag(d) { return `${d.getFullYear()}-${this._p(d.getMonth() + 1)}-${this._p(d.getDate())}`; }
+  // Eingabe in Gramm oder Kilo: "3450", "3,45", "3.45 kg" → 3450
+  _gramm(v) {
+    const n = Number(String(v || "").trim().toLowerCase().replace(/\s*(kg|g)$/, "").replace(",", "."));
+    return isFinite(n) && n > 0 ? Math.round(n < 30 ? n * 1000 : n) : 0;
+  }
+  _gewichtEv(kid, date, g) {
+    const nach = new Date(date); nach.setDate(nach.getDate() + 1);
+    return { summary: `${kid.name} ${g} g`, description: JSON.stringify({ typ: "gewicht", kind: kid.weight_key || kid.key, g }), von: this._isoTag(date), bis: this._isoTag(nach) };
+  }
+  async _gewichtNeu(kid, date, g) {
+    const d = this._gewichtEv(kid, date, g);
+    try {
+      await this._hass.callService("calendar", "create_event", { entity_id: this.config.weight_calendar, summary: d.summary, description: d.description, start_date: d.von, end_date: d.bis });
+      return true;
+    } catch (x) { U.toast(this, "Gewicht konnte nicht gespeichert werden"); return false; }
+  }
+  async _gewichtLoeschen(uid, leise) {
+    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this.config.weight_calendar, uid }); return true; }
+    catch (x) { if (!leise) U.toast(this, "Messung konnte nicht gelöscht werden"); return false; }
+  }
+  async _gewichtAendern(alt, kid, date, g) {
+    const d = this._gewichtEv(kid, date, g);
+    try {
+      await this._hass.callWS({ type: "calendar/event/update", entity_id: this.config.weight_calendar, uid: alt.uid,
+        event: { summary: d.summary, description: d.description, dtstart: d.von, dtend: d.bis } });
+      return true;
+    } catch (x) {
+      // Rückfall wie in der Gewichtskarte: neu anlegen, dann alt löschen — und laut sagen, falls der alte bleibt.
+      if (!(await this._gewichtNeu(kid, date, g))) return false;
+      if (!(await this._gewichtLoeschen(alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
+      return true;
+    }
   }
 
   _openChat() {
@@ -7290,7 +7557,7 @@ class FpBabyOverviewCard extends HTMLElement {
       /* Wachstum & Momente */
       .fo-minis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
       .fo-mini{display:flex;align-items:center;gap:12px;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
-      .fo-mini[data-nav]{cursor:pointer;}
+      .fo-mini[data-nav],.fo-mini[data-view]{cursor:pointer;}
       .fo-mi{font-size:1.6rem;flex:none;}
       .fo-mini div{display:flex;flex-direction:column;min-width:0;}
       .fo-mini small{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--b-faint);}
@@ -7323,6 +7590,36 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-ins div{border-radius:14px;padding:10px 12px;background:var(--b-card);font-size:.88rem;line-height:1.35;}
       .fo-ins span{color:var(--b-mut);}
 
+      /* Wachstum: Kurve in der Kinderfarbe, im Dunkeln aufgehellt */
+      .fo-gtiles{margin-top:10px;}
+      .fo-gcard{border-radius:20px;padding:12px 8px 10px;background:var(--b-card);--kl:color-mix(in srgb,var(--k) 55%,var(--b-text));}
+      .fo-card.fo-light .fo-gcard{--kl:var(--k);}
+      .fo-gchart{height:230px;}
+      .fo-gchart svg{display:block;overflow:visible;}
+      .fo-ggrid{stroke:var(--b-line);stroke-width:1;}
+      .fo-gy{font-size:11px;fill:var(--b-faint);text-anchor:end;font-variant-numeric:tabular-nums;}
+      .fo-gunit{font-weight:800;}
+      .fo-gx{font-size:11px;fill:var(--b-faint);text-anchor:middle;}
+      .fo-gb1{fill:var(--kl);opacity:.1;} .fo-gb2{fill:var(--kl);opacity:.14;}
+      .fo-gmid{fill:none;stroke:var(--kl);stroke-width:1.2;stroke-dasharray:4 4;opacity:.6;}
+      .fo-gp{font-size:10px;fill:var(--b-mut);}
+      .fo-gheute{stroke:var(--b-acc);stroke-width:1.5;}
+      .fo-gheutel{font-size:10.5px;font-weight:800;fill:var(--b-acc);text-anchor:middle;}
+      .fo-gline{fill:none;stroke:var(--kl);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round;}
+      .fo-gdot{fill:var(--kl);stroke:var(--b-card);stroke-width:2;}
+      .fo-ghalo{fill:var(--kl);opacity:.25;}
+      .fo-gpt{cursor:pointer;}
+      .fo-gleg{display:flex;flex-wrap:wrap;gap:6px 16px;padding:4px 10px 0;font-size:.76rem;color:var(--b-mut);}
+      .fo-gleg span{display:flex;align-items:center;gap:6px;}
+      .fo-gleg i{display:inline-block;width:16px;}
+      .fo-gl-line{height:3px;border-radius:2px;background:var(--kl);}
+      .fo-gl-band{height:10px;border-radius:3px;background:var(--kl);opacity:.3;}
+      .fo-gl-mid{border-top:1.5px dashed var(--kl);opacity:.8;}
+      .fo-wli{width:100%;border:none;border-bottom:1px solid var(--b-line);background:transparent;text-align:left;cursor:pointer;}
+      .fo-wli em{font-style:normal;font-size:.72rem;font-weight:800;color:var(--b-acc);margin-left:8px;}
+      .fo-more{display:block;margin:8px auto 0;border:none;background:transparent;color:var(--b-acc) !important;font-weight:700;font-size:.86rem;cursor:pointer;}
+      .fo-quelle{font-size:.72rem;line-height:1.45;color:var(--b-faint);margin-top:12px;}
+
       /* Leiste unten */
       .fo-tabbar{position:sticky;bottom:12px;z-index:4;display:flex;gap:4px;width:max-content;max-width:100%;margin:22px auto 0;padding:6px;border-radius:999px;
         background:var(--b-bar);box-shadow:0 10px 30px var(--b-shadow);border:1px solid var(--b-line);}
@@ -7353,9 +7650,12 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-mls button.fo-on{background:var(--c-bottle);color:#1C1917 !important;}
       .fo-mls .fo-in{width:90px;}
       .fo-in{box-sizing:border-box;width:100%;padding:11px 12px;border:1px solid var(--b-line);border-radius:12px;background:var(--b-card);color:var(--b-text);font:inherit;font-size:1rem;}
-      .fo-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:dark;}
-      .fo-card.fo-light .fo-in[type=time]{color-scheme:light;}
+      .fo-in[type=time],.fo-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:dark;}
+      .fo-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum und Uhrzeit sonst breiter als das Blatt */
+      .fo-card.fo-light .fo-in[type=time],.fo-card.fo-light .fo-in[type=date]{color-scheme:light;}
+      .fo-sh-hint{font-size:.78rem;color:var(--b-mut);margin-top:6px;}
       .fo-ok{display:block;width:100%;margin-top:18px;border:none;border-radius:14px;padding:13px;background:var(--b-acc);color:#fff !important;font-weight:800;font-size:1rem;cursor:pointer;}
+      .fo-del{display:block;width:100%;margin-top:6px;border:none;background:transparent;padding:11px;color:var(--b-mut) !important;font-weight:700;cursor:pointer;}
 
       /* Frag nach */
       .fo-chat{display:flex;flex-direction:column;height:min(640px,82vh);}
