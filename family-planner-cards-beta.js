@@ -4051,7 +4051,7 @@ if (!customElements.get("dobby-clock-card-beta")) {
   window.customCards.push({ type: "dobby-clock-card-beta", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card-beta v10 (7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card-beta v11 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -4084,6 +4084,7 @@ class FpFeedingCard extends HTMLElement {
 
   set hass(hass) {
     const prev = this._hass; this._hass = hass;
+    this.classList.toggle("ff-dark", !!(hass && hass.themes && hass.themes.darkMode));   // hell oder dunkel entscheidet das Gerät; am Host, damit auch der Dialog es sieht
     if (!this._built) { this._build(); this._load(); }
     // Beim Stopp schreibt die Automation den Termin — aber nicht sofort: erst
     // ~2 s Echo-Erkennung, bei Alexa-Stopp bis zu 30 s Rueckfrage nach der Seite.
@@ -4230,7 +4231,9 @@ class FpFeedingCard extends HTMLElement {
     this._built = true;
     const c = this.config;
     // Am Host statt an der ha-card: der Dialog hängt daneben und braucht den Akzent auch.
-    if (c.color) this.style.setProperty("--ff-akzent", c.color); else this.style.removeProperty("--ff-akzent");
+    // Schrift auf der Kinderfarbe ist weiß, auf dem Theme-Akzent --fp-accent-fg (kommt im CSS).
+    if (c.color) { this.style.setProperty("--ff-akzent", c.color); this.style.setProperty("--ff-akzent-fg", "#fff"); }
+    else { this.style.removeProperty("--ff-akzent"); this.style.removeProperty("--ff-akzent-fg"); }
     this.innerHTML = `
       <ha-card class="ff-card">
         <div class="ff-head">
@@ -4758,36 +4761,44 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
 
   _styles() {
     return `<style>
-      .ff-card,.ff-ov{--ff-a:var(--ff-akzent,var(--fp-head,var(--primary-color)));}
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .ff-card,.ff-ov{--ff-a:var(--ff-akzent,var(--fp-head,var(--primary-color)));--ff-at:var(--ff-a);--ff-on:var(--ff-akzent-fg,var(--fp-accent-fg,#fff));
+        --ff-s:var(--fp-surface,var(--secondary-background-color));--ff-s2:var(--fp-surface-2,var(--divider-color));
+        --ff-alert:var(--fp-alert,var(--warning-color,#b97f06));--ff-alert-bg:var(--fp-alert-bg,rgba(217,154,11,.18));
+        --ff-r:var(--fp-radius,16px);--ff-rs:var(--fp-radius-sm,12px);}
+      /* ff-dark (am Host, folgt hass.themes.darkMode): Kinderfarbe als Schrift und dünne Linie mit der Textfarbe aufgehellt, sonst unlesbar auf dunklem Grund.
+         --ff-a (Punkt, Knopffläche) bleibt die reine Kinderfarbe. */
+      .ff-dark .ff-card,.ff-dark .ff-ov{--ff-at:color-mix(in srgb,var(--ff-a) 55%,var(--primary-text-color));}
       .ff-card{padding:16px 16px 12px;container-type:inline-size;}
       .ff-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;}
       .ff-name{display:flex;align-items:center;gap:9px;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
       .ff-dot{width:12px;height:12px;border-radius:50%;background:var(--ff-a);flex:none;}
       .ff-seite{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
       .ff-seite-lbl{font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--secondary-text-color);opacity:.75;}
-      .ff-seg{display:inline-flex;background:var(--secondary-background-color);border-radius:10px;padding:3px;gap:2px;}
+      .ff-seg{display:inline-flex;background:var(--ff-s);border-radius:var(--ff-rs);padding:3px;gap:2px;}
       .ff-seg button{border:none;background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;
-        padding:7px 13px;border-radius:8px;cursor:pointer;min-width:62px;}
-      .ff-seg button.ff-on{background:var(--card-background-color,#fff);color:var(--ff-a);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+        padding:7px 13px;border-radius:calc(var(--ff-rs) - 3px);cursor:pointer;min-width:62px;}
+      .ff-seg button.ff-on{background:var(--ff-s2);color:var(--ff-at);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12);}
 
       .ff-actions{display:flex;gap:10px;}
-      .ff-main{flex:1 1 auto;min-height:56px;border:none;border-radius:14px;cursor:pointer;font-size:1.05rem;font-weight:700;
+      .ff-main{flex:1 1 auto;min-height:56px;border:none;border-radius:var(--ff-rs);cursor:pointer;font-size:1.05rem;font-weight:700;
         display:flex;align-items:center;justify-content:center;gap:12px;padding:0 16px;
-        background:rgba(var(--fp-accent-rgb,79,195,247),.14);color:var(--ff-a);transition:background .2s,color .2s;}
-      .ff-main.ff-run{background:var(--ff-a);color:#fff;}
+        background:rgba(var(--fp-accent-rgb,79,195,247),.14);color:var(--ff-at);transition:background .2s,color .2s;}
+      .ff-main.ff-run{background:var(--ff-a);color:var(--ff-on);}
       .ff-main-uhr{font-variant-numeric:tabular-nums;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
       .ff-nach{padding:0 12px !important;font-size:.88rem !important;}
-      .ff-bottle{flex:0 0 auto;min-height:56px;border:1px solid var(--divider-color);border-radius:14px;cursor:pointer;
-        background:var(--card-background-color,#fff);color:var(--primary-text-color);font-size:.95rem;font-weight:600;padding:0 16px;}
+      .ff-bottle{flex:0 0 auto;min-height:56px;border:none;border-radius:var(--ff-rs);cursor:pointer;
+        background:var(--ff-s);color:var(--primary-text-color);font-size:.95rem;font-weight:600;padding:0 16px;}
       .ff-since{margin:12px 2px 4px;}
       .ff-since-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
       .ff-since-big{font-size:1.6rem;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--primary-text-color);}
       .ff-since-txt{font-size:.82rem;color:var(--secondary-text-color);}
-      .ff-bar{height:6px;border-radius:3px;background:var(--secondary-background-color);margin-top:7px;overflow:hidden;}
-      .ff-bar-fill{height:100%;width:0;border-radius:3px;background:var(--ff-a);transition:width .4s,background .3s;}
-      .ff-since.ff-bald .ff-bar-fill{background:#d99a0b;}
-      .ff-since.ff-faellig .ff-bar-fill{background:var(--error-color,#c0392b);}
-      .ff-since.ff-faellig .ff-since-big{color:var(--error-color,#c0392b);}
+      .ff-bar{height:6px;border-radius:3px;background:var(--ff-s2);margin-top:7px;overflow:hidden;}
+      .ff-bar-fill{height:100%;width:0;border-radius:3px;background:var(--ff-at);transition:width .4s,background .3s;}
+      .ff-since.ff-bald .ff-bar-fill{background:var(--ff-alert);}
+      .ff-since.ff-faellig .ff-bar-fill{background:var(--ff-alert);}
+      .ff-since.ff-faellig .ff-since-big{color:var(--ff-alert);}
 
       .ff-day{margin-top:14px;}
       .ff-dayhead{font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--secondary-text-color);
@@ -4800,13 +4811,13 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
       /* Schmale Karte (Handy): Start/Stopp über die ganze Breite, darunter Fläschchen und Nachtragen. */
       @container (max-width: 440px){ .ff-actions{flex-wrap:wrap;} .ff-main{flex:1 1 100%;} .ff-bottle{flex:1 1 0;padding:0 10px;} .ff-tab th,.ff-tab td{padding-left:4px;padding-right:4px;} }
       .ff-tab tbody tr[data-uid]{cursor:pointer;}
-      .ff-tab tbody tr[data-uid]:active{background:var(--secondary-background-color);}
+      .ff-tab tbody tr[data-uid]:active{background:var(--ff-s);}
       .ff-tab th:last-child,.ff-tab td:last-child{text-align:right;}
       .ff-leer{color:var(--secondary-text-color);opacity:.5;}
       .ff-ml{font-weight:600;}
-      .ff-r-flasche td:first-child{color:var(--ff-a);font-weight:600;}
+      .ff-r-flasche td:first-child{color:var(--ff-at);font-weight:600;}
       .ff-auto{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:.62rem;font-weight:700;
-        letter-spacing:.04em;text-transform:uppercase;background:rgba(217,154,11,.18);color:#8a6100;vertical-align:1px;}
+        letter-spacing:.04em;text-transform:uppercase;background:var(--ff-alert-bg);color:color-mix(in srgb,var(--ff-alert) 75%,var(--primary-text-color));vertical-align:1px;}
       .ff-nichts td{color:var(--secondary-text-color);opacity:.7;font-size:.82rem;text-align:left !important;}
       .ff-foot2{display:flex;justify-content:space-between;align-items:center;margin-top:14px;}
       .ff-txtbtn{border:none;background:transparent;cursor:pointer;padding:6px 2px;
@@ -4822,40 +4833,41 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
       .ff-wk td:nth-child(2){padding-right:22px;}
       .ff-wk-n{display:flex;align-items:center;gap:10px;}
       .ff-wk-n b{flex:0 0 2ch;text-align:right;}
-      .ff-wk-track{flex:1;height:8px;border-radius:4px;background:var(--secondary-background-color);overflow:hidden;}
-      .ff-wk-bar{display:block;height:100%;border-radius:4px;background:var(--ff-a);}
+      .ff-wk-track{flex:1;height:8px;border-radius:4px;background:var(--ff-s2);overflow:hidden;}
+      .ff-wk-bar{display:block;height:100%;border-radius:4px;background:var(--ff-at);}
       @container (max-width: 440px){ .ff-wk{table-layout:auto;} .ff-wk th,.ff-wk td{padding-left:4px;padding-right:4px;} .ff-wk td:nth-child(2){padding-right:4px;} .ff-wk-track{display:none;} .ff-wk-n b{flex:none;} .ff-wk th{white-space:nowrap;font-size:.66rem;} }
       .ff-tab tfoot td{border-bottom:none;font-weight:700;font-size:.82rem;color:var(--secondary-text-color);padding-top:8px;}
 
       .ff-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
-      .ff-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:18px;padding:18px;
+      .ff-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--ff-r);padding:18px;
         width:100%;max-width:380px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
       .ff-mhead{font-size:1.1rem;font-weight:700;margin-bottom:12px;}
       .ff-lbl{display:block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
         color:var(--secondary-text-color);margin:12px 0 6px;}
       .ff-chips{display:flex;gap:6px;flex-wrap:wrap;}
-      .ff-chip{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:10px;padding:10px 6px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
-      .ff-chip.ff-on{background:var(--ff-a);color:#fff;border-color:transparent;}
+      .ff-chip{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:var(--ff-rs);padding:10px 6px;
+        background:var(--ff-s);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
+      .ff-chip.ff-on{background:var(--ff-a);color:var(--ff-on);border-color:transparent;}
       .ff-mlrow{display:flex;gap:8px;margin-top:8px;}
-      .ff-step{width:48px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);
+      .ff-step{width:48px;border:1px solid var(--divider-color);border-radius:var(--ff-rs);background:var(--ff-s);
         color:var(--primary-text-color);font-size:1.2rem;cursor:pointer;}
-      .ff-in{flex:1;width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .ff-in[type=date],.ff-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .ff-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .ff-in{flex:1;width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:var(--ff-rs);
+        background:var(--ff-s);color:var(--primary-text-color);font-size:1rem;}
+      .ff-in[type=date],.ff-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;} .ff-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .ff-dark .ff-in[type=date],.ff-dark .ff-in[type=time]{color-scheme:dark;}
       .ff-zeiten{display:flex;gap:10px;} .ff-zeiten label{flex:1;}
       .ff-seg-edit{display:flex;} .ff-seg-edit button{flex:1;}
       .ff-foot{display:flex;gap:8px;margin-top:18px;align-items:center;}
       .ff-flex{flex:1;}
-      .ff-btn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);}
-      .ff-ok{background:var(--ff-a);color:#fff;}
+      .ff-btn{border:none;border-radius:var(--ff-rs);padding:11px 16px;font-weight:600;cursor:pointer;
+        background:var(--ff-s);color:var(--primary-text-color);}
+      .ff-ok{background:var(--ff-a);color:var(--ff-on);}
       .ff-del{background:transparent;color:var(--error-color,#c0392b);padding-left:4px;padding-right:4px;}
       .ff-rep-ov{padding:12px;}
-      .ff-rep-box{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:16px;
+      .ff-rep-box{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--ff-r);
         width:min(900px,100%);height:min(92vh,1100px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.3);}
       .ff-rep-bar{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--divider-color);}
-      .ff-rep-frame{flex:1;width:100%;border:0;background:#fff;}
+      .ff-rep-frame{flex:1;width:100%;border:0;background:#fff;}   /* der Bericht ist zum Drucken gedacht und bleibt hell */
       @media (max-width:600px){.ff-rep-ov{padding:0;} .ff-rep-box{border-radius:0;height:100%;width:100%;}
         .ff-rep-bar{padding-top:max(10px, env(safe-area-inset-top));}}   /* iPhone: nicht unter die Statusleiste */
     </style>`;
@@ -4869,7 +4881,7 @@ if (!customElements.get("fp-feeding-card-beta")) {
 }
 })();
 
-/* ===== fp-weight-card-beta v6 (Datumsfeld passt aufs iPhone, Kopfzeile bricht nur ganze Werte um; Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
+/* ===== fp-weight-card-beta v7 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Datumsfeld passt aufs iPhone, Kopfzeile bricht nur ganze Werte um; Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
 // Ein Eintrag = ein Ganztagstermin im Kalender: Titel "Kind A 3450 g",
 // Beschreibung {"typ":"gewicht","kind":"kind_a","g":3450}. Pro Kind und Tag gibt
 // es höchstens einen Wert — wer denselben Tag nochmal einträgt, korrigiert ihn.
@@ -4903,6 +4915,7 @@ class FpWeightCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    this.classList.toggle("fw-dark", !!(hass && hass.themes && hass.themes.darkMode));   // hell oder dunkel entscheidet das Gerät
     if (!this._built) { this._build(); this._load(); }
   }
   connectedCallback() {
@@ -5105,20 +5118,20 @@ class FpWeightCard extends HTMLElement {
       const c = s.kids.length > 1 ? "var(--secondary-text-color)" : U.esc(s.kids[0].color);
       const band = (lo, hi) => s.pts.map(p => `${x(p.t)},${y(p.c[hi])}`).join(" ") + " " + s.pts.slice().reverse().map(p => `${x(p.t)},${y(p.c[lo])}`).join(" ");
       const last = s.pts[s.pts.length - 1];
-      kurven += `<polygon points="${band(0, 4)}" fill="${c}" opacity=".07"/><polygon points="${band(1, 3)}" fill="${c}" opacity=".09"/>` +
-        `<polyline points="${s.pts.map(p => `${x(p.t)},${y(p.c[2])}`).join(" ")}" fill="none" stroke="${c}" stroke-width="1.2" stroke-dasharray="4 4" opacity=".55"/>` +
+      kurven += `<g class="fw-ser" style="--k:${c}"><polygon points="${band(0, 4)}" fill="var(--kl)" opacity=".07"/><polygon points="${band(1, 3)}" fill="var(--kl)" opacity=".09"/>` +
+        `<polyline points="${s.pts.map(p => `${x(p.t)},${y(p.c[2])}`).join(" ")}" fill="none" stroke="var(--kl)" stroke-width="1.2" stroke-dasharray="4 4" opacity=".55"/></g>` +
         [[0, "3"], [2, "50"], [4, "97"]].map(([i, l]) => `<text x="${x(last.t) - 3}" y="${y(last.c[i]) - 3}" class="fw-plab">P${l}</text>`).join("");
     });
     let linien = "", punkte = "";
     reihen.forEach(({ kid, pts }) => {
       if (!pts.length) return;
       const c = U.esc(kid.color);
-      if (pts.length > 1) linien += `<polyline points="${pts.map(p => `${x(+p.date)},${y(p.g)}`).join(" ")}" fill="none" stroke="${c}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+      if (pts.length > 1) linien += `<g class="fw-ser" style="--k:${c}"><polyline points="${pts.map(p => `${x(+p.date)},${y(p.g)}`).join(" ")}" fill="none" stroke="var(--kl)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></g>`;
       pts.forEach(p => {
         const tip = `${kid.name}: ${this._kg(p.g)} am ${this._dmy(p.date)}`;
-        punkte += `<g data-uid="${U.esc(p.uid)}" class="fw-pt"><title>${U.esc(tip)}</title>` +
+        punkte += `<g data-uid="${U.esc(p.uid)}" class="fw-pt fw-ser" style="--k:${c}"><title>${U.esc(tip)}</title>` +
           `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="14" fill="transparent"/>` +
-          `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="4.5" fill="${c}" stroke="var(--card-background-color,#fff)" stroke-width="2"/></g>`;
+          `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="4.5" fill="var(--kl)" stroke="var(--ha-card-background,var(--card-background-color,#fff))" stroke-width="2"/></g>`;
       });
     });
     box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gewichtsverlauf">
@@ -5215,10 +5228,19 @@ class FpWeightCard extends HTMLElement {
 
   _styles() {
     return `<style>
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fw-card,.fw-ov{--fw-s:var(--fp-surface,var(--secondary-background-color));--fw-s2:var(--fp-surface-2,var(--divider-color));
+        --fw-up:var(--success-color,#3c7a3c);--fw-down:var(--error-color,#c0392b);
+        --fw-r:var(--fp-radius,16px);--fw-rs:var(--fp-radius-sm,12px);}
+      /* Kinderfarbe der Kurven: --k ist die Farbe des Kindes, --kl die Variante für Linien und Punkte.
+         fw-dark (am Host, folgt hass.themes.darkMode): im Dunkeln mit der Textfarbe aufgehellt, sonst verschwindet das Grün auf dem dunklen Grund. */
+      .fw-ser{--kl:var(--k);}
+      .fw-dark .fw-ser{--kl:color-mix(in srgb,var(--k) 55%,var(--primary-text-color));}
       .fw-card{padding:16px 16px 10px;}
       .fw-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
       .fw-title{font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
-      .fw-add{border:none;border-radius:12px;padding:10px 16px;font-size:.95rem;font-weight:700;cursor:pointer;
+      .fw-add{border:none;border-radius:var(--fw-rs);padding:10px 16px;font-size:.95rem;font-weight:700;cursor:pointer;
         background:rgba(var(--fp-accent-rgb,79,195,247),.14);color:var(--fp-head,var(--primary-color));}
       .fw-sum{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.9rem;margin:0 2px 8px;font-variant-numeric:tabular-nums;}
       .fw-chip{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;}
@@ -5226,13 +5248,13 @@ class FpWeightCard extends HTMLElement {
       .fw-chip .fw-dot{align-self:center;}
       .fw-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none;}
       .fw-muted{color:var(--secondary-text-color);font-size:.82rem;}
-      .fw-delta{font-weight:700;font-size:.85rem;} .fw-up{color:#3c7a3c;} .fw-down{color:var(--error-color,#c0392b);}
+      .fw-delta{font-weight:700;font-size:.85rem;} .fw-up{color:var(--fw-up);} .fw-down{color:var(--fw-down);}
       .fw-chart{width:100%;min-height:60px;}
       .fw-chart svg{display:block;overflow:visible;}
       .fw-grid{stroke:var(--divider-color);stroke-width:1;}
       .fw-today{stroke:var(--secondary-text-color);stroke-width:1;stroke-dasharray:3 4;opacity:.5;}
       .fw-plab{font-size:9.5px;fill:var(--secondary-text-color);text-anchor:end;opacity:.8;}
-      .fw-pz{font-size:.78rem;font-weight:700;color:var(--secondary-text-color);background:var(--secondary-background-color);border-radius:6px;padding:1px 6px;}
+      .fw-pz{font-size:.78rem;font-weight:700;color:var(--secondary-text-color);background:var(--fw-s);border-radius:6px;padding:1px 6px;}
       .fw-quelle{font-size:.7rem;color:var(--secondary-text-color);opacity:.75;margin-top:4px;}
       .fw-ylab{font-size:11px;fill:var(--secondary-text-color);text-anchor:end;font-variant-numeric:tabular-nums;}
       .fw-unit{font-weight:700;}
@@ -5240,24 +5262,25 @@ class FpWeightCard extends HTMLElement {
       .fw-pt{cursor:pointer;}
       .fw-empty{padding:26px 8px;text-align:center;color:var(--secondary-text-color);font-size:.9rem;line-height:1.5;}
       .fw-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
-      .fw-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:18px;padding:18px;
+      .fw-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--fw-r);padding:18px;
         width:100%;max-width:400px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
       .fw-mhead{font-size:1.1rem;font-weight:700;margin-bottom:6px;}
       .fw-lbl{display:block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--secondary-text-color);margin:12px 0 6px;}
-      .fw-seg{display:flex;background:var(--secondary-background-color);border-radius:10px;padding:3px;gap:2px;}
+      .fw-seg{display:flex;background:var(--fw-s);border-radius:var(--fw-rs);padding:3px;gap:2px;}
       .fw-seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:none;background:transparent;
-        color:var(--secondary-text-color);font-size:.95rem;font-weight:600;padding:9px 12px;border-radius:8px;cursor:pointer;}
-      .fw-seg button.fw-on{background:var(--card-background-color,#fff);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+        color:var(--secondary-text-color);font-size:.95rem;font-weight:600;padding:9px 12px;border-radius:calc(var(--fw-rs) - 3px);cursor:pointer;}
+      .fw-seg button.fw-on{background:var(--fw-s2);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
       .fw-row{display:flex;gap:10px;} .fw-row label{flex:1;min-width:0;}
-      .fw-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .fw-in[type=date],.fw-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fw-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .fw-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:var(--fw-rs);
+        background:var(--fw-s);color:var(--primary-text-color);font-size:1rem;}
+      .fw-in[type=date],.fw-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;} .fw-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .fw-dark .fw-in[type=date],.fw-dark .fw-in[type=time]{color-scheme:dark;}
       .fw-hint{font-size:.78rem;color:var(--secondary-text-color);margin-top:6px;}
       .fw-foot{display:flex;gap:8px;margin-top:18px;align-items:center;} .fw-flex{flex:1;}
-      .fw-btn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);}
+      .fw-btn{border:none;border-radius:var(--fw-rs);padding:11px 16px;font-weight:600;cursor:pointer;
+        background:var(--fw-s);color:var(--primary-text-color);}
       .fw-ok{background:var(--fp-head,var(--primary-color));color:var(--fp-accent-fg,#fff);}
-      .fw-del{background:transparent;color:var(--error-color,#c0392b);padding-left:4px;padding-right:4px;}
+      .fw-del{background:transparent;color:var(--fw-down);padding-left:4px;padding-right:4px;}
     </style>`;
   }
   getCardSize() { return 6; }
@@ -5269,7 +5292,7 @@ if (!customElements.get("fp-weight-card-beta")) {
 }
 })();
 
-/* ===== fp-diaper-card-beta v3 (liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
+/* ===== fp-diaper-card-beta v4 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
 // Ein Eintrag = ein kurzer Termin im eigenen Kalender: Titel "Windel nass",
 // Beschreibung {"typ":"windel","art":"nass|voll|beides"}. Nicht in den
 // Stillkalender schreiben: die 3-h-Erinnerung zählt dort jeden Eintrag als Mahlzeit.
@@ -5285,6 +5308,7 @@ class FpDiaperCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    this.classList.toggle("fd-dark", !!(hass && hass.themes && hass.themes.darkMode));   // hell oder dunkel entscheidet das Gerät; am Host, damit auch der Dialog es sieht
     if (!this._built) { this._build(); this._load(); }
   }
   connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._tick(), 20000); }
@@ -5330,7 +5354,9 @@ class FpDiaperCard extends HTMLElement {
     this._built = true;
     const c = this.config;
     // Am Host statt an der ha-card: der Dialog hängt daneben und braucht den Akzent auch.
-    if (c.color) this.style.setProperty("--fd-akzent", c.color); else this.style.removeProperty("--fd-akzent");
+    // Schrift auf der Kinderfarbe ist weiß, auf dem Theme-Akzent --fp-accent-fg (kommt im CSS).
+    if (c.color) { this.style.setProperty("--fd-akzent", c.color); this.style.setProperty("--fd-akzent-fg", "#fff"); }
+    else { this.style.removeProperty("--fd-akzent"); this.style.removeProperty("--fd-akzent-fg"); }
     this.innerHTML = `
       <ha-card class="fd-card">
         <div class="fd-name"><span class="fd-dot"></span>${U.esc(c.name)}</div>
@@ -5477,15 +5503,23 @@ class FpDiaperCard extends HTMLElement {
 
   _styles() {
     return `<style>
-      .fd-card,.fd-ov{--fd-a:var(--fd-akzent,var(--fp-head,var(--primary-color)));}
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fd-card,.fd-ov{--fd-a:var(--fd-akzent,var(--fp-head,var(--primary-color)));--fd-at:var(--fd-a);--fd-on:var(--fd-akzent-fg,var(--fp-accent-fg,#fff));
+        --fd-s:var(--fp-surface,var(--secondary-background-color));--fd-s2:var(--fp-surface-2,var(--divider-color));
+        --fd-nass:var(--fp-c-diaper,#3E9DB0);--fd-voll:var(--fp-c-stool,#A77446);
+        --fd-r:var(--fp-radius,16px);--fd-rs:var(--fp-radius-sm,12px);}
+      /* fd-dark (am Host, folgt hass.themes.darkMode): Kinderfarbe als Schrift mit der Textfarbe aufgehellt, sonst unlesbar auf dunklem Grund.
+         --fd-a (Punkt, Knopffläche) bleibt die reine Kinderfarbe. */
+      .fd-dark .fd-card,.fd-dark .fd-ov{--fd-at:color-mix(in srgb,var(--fd-a) 55%,var(--primary-text-color));}
       .fd-card{padding:16px 16px 12px;container-type:inline-size;}
       .fd-name{display:flex;align-items:center;gap:9px;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;margin-bottom:14px;}
       .fd-dot{width:12px;height:12px;border-radius:50%;background:var(--fd-a);flex:none;}
       .fd-actions{display:flex;gap:10px;}
-      .fd-btn{flex:1 1 0;min-height:56px;border:1px solid var(--divider-color);border-radius:14px;cursor:pointer;padding:0 6px;
-        background:var(--card-background-color,#fff);color:var(--primary-text-color);font-size:1rem;font-weight:600;}
+      .fd-btn{flex:1 1 0;min-height:56px;border:none;border-radius:var(--fd-rs);cursor:pointer;padding:0 6px;
+        background:var(--fd-s);color:var(--primary-text-color);font-size:1rem;font-weight:600;}
       @container (max-width: 400px){ .fd-btn{font-size:.86rem;padding:0 4px;white-space:nowrap;} }
-      .fd-btn:active{background:var(--secondary-background-color);}
+      .fd-btn:active{background:var(--fd-s2);}
       .fd-since{display:flex;gap:22px;flex-wrap:wrap;margin:14px 2px 4px;}
       .fd-since>div{display:flex;flex-direction:column;}
       .fd-since-lbl{font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--secondary-text-color);opacity:.8;}
@@ -5497,7 +5531,7 @@ class FpDiaperCard extends HTMLElement {
       .fd-tab th{font-size:.7rem;font-weight:600;color:var(--secondary-text-color);text-align:left;padding:4px 6px;border-bottom:1px solid var(--divider-color);}
       .fd-tab td{padding:9px 6px;border-bottom:1px solid var(--divider-color);}
       .fd-tab tbody tr[data-uid]{cursor:pointer;}
-      .fd-tab tbody tr[data-uid]:active{background:var(--secondary-background-color);}
+      .fd-tab tbody tr[data-uid]:active{background:var(--fd-s);}
       .fd-tab tbody td:first-child{width:64px;}
       .fd-nichts td{color:var(--secondary-text-color);opacity:.7;font-size:.82rem;}
       .fd-tab tfoot td{border-bottom:none;font-weight:700;font-size:.82rem;color:var(--secondary-text-color);padding-top:8px;}
@@ -5506,25 +5540,26 @@ class FpDiaperCard extends HTMLElement {
         font-size:.78rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--secondary-text-color);}
       .fd-wk td{padding:7px 6px;}
       .fd-wk-n{display:flex;align-items:center;gap:6px;}
-      .fd-wk-track{flex:1;height:8px;border-radius:4px;background:var(--secondary-background-color);overflow:hidden;}
-      .fd-wk-bar{display:block;height:100%;border-radius:4px;background:var(--fd-a);}
-      .fd-wk-bar.fd-voll{background:#a0703c;}
+      .fd-wk-track{flex:1;height:8px;border-radius:4px;background:var(--fd-s2);overflow:hidden;}
+      .fd-wk-bar{display:block;height:100%;border-radius:4px;background:var(--fd-nass);}   /* nass und voll in den Tätigkeitsfarben des Themes */
+      .fd-wk-bar.fd-voll{background:var(--fd-voll);}
 
       .fd-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
-      .fd-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:18px;padding:18px;
+      .fd-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--fd-r);padding:18px;
         width:100%;max-width:380px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
       .fd-mhead{font-size:1.1rem;font-weight:700;margin-bottom:12px;}
       .fd-lbl{display:block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--secondary-text-color);margin:12px 0 6px;}
-      .fd-seg{display:flex;background:var(--secondary-background-color);border-radius:10px;padding:3px;gap:2px;}
-      .fd-seg button{flex:1;border:none;background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;padding:8px 6px;border-radius:8px;cursor:pointer;}
-      .fd-seg button.fd-on{background:var(--card-background-color,#fff);color:var(--fd-a);box-shadow:0 1px 3px rgba(0,0,0,.12);}
-      .fd-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .fd-in[type=date],.fd-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fd-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .fd-seg{display:flex;background:var(--fd-s);border-radius:var(--fd-rs);padding:3px;gap:2px;}
+      .fd-seg button{flex:1;border:none;background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;padding:8px 6px;border-radius:calc(var(--fd-rs) - 3px);cursor:pointer;}
+      .fd-seg button.fd-on{background:var(--fd-s2);color:var(--fd-at);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12);}
+      .fd-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:var(--fd-rs);
+        background:var(--fd-s);color:var(--primary-text-color);font-size:1rem;}
+      .fd-in[type=date],.fd-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;} .fd-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .fd-dark .fd-in[type=date],.fd-dark .fd-in[type=time]{color-scheme:dark;}
       .fd-mfoot{display:flex;gap:8px;margin-top:18px;align-items:center;}
       .fd-flex{flex:1;}
-      .fd-mbtn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;background:var(--secondary-background-color);color:var(--primary-text-color);}
-      .fd-ok{background:var(--fd-a);color:#fff;}
+      .fd-mbtn{border:none;border-radius:var(--fd-rs);padding:11px 16px;font-weight:600;cursor:pointer;background:var(--fd-s);color:var(--primary-text-color);}
+      .fd-ok{background:var(--fd-a);color:var(--fd-on);}
       .fd-del{background:transparent;color:var(--error-color,#c0392b);padding-left:4px;padding-right:4px;}
     </style>`;
   }
@@ -5537,7 +5572,7 @@ if (!customElements.get("fp-diaper-card-beta")) {
 }
 })();
 
-/* ===== fp-milestone-card-beta v2 (Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
+/* ===== fp-milestone-card-beta v3 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
 // Ein erreichter Meilenstein = ein Ganztagstermin im eigenen Kalender an dem Tag,
 // an dem es passiert ist: Titel "🐢 Kind A: Krabbelt", Beschreibung
 // {"typ":"meilenstein","kind":"kind_a","id":"krabbeln"}, dazu optional notiz,
@@ -5784,6 +5819,7 @@ class FpMilestoneCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    this.classList.toggle("fm-dark", !!(hass && hass.themes && hass.themes.darkMode));   // hell oder dunkel entscheidet das Gerät; am Host, damit auch der Dialog es sieht
     if (!this._built) { this._build(); this._load(); }
   }
   connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._load(), 5 * 60000); }
@@ -5814,8 +5850,7 @@ class FpMilestoneCard extends HTMLElement {
     el.style.setProperty("--fm-k1", this._tint(c, .12));
     el.style.setProperty("--fm-k2", this._tint(c, .24));
     el.style.setProperty("--fm-k3", this._tint(c, .36));
-    // Schrift in Kinderfarbe: mit der Textfarbe gemischt, damit sie hell wie dunkel lesbar bleibt.
-    el.style.setProperty("--fm-kt", `color-mix(in srgb, ${c} 62%, var(--primary-text-color))`);
+    // --fm-kt (Schrift und dünne Linien in Kinderfarbe) kommt aus dem CSS: hell die reine Farbe, im Dunkeln mit der Textfarbe aufgehellt.
   }
   _info(id, h) {
     if (id.startsWith("eigen_")) return { e: (h && h.e) || "✨", t: (h && h.t) || "Eigener Moment" };
@@ -6212,6 +6247,13 @@ class FpMilestoneCard extends HTMLElement {
 
   _styles() {
     return `<style>
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fm-card,.fm-ov{--fm-kt:var(--fm-k);--fm-s:var(--fp-surface,var(--secondary-background-color));--fm-s2:var(--fp-surface-2,var(--divider-color));
+        --fm-r:var(--fp-radius,16px);--fm-rs:var(--fp-radius-sm,12px);}
+      /* fm-dark (am Host, folgt hass.themes.darkMode): --fm-kt, die Kinderfarbe für Schrift und dünne Linien, wird mit der Textfarbe aufgehellt,
+         sonst ist das dunkle Grün oder Lila auf dunklem Grund unlesbar. Flächen und Punkte bleiben in der reinen Kinderfarbe (--fm-k). */
+      .fm-dark .fm-card,.fm-dark .fm-ov{--fm-kt:color-mix(in srgb,var(--fm-k) 55%,var(--primary-text-color));}
       .fm-card{padding:16px 16px 14px;container-type:inline-size;}
       .fm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
       .fm-title{font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
@@ -6221,32 +6263,33 @@ class FpMilestoneCard extends HTMLElement {
       @keyframes fm-bump{40%{transform:scale(1.25);}}
       .fm-kids{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;} .fm-kids:empty{display:none;}
       .fm-kid{display:flex;align-items:center;gap:8px;border:2px solid transparent;border-radius:999px;padding:3px 14px 3px 3px;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.95rem;font-weight:700;}
-      .fm-kid.fm-sel{border-color:var(--c);background:var(--c1);}
+        --ct:var(--c);background:var(--fm-s);color:var(--primary-text-color);font-size:.95rem;font-weight:700;}
+      .fm-dark .fm-kid{--ct:color-mix(in srgb,var(--c) 55%,var(--primary-text-color));}
+      .fm-kid.fm-sel{border-color:var(--ct);background:var(--c1);}
       .fm-av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.9rem;font-weight:800;flex:none;}
       .fm-kage{font-size:.78rem;font-weight:600;color:var(--secondary-text-color);}
-      .fm-tabs{display:flex;background:var(--secondary-background-color);border-radius:12px;padding:3px;gap:2px;margin-bottom:16px;} .fm-tabs:empty{display:none;}
-      .fm-tabs button{flex:1;border:none;background:transparent;color:var(--secondary-text-color);font-size:.92rem;font-weight:700;padding:9px 6px;border-radius:9px;cursor:pointer;white-space:nowrap;}
-      .fm-tabs button.fm-sel{background:var(--card-background-color,#fff);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+      .fm-tabs{display:flex;background:var(--fm-s);border-radius:var(--fm-rs);padding:3px;gap:2px;margin-bottom:16px;} .fm-tabs:empty{display:none;}
+      .fm-tabs button{flex:1;border:none;background:transparent;color:var(--secondary-text-color);font-size:.92rem;font-weight:700;padding:9px 6px;border-radius:calc(var(--fm-rs) - 3px);cursor:pointer;white-space:nowrap;}
+      .fm-tabs button.fm-sel{background:var(--fm-s2);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
       @container (max-width: 420px){ .fm-tabs button{font-size:.8rem;padding:9px 2px;} }
-      .fm-hint{background:var(--fm-k1);border-radius:14px;padding:10px 14px;font-size:.88rem;line-height:1.4;margin-bottom:14px;}
+      .fm-hint{background:var(--fm-k1);border-radius:var(--fm-rs);padding:10px 14px;font-size:.88rem;line-height:1.4;margin-bottom:14px;}
       .fm-grp{margin-bottom:18px;}
       .fm-gh{display:flex;align-items:center;justify-content:space-between;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--secondary-text-color);margin:0 2px 8px;}
       .fm-gn{color:var(--fm-kt,var(--fm-k));letter-spacing:0;text-transform:none;font-size:.82rem;}
 
       /* Erste Male: offene Plätze im Album gestrichelt, Gesammeltes als Sticker in der Kinderfarbe */
       .fm-stickers{display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));gap:10px;}
-      .fm-st{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;min-height:112px;padding:12px 6px 10px;border-radius:18px;cursor:pointer;
+      .fm-st{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;min-height:112px;padding:12px 6px 10px;border-radius:var(--fm-rs);cursor:pointer;
         border:2px dashed var(--divider-color);background:transparent;color:var(--primary-text-color);font:inherit;transition:transform .15s;-webkit-tap-highlight-color:transparent;}
       .fm-st:active{transform:scale(.93);}
       .fm-st-e{font-size:2.1rem;line-height:1.15;opacity:.55;filter:saturate(.5);}
       .fm-st-t{font-size:.76rem;font-weight:600;line-height:1.15;text-align:center;color:var(--secondary-text-color);}
-      .fm-st.fm-on{border:2px solid var(--fm-k);background:linear-gradient(160deg,var(--fm-k1),var(--fm-k2));box-shadow:0 3px 10px var(--fm-k2);}
-      .fm-st.fm-on .fm-st-e{opacity:1;transform:rotate(-6deg);filter:drop-shadow(0 0 1px #fff) drop-shadow(0 3px 3px rgba(0,0,0,.2));}
+      .fm-st.fm-on{border:2px solid var(--fm-kt,var(--fm-k));background:linear-gradient(160deg,var(--fm-k1),var(--fm-k2));box-shadow:0 3px 10px var(--fm-k2);}
+      .fm-st.fm-on .fm-st-e{opacity:1;transform:rotate(-6deg);filter:drop-shadow(0 0 1px var(--card-background-color,#fff)) drop-shadow(0 3px 3px rgba(0,0,0,.2));}
       .fm-st.fm-on .fm-st-t{color:var(--primary-text-color);font-weight:700;}
       .fm-st-d{margin-top:auto;font-size:.7rem;font-weight:800;color:var(--fm-kt,var(--fm-k));background:var(--card-background-color,#fff);border-radius:999px;padding:1px 8px;}
       .fm-st-star{position:absolute;top:-9px;right:-5px;font-size:1.15rem;transform:rotate(14deg);}
-      .fm-add{border-style:dashed;border-color:var(--fm-k3);}
+      .fm-add{border-style:dashed;border-color:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 36%,transparent);}
       .fm-add .fm-st-e{opacity:1;filter:none;color:var(--fm-kt,var(--fm-k));font-weight:400;}
       .fm-add .fm-st-t{color:var(--fm-kt,var(--fm-k));font-weight:700;}
       .fm-others{position:absolute;top:6px;left:6px;display:flex;gap:2px;}
@@ -6258,21 +6301,21 @@ class FpMilestoneCard extends HTMLElement {
       .fm-bands{position:relative;display:flex;gap:6px;overflow-x:auto;padding:10px 2px 8px;margin:-10px -2px 4px;scrollbar-width:none;}
       .fm-bands::-webkit-scrollbar{display:none;}
       .fm-band{position:relative;flex:none;border:2px solid transparent;border-radius:999px;padding:7px 13px;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.88rem;font-weight:700;}
+        background:var(--fm-s);color:var(--primary-text-color);font-size:.88rem;font-weight:700;}
       .fm-band small{color:var(--fm-kt,var(--fm-k));font-weight:800;font-size:.78rem;}
-      .fm-band.fm-sel{border-color:var(--fm-k);background:var(--fm-k1);}
+      .fm-band.fm-sel{border-color:var(--fm-kt,var(--fm-k));background:var(--fm-k1);}
       .fm-jetzt{position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--fm-k);color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:1px 6px;}
       .fm-bandhead{margin:6px 2px 12px;}
       .fm-bt{font-size:1.1rem;font-weight:800;}
       .fm-bs{font-size:.86rem;font-weight:700;color:var(--fm-kt,var(--fm-k));margin-top:2px;}
-      .fm-alles{background:linear-gradient(90deg,var(--fm-k1),var(--fm-k2));border-radius:14px;padding:10px 14px;font-weight:800;margin-bottom:12px;}
+      .fm-alles{background:linear-gradient(90deg,var(--fm-k1),var(--fm-k2));border-radius:var(--fm-rs);padding:10px 14px;font-weight:800;margin-bottom:12px;}
       .fm-area{margin-bottom:14px;}
-      .fm-row{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;border:1.5px solid var(--divider-color);border-radius:14px;padding:10px 12px;margin-bottom:6px;cursor:pointer;
+      .fm-row{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;border:1.5px solid var(--divider-color);border-radius:var(--fm-rs);padding:10px 12px;margin-bottom:6px;cursor:pointer;
         background:transparent;color:var(--primary-text-color);font:inherit;font-size:.92rem;line-height:1.3;transition:transform .12s;-webkit-tap-highlight-color:transparent;}
       .fm-row:active{transform:scale(.98);}
       .fm-bub{flex:none;width:28px;height:28px;box-sizing:border-box;border-radius:50%;border:2px dashed var(--secondary-text-color);opacity:.5;
         display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:.95rem;}
-      .fm-row.fm-on{background:linear-gradient(100deg,var(--fm-k2),var(--fm-k1));border-color:var(--fm-k3);}
+      .fm-row.fm-on{background:linear-gradient(100deg,var(--fm-k2),var(--fm-k1));border-color:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 36%,transparent);}
       .fm-row.fm-on .fm-bub{border:none;opacity:1;background:var(--fm-k);box-shadow:0 2px 6px var(--fm-k3);}
       .fm-rt{flex:1;min-width:0;}
       .fm-rd{flex:none;font-size:.78rem;font-weight:800;color:var(--fm-kt,var(--fm-k));}
@@ -6281,8 +6324,8 @@ class FpMilestoneCard extends HTMLElement {
       /* Bewegung: Zeitfenster als Balken, Punkte zeigen, wann es so weit war */
       .fm-motor{display:flex;flex-direction:column;gap:8px;}
       .fm-mo,.fm-axis{display:grid;grid-template-columns:1fr;column-gap:14px;row-gap:8px;}
-      .fm-mo{width:100%;border:none;border-radius:14px;padding:10px 14px;cursor:pointer;text-align:left;font:inherit;
-        background:var(--secondary-background-color);color:var(--primary-text-color);-webkit-tap-highlight-color:transparent;}
+      .fm-mo{width:100%;border:none;border-radius:var(--fm-rs);padding:10px 14px;cursor:pointer;text-align:left;font:inherit;
+        background:var(--fm-s);color:var(--primary-text-color);-webkit-tap-highlight-color:transparent;}
       .fm-mo:active{transform:scale(.99);}
       .fm-axis{padding:0 14px;}
       .fm-axl{display:none;font-size:.7rem;color:var(--secondary-text-color);text-align:right;}
@@ -6291,7 +6334,7 @@ class FpMilestoneCard extends HTMLElement {
       .fm-mi{font-size:1.35rem;flex:none;}
       .fm-mt{min-width:0;}
       .fm-md{margin-left:auto;font-size:.76rem;font-weight:800;color:var(--fm-kt,var(--fm-k));white-space:nowrap;}
-      .fm-track{position:relative;height:28px;border-radius:14px;background:var(--card-background-color,#fff);}
+      .fm-track{position:relative;height:28px;border-radius:14px;background:var(--fm-s2);}
       .fm-win{position:absolute;top:5px;bottom:5px;border-radius:9px;--w1:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 18%,transparent);--w2:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 42%,transparent);
         background:linear-gradient(90deg,var(--w1,var(--fm-k1)),var(--w2,var(--fm-k3)) 50%,var(--w1,var(--fm-k1)));}
       .fm-mo.fm-on .fm-win{--w1:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 30%,transparent);}
@@ -6307,7 +6350,7 @@ class FpMilestoneCard extends HTMLElement {
       /* Dialog */
       .fm-ov{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fm-fade .2s;}
       @keyframes fm-fade{from{opacity:0;}}
-      .fm-sheet{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:24px;width:100%;max-width:420px;max-height:calc(100vh - 32px);overflow:auto;
+      .fm-sheet{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--fm-r);width:100%;max-width:420px;max-height:calc(100vh - 32px);overflow:auto;
         box-shadow:0 16px 50px rgba(0,0,0,.3);animation:fm-up .4s cubic-bezier(.3,1.4,.5,1);}
       @keyframes fm-up{from{transform:translateY(30px) scale(.94);opacity:0;}}
       .fm-sh-top{position:relative;overflow:hidden;text-align:center;padding:22px 18px 16px;background:linear-gradient(170deg,var(--fm-k3),var(--fm-k1) 65%,transparent);}
@@ -6323,20 +6366,21 @@ class FpMilestoneCard extends HTMLElement {
       .fm-opt{text-transform:none;letter-spacing:0;font-weight:600;opacity:.8;}
       .fm-two{display:flex;gap:10px;} .fm-emo{flex:0 0 76px;} .fm-emo .fm-in{text-align:center;font-size:1.3rem;padding:7px;} .fm-grow{flex:1;min-width:0;}
       .fm-when{display:flex;gap:6px;}
-      .fm-when button{flex:none;border:2px solid transparent;border-radius:10px;padding:8px 12px;font-weight:700;font-size:.9rem;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);}
-      .fm-when button.fm-sel{border-color:var(--fm-k);background:var(--fm-k1);}
+      .fm-when button{flex:none;border:2px solid transparent;border-radius:var(--fm-rs);padding:8px 12px;font-weight:700;font-size:.9rem;cursor:pointer;
+        background:var(--fm-s);color:var(--primary-text-color);}
+      .fm-when button.fm-sel{border-color:var(--fm-kt,var(--fm-k));background:var(--fm-k1);}
       .fm-when .fm-in{flex:1;}
-      .fm-in{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--divider-color);border-radius:10px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .fm-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fm-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum sonst breiter als der Dialog */
+      .fm-in{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--divider-color);border-radius:var(--fm-rs);
+        background:var(--fm-s);color:var(--primary-text-color);font-size:1rem;}
+      .fm-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;} .fm-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum sonst breiter als der Dialog */
+      .fm-dark .fm-in[type=date]{color-scheme:dark;}
       textarea.fm-in{resize:vertical;}
       .fm-age{min-height:1.1em;font-size:.84rem;font-weight:700;color:var(--fm-kt,var(--fm-k));margin-top:7px;}
       .fm-check{display:flex;align-items:center;gap:9px;font-size:.9rem;margin-top:9px;cursor:pointer;}
       .fm-check input{width:19px;height:19px;margin:0;accent-color:var(--fm-k);flex:none;}
       .fm-foot{display:flex;gap:8px;align-items:center;padding:18px;}
       .fm-flex{flex:1;}
-      .fm-btn{border:none;border-radius:12px;padding:12px 16px;font-weight:700;font-size:.95rem;cursor:pointer;background:var(--secondary-background-color);color:var(--primary-text-color);}
+      .fm-btn{border:none;border-radius:var(--fm-rs);padding:12px 16px;font-weight:700;font-size:.95rem;cursor:pointer;background:var(--fm-s);color:var(--primary-text-color);}
       .fm-ok{background:var(--fm-k);color:#fff;box-shadow:0 4px 12px var(--fm-k3);}
       .fm-del{background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;padding-left:2px;padding-right:2px;}
 
@@ -8237,6 +8281,8 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-emb ha-card{background:transparent !important;box-shadow:none !important;border:none !important;}
       .fo-ms-host .fm-card{padding:0 0 8px;}
       .fo-ms-host .fm-title:empty{display:none;}
+      /* Am Handy wählt der Schalter im Kopf das Kind, der eigene der Meilensteinkarte wäre doppelt. Am Tablet bleibt er. */
+      @container fo-card (max-width: 679px){ .fo-card.fo-multi .fo-ms-host .fm-kids{display:none;} }
       .fo-emb .ff-card,.fo-emb .fd-card{padding:0 0 8px;}
       .fo-pgrid .fo-blk:not(:empty) + .fo-blk:not(:empty){margin-top:14px;}
 
