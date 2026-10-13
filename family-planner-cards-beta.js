@@ -6355,9 +6355,10 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v3 (Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card-beta v4 (Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
-// (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta).
+// (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
+// eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
 // Schreibt selbst Windeln, Fläschchen und Gewichte im Format jener Karten und schaltet den
 // Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
 (() => {
@@ -6424,12 +6425,14 @@ class FpBabyOverviewCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     // Verglichen wird mit dem, was die Karte zuletzt gesehen hat — nicht mit dem vorigen hass-Objekt.
-    const lauf = this.config.kids.map(k => this._laeuft(k)), sig = JSON.stringify([lauf, this.config.kids.map((k, i) => [this._seite(k), lauf[i] ? this._beginn(k) : 0]), this._dunkel()]);
-    const vorher = this._lauf;
-    this._lauf = lauf;
+    const kids = this.config.kids, lauf = kids.map(k => this._laeuft(k)), schlaf = kids.map(k => this._schlaeft(k));
+    const sig = JSON.stringify([lauf, schlaf, kids.map((k, i) => [this._seite(k), lauf[i] ? this._beginn(k) : 0, schlaf[i] ? this._schlafBeginn(k) : 0]), this._dunkel()]);
+    const vorher = this._lauf, vorherS = this._schlaf;
+    this._lauf = lauf; this._schlaf = schlaf;
     if (!this._built) { this._swSig = sig; this._build(); this._load(); return; }
     // Beim Stopp schreibt die Automation den Termin erst nach ein paar Sekunden — mehrfach nachladen.
-    if (vorher && vorher.some((v, i) => v && !lauf[i])) this._nachladen([3000, 8000, 20000, 40000]);
+    const gestoppt = (alt, neu) => alt && alt.some((v, i) => v && !neu[i]);
+    if (gestoppt(vorher, lauf) || gestoppt(vorherS, schlaf)) this._nachladen([3000, 8000, 20000, 40000]);
     if (sig !== this._swSig) { this._swSig = sig; this._paint(true); }
   }
   _nachladen(zeiten) {
@@ -6449,6 +6452,7 @@ class FpBabyOverviewCard extends HTMLElement {
   _tick() {
     this._t = (this._t || 0) + 1;
     this.querySelectorAll(".fo-uhr[data-ab]").forEach(el => { el.textContent = this._uhr((Date.now() - Number(el.dataset.ab)) / 1000); });
+    this.querySelectorAll(".fo-dauer[data-ab]").forEach(el => { el.textContent = this._hDauer(Date.now() - Number(el.dataset.ab)); });   // Schlaf: ohne Sekunden
     if (this._t % 30 === 0) this._paint();
     if (this._t % 60 === 0) this._load();
   }
@@ -6540,6 +6544,11 @@ class FpBabyOverviewCard extends HTMLElement {
     const art = meta.art || (/beides|\+/.test(sum) ? "beides" : /voll/i.test(sum) ? "voll" : "nass");
     return { start: this._start(ev), art };
   }
+  _parseSleep(ev) {
+    const meta = this._meta(ev);
+    if (meta.typ && meta.typ !== "schlaf") return null;   // fremde Termine im selben Kalender überspringen
+    return { uid: ev.uid, start: this._start(ev), end: this._ende(ev), auto: !!meta.auto };
+  }
   _parseWeight(ev) {
     const meta = this._meta(ev), sum = String(ev.summary || "");
     const kid = this.config.kids.find(k => (k.weight_key || k.key) === meta.kind) || this.config.kids.find(k => sum.toLowerCase().startsWith(k.name.toLowerCase()));
@@ -6572,11 +6581,12 @@ class FpBabyOverviewCard extends HTMLElement {
     const lange = new Date(2015, 0, 1);
     await Promise.all([
       ...this.config.kids.map(async k => {
-        const [f, w] = await Promise.all([holen(k.feeding_calendar, von), holen(k.diaper_calendar, von)]);
-        const a = alt.kids[k.key] || { feeds: [], diapers: [] };
+        const [f, w, sl] = await Promise.all([holen(k.feeding_calendar, von), holen(k.diaper_calendar, von), holen(k.sleep_calendar, von)]);
+        const a = alt.kids[k.key] || { feeds: [], diapers: [], sleeps: [] };
         d.kids[k.key] = {
           feeds: f ? f.map(x => this._parseFeed(x)).filter(x => x && !isNaN(x.start)).sort((x, y) => x.start - y.start) : a.feeds,
           diapers: w ? w.map(x => this._parseDiaper(x)).filter(x => !isNaN(x.start)).sort((x, y) => x.start - y.start) : a.diapers,
+          sleeps: sl ? sl.map(x => this._parseSleep(x)).filter(x => x && !isNaN(x.start) && !isNaN(x.end)).sort((x, y) => x.start - y.start) : (a.sleeps || []),
         };
       }),
       holen(this.config.weight_calendar, lange).then(r => { if (r) d.weights = r.map(x => this._parseWeight(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
@@ -6609,10 +6619,22 @@ class FpBabyOverviewCard extends HTMLElement {
     return lc || Date.now();
   }
   _seite(kid) { const s = this._hass && kid.side && this._hass.states[kid.side]; return s ? s.state : ""; }
+  _schlaeft(kid) { const s = this._hass && kid.sleep_switch && this._hass.states[kid.sleep_switch]; return !!s && s.state === "on"; }
+  // Beginn aus dem Helfer. Nur in der ersten Minute nach dem Einschalten kann dort noch der vorige
+  // Schlaf stehen — dann gilt der Schaltzeitpunkt. Später nicht mehr, denn nach dem nächtlichen
+  // Neustart steht last_changed auf dem Neustart, der Helfer aber weiter richtig.
+  _schlafBeginn(kid) {
+    const s = this._hass && kid.sleep_start && this._hass.states[kid.sleep_start];
+    const t = s && s.attributes ? Number(s.attributes.timestamp) * 1000 : 0;
+    const sw = this._hass && kid.sleep_switch && this._hass.states[kid.sleep_switch], lc = sw && sw.last_changed ? Date.parse(sw.last_changed) : 0;
+    if (t > 0 && !(lc && Date.now() - lc < MIN && t < lc - MIN)) return t;
+    return lc || Date.now();
+  }
+  _ueber(a, b, t0, t1) { return Math.max(0, Math.min(b, t1) - Math.max(a, t0)); }
 
   // Alles, was eine Spalte zeigt — und was die KI als Zusammenfassung bekommt.
   _vm(kid) {
-    const raw = (this._d && this._d.kids[kid.key]) || { feeds: [], diapers: [] };
+    const raw = (this._d && this._d.kids[kid.key]) || { feeds: [], diapers: [], sleeps: [] };
     const jetzt = Date.now(), heute0 = +this._mitternacht(new Date());
     const meals = this._mahlzeiten(raw.feeds), letzte = meals[meals.length - 1] || null;
     const heute = raw.feeds.filter(e => +e.start >= heute0), mealsHeute = meals.filter(m => m.start >= heute0);
@@ -6621,7 +6643,11 @@ class FpBabyOverviewCard extends HTMLElement {
     const wHeute = raw.diapers.filter(e => +e.start >= heute0);
     const weights = ((this._d && this._d.weights) || []).filter(w => w.kind === kid.key);
     const ms = ((this._d && this._d.milestones) || []).filter(m => m.kind === kid.key);
+    // Laufender Schlaf als offener Abschnitt bis jetzt, damit Summen und Streifen ihn mitzählen.
+    const schlaeft = this._schlaeft(kid), schlafAb = schlaeft ? this._schlafBeginn(kid) : 0;
+    const schlaf = schlaeft ? (raw.sleeps || []).concat([{ start: new Date(schlafAb), end: new Date(jetzt), laeuft: true }]) : (raw.sleeps || []);
     return {
+      schlaf, schlaeft, schlafAb, schlafProg: this._schlafPrognose(schlaf, jetzt, schlaeft),
       kid, meals, letzte, mealsHeute, still, ml, raw,
       nass: wHeute.filter(e => e.art !== "voll").length, voll: wHeute.filter(e => e.art !== "nass").length,
       windel: raw.diapers[raw.diapers.length - 1] || null,
@@ -6640,11 +6666,30 @@ class FpBabyOverviewCard extends HTMLElement {
       if (a >= ab && b - a <= 8 * STD) paare.push({ n: nacht(a), d: b - a });
     }
     const letzte = meals[meals.length - 1]; if (!letzte) return null;
-    let set = paare.filter(p => p.n === nacht(letzte.start)).map(p => p.d);
-    if (set.length < 4) set = paare.map(p => p.d);
+    let set = paare.filter(p => p.n === nacht(letzte.start)).map(p => p.d), teil = nacht(letzte.start) ? "nachts" : "tagsüber";
+    if (set.length < 4) { set = paare.map(p => p.d); teil = ""; }
     if (set.length < 4) return null;
     const med = this._median(set), lo = Math.min(this._quantil(set, .25), med - 10 * MIN), hi = Math.max(this._quantil(set, .75), med + 10 * MIN);
-    return { t: letzte.start + med, lo: letzte.start + lo, hi: letzte.start + hi, med };
+    return { t: letzte.start + med, lo: letzte.start + lo, hi: letzte.start + hi, med, teil };
+  }
+
+  // Nächster Schlaf wie bei Napper und Buma über die Wachzeit: Median der Wachphasen (Aufwachen bis
+  // nächstes Einschlafen) der letzten 72 h, getrennt nach Tag und Nacht (22–6 Uhr), ab drei Wachphasen.
+  // Bewusst ohne Alterstabelle: dafür gibt es keine belastbare Quelle, die Vorhersage kommt nur aus den eigenen Daten.
+  _schlafPrognose(schlaf, jetzt, schlaeft) {
+    if (schlaeft || !schlaf.length) return null;
+    const nacht = t => { const h = new Date(t).getHours(); return h >= 22 || h < 6; };
+    const ab = jetzt - 72 * STD, paare = [];
+    for (let i = 1; i < schlaf.length; i++) {
+      const a = +schlaf[i - 1].end, b = +schlaf[i].start;
+      if (a >= ab && b > a && b - a <= 8 * STD) paare.push({ n: nacht(a), d: b - a });
+    }
+    const l = +schlaf[schlaf.length - 1].end;
+    let set = paare.filter(p => p.n === nacht(l)).map(p => p.d), teil = nacht(l) ? "nachts" : "tagsüber";
+    if (set.length < 3) { set = paare.map(p => p.d); teil = ""; }
+    if (set.length < 3) return null;
+    const med = this._median(set), lo = Math.min(this._quantil(set, .25), med - 10 * MIN), hi = Math.max(this._quantil(set, .75), med + 10 * MIN);
+    return { lo: l + lo, hi: l + hi, med, teil };
   }
 
   // Nacht = 19 bis 7 Uhr, benannt nach dem Morgen. Längste Pause zwischen zwei Mahlzeiten,
@@ -6673,6 +6718,16 @@ class FpBabyOverviewCard extends HTMLElement {
       if (frueher.length >= 3 && l.best > Math.max(...frueher)) t += ` – die längste seit ${frueher.length + 1} Nächten 🎉`;
       else if (frueher.length >= 3) t += ` <span>(sonst ~${this._hDauer(this._median(frueher.slice(0, 7)))})</span>`;
       out.push(t);
+    }
+    // Schlaf der letzten Nacht (19–7 Uhr), auf die Nacht zugeschnitten
+    if (vm.schlaf.length) {
+      let m0 = this._mitternacht(jetzt); if (jetzt.getHours() < 7) m0 = this._mitternacht(jetzt, -1);
+      const von = +m0 - 5 * STD, bis = Math.min(+m0 + 7 * STD, +jetzt);
+      const teile = vm.schlaf.map(e => ({ a: Math.max(+e.start, von), b: Math.min(+e.end, bis) })).filter(x => x.b > x.a);
+      if (teile.length) {
+        const lang = teile.reduce((m, x) => (x.b - x.a > m.b - m.a ? x : m)), sum = teile.reduce((s2, x) => s2 + x.b - x.a, 0);
+        out.push(`😴 Längster Schlaf letzte Nacht: <b>${this._hDauer(lang.b - lang.a)}</b> <span>(${this._hm(new Date(lang.a))}–${this._hm(new Date(lang.b))}, insgesamt ${this._hDauer(sum)})</span>`);
+      }
     }
     // Vergleich mit den Vortagen bis zur selben Uhrzeit — sonst wirkt der Vormittag immer „zu wenig“.
     const vortage = [];
@@ -6750,11 +6805,15 @@ class FpBabyOverviewCard extends HTMLElement {
       const f = vm.raw.feeds.filter(e => +e.start >= t0 && +e.start < t1), w = vm.raw.diapers.filter(e => +e.start >= t0 && +e.start < t1);
       return { m, still: f.filter(e => e.typ === "stillen").reduce((s, e) => s + Math.max(0, e.end - e.start), 0),
         ml: f.filter(e => e.typ === "flasche").reduce((s, e) => s + (e.ml || 0), 0), w: w.length, voll: w.filter(e => e.art !== "nass").length,
-        daten: m > 0 || w.length > 0 };
+        daten: m > 0 || w.length > 0,
+        // Schlaf am Kalendertag und in der Nacht davor (19–7 Uhr); eigene Datenmarke, damit Schlaf allein die Mahlzeiten-Schnitte nicht verzerrt
+        schlaf: vm.schlaf.reduce((s, e) => s + this._ueber(+e.start, +e.end, t0, t1), 0),
+        nacht: vm.schlaf.reduce((s, e) => s + this._ueber(+e.start, +e.end, t0 - 5 * STD, t0 + 7 * STD), 0) };
     };
     const A = [], B = [];
     for (let i = 1; i <= n; i++) { A.push(tag(i)); B.push(tag(i + n)); }
     const mit = arr => arr.filter(x => x.daten), schnitt = (arr, k) => { const a = mit(arr); return a.length ? a.reduce((s, x) => s + x[k], 0) / a.length : 0; };
+    const mitS = A.filter(x => x.schlaf > 0), schnittS = k => mitS.length ? mitS.reduce((s, x) => s + x[k], 0) / mitS.length : 0;
     const von = h0 - n * TAG, abst = [];
     for (let i = 1; i < vm.meals.length; i++) {
       const a = vm.meals[i - 1].start, b = vm.meals[i].start;
@@ -6765,7 +6824,8 @@ class FpBabyOverviewCard extends HTMLElement {
     return { n, tageA: mit(A).length, tageB: mit(B).length, mA: schnitt(A, "m"), mB: schnitt(B, "m"), still: schnitt(A, "still"), ml: schnitt(A, "ml"),
       flaschenTage: A.filter(x => x.ml > 0).length, w: schnitt(A, "w"), voll: schnitt(A, "voll"),
       p25: abst.length >= 6 ? this._quantil(abst, .25) : 0, p75: abst.length >= 6 ? this._quantil(abst, .75) : 0,
-      nachtA: nA.length >= 3 ? this._median(nA) : 0, nachtB: nB.length >= 3 ? this._median(nB) : 0 };
+      nachtA: nA.length >= 3 ? this._median(nA) : 0, nachtB: nB.length >= 3 ? this._median(nB) : 0,
+      schlafTage: mitS.length, schlaf: schnittS("schlaf"), schlafNacht: schnittS("nacht") };
   }
   _komma(x) { return (Math.round(x * 10) / 10).toLocaleString("de-AT"); }
   // Überschrift und ein, zwei Sätze wie „A bit of everything“ in Buma — gerechnet, nicht erfunden.
@@ -6774,7 +6834,9 @@ class FpBabyOverviewCard extends HTMLElement {
     const naechteLaenger = s.nachtA && s.nachtB && s.nachtA - s.nachtB >= 15 * MIN;
     const gleich = s.p75 && s.p75 - s.p25 <= 50 * MIN;
     const h = naechteLaenger ? "Die Nächte werden länger 🌙" : gleich ? "Ein gleichmäßiger Rhythmus" : "Ein bisschen von allem";
-    const t = [`${this._komma(s.mA)} Mahlzeiten und ${this._komma(s.w)} Windeln am Tag in den letzten ${s.n} Tagen.`];
+    const t = [s.schlafTage >= 2
+      ? `${this._komma(s.mA)} Mahlzeiten, ${this._komma(s.w)} Windeln und ${this._hDauer(s.schlaf)} Schlaf am Tag in den letzten ${s.n} Tagen.`
+      : `${this._komma(s.mA)} Mahlzeiten und ${this._komma(s.w)} Windeln am Tag in den letzten ${s.n} Tagen.`];
     if (s.tageB >= s.n / 2 && s.mB) {
       const p = Math.round((s.mA - s.mB) / s.mB * 100);
       t.push(Math.abs(p) >= 5 ? `Das sind etwa ${Math.abs(p)} % ${p > 0 ? "mehr" : "weniger"} Mahlzeiten als davor.` : "Ungefähr so viele wie davor.");
@@ -6808,6 +6870,12 @@ class FpBabyOverviewCard extends HTMLElement {
     if ((b = z("[data-nav]"))) { const p = this.config[b.dataset.nav]; if (p) { history.pushState(null, "", p); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); } return; }
     if ((b = z("[data-f]"))) { this._filter = b.dataset.f; this._setPref("filter", this._filter); this._paint(true); return; }
     if ((b = z("[data-sp]"))) { this._spanne = Number(b.dataset.sp); this._setPref("spanne", String(this._spanne)); this._paint(true); return; }
+    if ((b = z("[data-schlaf]"))) { this._schlafToggle(b.dataset.schlaf); return; }
+    if ((b = z("[data-schlaf-neu]"))) { this._sheetSchlaf(null, null); return; }
+    if ((b = z("[data-suid]"))) {
+      const kid = this._kid(b.dataset.kind), e = this._vm(kid).schlaf.find(x => x.uid === b.dataset.suid);
+      if (e) this._sheetSchlaf(kid, e); return;
+    }
     if ((b = z("[data-walle]"))) { this._wAlle = !this._wAlle; this._paint(true); return; }
     if ((b = z("[data-wuid]"))) { const w = ((this._d && this._d.weights) || []).find(x => x.uid === b.dataset.wuid); if (w) this._sheetWiegen(this._kid(w.kind), w); return; }
     if ((b = z("[data-act]"))) {
@@ -6826,8 +6894,9 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this._view === "wachstum" && !this.config.weight_calendar) this._view = "heute";
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
     const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
-      kids.map(k => [this._laeuft(k), this._seite(k)]),
-      vms.map(v => [v.raw.feeds.length, v.raw.diapers.length, v.letzte && v.letzte.start, v.windel && +v.windel.start, v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length])]);
+      kids.map(k => [this._laeuft(k), this._seite(k), this._schlaeft(k)]),
+      vms.map(v => [v.raw.feeds.length, v.raw.diapers.length, v.letzte && v.letzte.start, v.windel && +v.windel.start, v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length,
+        v.schlaf.filter(x => !x.laeuft).map(x => `${x.uid}:${+x.start}:${+x.end}`).join()])]);
     if (!force && sig === this._sig) return;
     this._sig = sig;
     this._card.classList.toggle("fo-light", !dunkel);
@@ -6837,7 +6906,8 @@ class FpBabyOverviewCard extends HTMLElement {
     const spalten = vms.map(vm => `<section class="fo-col${vm.kid.key === this._kind ? " fo-sel" : ""}">
       ${kids.length > 1 ? `<div class="fo-colhead">${this._avatar(vm.kid, 30)}<b>${U.esc(vm.kid.name)}</b><small>${this._alterZeile(vm.kid)}</small></div>` : ""}
       ${this._view === "muster" ? this._musterSpalte(vm) : this._view === "wachstum" ? this._wachstumSpalte(vm) : this._heuteSpalte(vm)}</section>`).join("");
-    body.innerHTML = (this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav()) + `<div class="fo-grid">${spalten}</div>`;
+    const kopf = this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav() + (this._off === 0 ? this._schlafLeiste() : "");
+    body.innerHTML = kopf + `<div class="fo-grid">${spalten}</div>`;
     const views = [["heute", "Heute"], ["muster", "Muster"]];
     if (this.config.weight_calendar) views.push(["wachstum", "Wachstum"]);
     const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
@@ -6864,6 +6934,28 @@ class FpBabyOverviewCard extends HTMLElement {
       <span>${name}</span><button type="button" data-off="1" aria-label="Tag vor" ${this._off >= 0 ? "disabled" : ""}>›</button></div>`;
   }
 
+  // Schlaf wie bei Napper und Buma per Knopf: „Beide schlafen“ und je Kind, über den Spalten,
+  // damit am Handy auch das gerade nicht gezeigte Kind erreichbar ist. Schläft ein Kind, ist sein
+  // Knopf gefüllt und zeigt die Dauer; die kleine Zeile sagt, was der nächste Tipp tut.
+  _schlafLeiste() {
+    const kids = this.config.kids.filter(k => k.sleep_switch);
+    if (!kids.length) return "";
+    const jetzt = Date.now(), an = kids.filter(k => this._schlaeft(k)), alle = an.length === kids.length;
+    const knopf = (key, emoji, text, sub, aktiv) => `<button type="button" class="fo-sl${aktiv ? " fo-sl-an" : ""}" data-schlaf="${U.esc(key)}">
+      <span class="fo-sle">${emoji}</span><span class="fo-slx"><span class="fo-slt">${text}</span>${sub ? `<span class="fo-sls">${sub}</span>` : ""}</span></button>`;
+    const zwei = kids.length === 2, beideText = zwei ? "Beide schlafen" : "Alle schlafen";
+    const beide = kids.length > 1 ? knopf("*", alle ? "💤" : "😴", beideText,
+      alle ? `☀️ ${zwei ? "Beide" : "Alle"} aufgewacht` : an.length ? `${an.map(k => U.esc(k.name)).join(", ")} schläft schon` : "", alle) : "";
+    return `<div class="fo-sleep">${beide}${kids.map(k => {
+      if (this._schlaeft(k)) {
+        const ab = this._schlafBeginn(k);
+        return knopf(k.key, "💤", `${U.esc(k.name)} · <span class="fo-dauer" data-ab="${ab}">${this._hDauer(jetzt - ab)}</span>`, "☀️ Aufgewacht", true);
+      }
+      const l = this._vm(k).schlaf.slice(-1)[0], wach = l && jetzt - l.end < TAG ? `wach seit ${this._hDauer(jetzt - l.end)}` : "";
+      return knopf(k.key, "😴", `${U.esc(k.name)} schläft`, wach, false);
+    }).join("")}${this.config.kids.some(k => k.sleep_calendar) ? `<button type="button" class="fo-sl-plus" data-schlaf-neu aria-label="Schlaf nachtragen" title="Schlaf nachtragen">＋</button>` : ""}</div>`;
+  }
+
   // ---------- Heute ----------
   _heuteSpalte(vm) {
     const k = vm.kid, jetzt = Date.now(), heute = this._off === 0, tag = this._mitternacht(new Date(), this._off);
@@ -6883,15 +6975,17 @@ class FpBabyOverviewCard extends HTMLElement {
     const meals = vm.meals.filter(m => m.start >= t0 && m.start < t1), fe = vm.raw.feeds.filter(e => +e.start >= t0 && +e.start < t1);
     const wi = vm.raw.diapers.filter(e => +e.start >= t0 && +e.start < t1);
     const still = fe.filter(e => e.typ === "stillen").reduce((s, e) => s + Math.max(0, e.end - e.start), 0), ml = fe.filter(e => e.typ === "flasche").reduce((s, e) => s + (e.ml || 0), 0);
+    const schlafTag = vm.schlaf.reduce((s, e) => s + this._ueber(+e.start, +e.end, t0, t1), 0), sl = vm.schlaf.filter(e => +e.start >= t0 && +e.start < t1);
     const pills = [
       k.feeding_calendar ? `<div><b>${still ? this._hDauer(still) : "–"}</b><span>gestillt</span></div>` : "",
       k.feeding_calendar ? `<div><b>${meals.length}</b><span>${meals.length === 1 ? "Mahlzeit" : "Mahlzeiten"}</span></div>` : "",
       k.feeding_calendar && ml ? `<div><b>${ml} ml</b><span>Fläschchen</span></div>` : "",
       k.diaper_calendar ? `<div><b>${wi.length}</b><span>${wi.length === 1 ? "Windel" : "Windeln"}</span></div>` : "",
+      k.sleep_calendar || k.sleep_switch ? `<div><b>${schlafTag ? this._hDauer(schlafTag) : "–"}</b><span>geschlafen</span></div>` : "",
     ].join("");
     html += `<div class="fo-pills">${pills}</div>`;
     html += this._streifen(vm, tag, "alle", true);
-    html += this._liste(vm, fe, wi);
+    html += this._liste(vm, fe, wi, sl);
     if (heute) html += this._miniKarten(vm);
     return html;
   }
@@ -6915,7 +7009,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const big = jetzt < p.lo ? `${this._hm(new Date(p.lo))} – ${this._hm(new Date(p.hi))}` : jetzt <= p.hi ? `jetzt – ${this._hm(new Date(p.hi))}` : "Fällig";
     return `<div class="fo-next${jetzt > p.hi ? " fo-next-due" : ""}"><div class="fo-nl">Nächste Mahlzeit</div>
       <div class="fo-nb">${big}</div>
-      <div class="fo-ns">satt seit ${this._hDauer(seit)} · nach dieser Tageszeit</div>
+      <div class="fo-ns">satt seit ${this._hDauer(seit)} · Abstand ${p.teil ? `${p.teil} ` : ""}meist ~${this._hDauer(p.med)}</div>
       <div class="fo-nf">Zuletzt ${U.esc(zuletzt)}</div></div>`;
   }
 
@@ -6926,6 +7020,15 @@ class FpBabyOverviewCard extends HTMLElement {
       <div class="fo-ncl"><i style="background:${farbe}"></i>${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div>
       ${naechst ? `<div class="fo-ncn">${naechst}</div>` : ""}</div>`;
     const spanne = p => `Nächste ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}`;
+    if (k.sleep_calendar || k.sleep_switch) {
+      const l = vm.schlaf[vm.schlaf.length - 1], p = vm.schlafProg;
+      if (vm.schlaeft) karten.push(karte("var(--c-sleep)", "Schlaf", `<span class="fo-dauer" data-ab="${vm.schlafAb}">${this._hDauer(jetzt - vm.schlafAb)}</span>`, `schläft seit ${this._hm(new Date(vm.schlafAb))}`, ""));
+      else if (l && jetzt - l.end < 2 * TAG) {
+        const lang = p && jetzt > p.hi && jetzt - l.end <= 8 * STD;
+        karten.push(karte("var(--c-sleep)", "Schlaf", this._her(jetzt - l.end), `wach seit ${this._hm(new Date(l.end))}`,
+          lang ? `<span class="fo-due-t">Länger wach als sonst</span>` : p ? `Schlaf ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}` : "", lang));
+      }
+    }
     if (k.feeding_calendar || k.switch) {
       const st = vm.raw.feeds.filter(e => e.typ === "stillen").pop(), l = vm.letzte;
       const ziel = Number(k.reminder_hours || this.config.reminder_hours) * STD, faellig = !lauf && l && jetzt - l.start >= ziel && jetzt - l.start <= 8 * STD;
@@ -6947,6 +7050,9 @@ class FpBabyOverviewCard extends HTMLElement {
   _streifen(vm, tag, filter, ticks) {
     const t0 = +tag, t1 = t0 + TAG, pos = t => Math.max(0, Math.min(100, (t - t0) / TAG * 100));
     const teile = [];
+    if (filter === "alle" || filter === "schlaf") {
+      vm.schlaf.filter(e => +e.end > t0 && +e.start < t1).forEach(e => teile.push(`<i class="fo-s${filter === "schlaf" ? " fo-s1" : ""}" style="left:${pos(+e.start).toFixed(2)}%;width:${Math.max(.5, pos(+e.end) - pos(+e.start)).toFixed(2)}%" title="${this._hm(e.start)}–${e.laeuft ? "jetzt" : this._hm(e.end)} Schlaf"></i>`));
+    }
     if (filter === "alle" || filter === "stillen" || filter === "flasche") {
       vm.raw.feeds.filter(e => (filter === "alle" || e.typ === filter) && +e.end >= t0 && +e.start < t1).forEach(e => {
         const flasche = e.typ === "flasche", a = flasche ? +e.start - 10 * MIN : +e.start, b = flasche ? +e.start : Math.max(+e.end, +e.start + 4 * MIN);
@@ -6962,13 +7068,18 @@ class FpBabyOverviewCard extends HTMLElement {
   }
   _ticks() { return `<div class="fo-ticks">${[0, 6, 12, 18, 24].map(h => `<span style="left:${h / 24 * 100}%">${h}</span>`).join("")}</div>`; }
 
-  _liste(vm, fe, wi) {
+  _liste(vm, fe, wi, sl) {
     const z = [
+      ...(sl || []).map(e => ({ t: +e.start, f: "var(--c-sleep)", s: e.laeuft ? "Schläft" : `Schlaf bis ${this._hm(e.end)}`, d: this._minText(e.end - e.start), uid: e.laeuft ? "" : e.uid })),
       ...fe.map(e => ({ t: +e.start, f: this._farbe(e.typ), s: e.typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""}` : `Stillen${e.seite ? ` ${e.seite}` : ""}`, d: e.typ === "flasche" ? "" : this._minText(e.end - e.start) })),
       ...wi.map(e => ({ t: +e.start, f: this._farbe(e.art), s: `Windel ${e.art === "beides" ? "nass + voll" : e.art}`, d: "" })),
     ].sort((a, b) => b.t - a.t);
     if (!z.length) return `<div class="fo-leer">An diesem Tag ist nichts eingetragen.</div>`;
-    return `<div class="fo-sec">Einträge</div><div class="fo-list">${z.map(x => `<div class="fo-li"><i style="background:${x.f}"></i><span>${U.esc(x.s)}</span><small>${x.d}</small><time>${this._hm(new Date(x.t))}</time></div>`).join("")}</div>`;
+    // Schlafphasen lassen sich per Tipp ändern; Stillen und Windeln bleiben bei ihren Karten.
+    const zeile = x => `<i style="background:${x.f}"></i><span>${U.esc(x.s)}</span><small>${x.d}</small><time>${this._hm(new Date(x.t))}</time>`;
+    return `<div class="fo-sec">Einträge</div><div class="fo-list">${z.map(x => x.uid
+      ? `<button type="button" class="fo-li fo-wli" data-suid="${U.esc(x.uid)}" data-kind="${U.esc(vm.kid.key)}">${zeile(x)}</button>`
+      : `<div class="fo-li">${zeile(x)}</div>`).join("")}</div>`;
   }
 
   // Wachstum und Momente — in Buma eigene Bereiche, hier zwei kleine Karten.
@@ -6985,6 +7096,7 @@ class FpBabyOverviewCard extends HTMLElement {
   // ---------- Muster ----------
   _musterKopf() {
     const chips = [["alle", "Alle", ""], ["stillen", "Stillen", "var(--c-nurse)"], ["flasche", "Fläschchen", "var(--c-bottle)"], ["windel", "Windel", "var(--c-diaper)"]];
+    if (this.config.kids.some(k => k.sleep_calendar)) chips.push(["schlaf", "Schlaf", "var(--c-sleep)"]);
     return `<div class="fo-mtitle"><b>Muster</b><span>Jeder Tag nebeneinander</span></div>
       <div class="fo-mctl"><div class="fo-seg"><button type="button" data-sp="7" class="${this._spanne === 7 ? "fo-on" : ""}">Woche</button><button type="button" data-sp="14" class="${this._spanne === 14 ? "fo-on" : ""}">2 Wochen</button></div>
       <div class="fo-chips">${chips.map(([f, t, c]) => `<button type="button" data-f="${f}" class="${this._filter === f ? "fo-on" : ""}" style="--chip:${c || "var(--b-acc)"}">${c ? `<i></i>` : ""}${t}</button>`).join("")}</div></div>`;
@@ -6995,6 +7107,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const avg = f === "stillen" ? [`Ø ${this._hDauer(s.still)} am Tag gestillt`, p]
       : f === "flasche" ? [`Ø ${Math.round(s.ml)} ml Fläschchen am Tag`, `an ${s.flaschenTage} von ${n} Tagen`]
       : f === "windel" ? [`Ø ${this._komma(s.w)} Windeln am Tag`, `davon ${this._komma(s.voll)} mit Stuhl`]
+      : f === "schlaf" ? (s.schlafTage ? [`Ø ${this._hDauer(s.schlaf)} Schlaf am Tag`, `nachts (19–7 Uhr) ~${this._hDauer(s.schlafNacht)}`] : ["Noch kein Schlaf eingetragen", ""])
       : [`Ø ${this._komma(s.mA)} Mahlzeiten am Tag`, `und ${this._komma(s.w)} Windeln${p ? `, ${p}` : ""}`];
     const h0 = this._mitternacht(new Date()), rows = [];
     for (let i = 0; i < n; i++) {
@@ -7003,6 +7116,7 @@ class FpBabyOverviewCard extends HTMLElement {
       const summe = f === "stillen" ? (() => { const x = fe.filter(e => e.typ === "stillen").reduce((a, e) => a + Math.max(0, e.end - e.start), 0); return x ? this._hDauer(x) : "–"; })()
         : f === "flasche" ? (() => { const x = fe.filter(e => e.typ === "flasche").reduce((a, e) => a + (e.ml || 0), 0); return x ? `${x} ml` : "–"; })()
         : f === "windel" ? (wi.length ? `${wi.length}` : "–")
+        : f === "schlaf" ? (() => { const x = vm.schlaf.reduce((a, e) => a + this._ueber(+e.start, +e.end, t0, t1), 0); return x ? this._hDauer(x) : "–"; })()
         : (() => { const x = vm.meals.filter(m => m.start >= t0 && m.start < t1).length; return x ? `${x} ×` : "–"; })();
       rows.push(`<div class="fo-row"><span class="fo-rl">${i === 0 ? "Heute" : `${WT[d.getDay()]} ${d.getDate()}.`}</span>${this._streifen(vm, d, f, false)}<span class="fo-rt">${summe}</span></div>`);
     }
@@ -7193,6 +7307,16 @@ class FpBabyOverviewCard extends HTMLElement {
     this._hass.callService("input_boolean", laeuft ? "turn_off" : "turn_on", { entity_id: kid.switch })
       .catch(() => U.toast(this, "Stillen konnte nicht umgeschaltet werden"));
   }
+  // „*“ = alle mit Schlafschalter: schläft noch keiner oder nur einer, legen sich alle hin; schlafen alle, wachen alle auf.
+  // Die Karte schaltet nur — den Termin schreibt wie beim Stillen die Protokoll-Automation.
+  _schlafToggle(key) {
+    const kids = this.config.kids.filter(k => k.sleep_switch), ziel = key === "*" ? kids : kids.filter(k => k.key === key);
+    if (!ziel.length) return;
+    const an = !ziel.every(k => this._schlaeft(k)), betroffen = ziel.filter(k => this._schlaeft(k) !== an);
+    if (!an && betroffen.some(k => Date.now() - this._schlafBeginn(k) < MIN)) U.toast(this, "Unter einer Minute – als Fehltipp verworfen, nicht protokolliert");
+    this._hass.callService("input_boolean", an ? "turn_on" : "turn_off", { entity_id: betroffen.map(k => k.sleep_switch) })
+      .catch(() => U.toast(this, "Schlaf konnte nicht umgeschaltet werden"));
+  }
   async _eintrag(cal, summary, meta, start, okText) {
     try {
       await this._hass.callService("calendar", "create_event", {
@@ -7281,6 +7405,75 @@ class FpBabyOverviewCard extends HTMLElement {
       if (await this._gewichtLoeschen(e.uid)) this._load();
     });
   }
+  // Schlaf nachtragen (auch für beide auf einmal) oder eine Schlafphase ändern bzw. löschen.
+  _sheetSchlaf(kid, e) {
+    const kids = this.config.kids.filter(k => k.sleep_calendar);
+    if (!kids.length) return;
+    let key = (kid || kids[0]).key;
+    const jetzt = new Date(), von = e ? new Date(e.start) : new Date(+jetzt - STD), bis = e ? new Date(e.end) : jetzt;
+    const wahl = !e && kids.length > 1 ? `<div class="fo-lbl">Kind</div><div class="fo-mls fo-kids">${kids.map(k => `<button type="button" data-k="${U.esc(k.key)}">${U.esc(k.name)}</button>`).join("")}${kids.length === 2 ? `<button type="button" data-k="*">Beide</button>` : ""}</div>` : "";
+    const ov = this._sheet(`<div class="fo-sh-head"><b>😴 ${e ? `Schlaf ändern · ${U.esc(kid.name)}` : "Schlaf nachtragen"}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      ${wahl}
+      <div class="fo-lbl">Eingeschlafen</div>
+      <div class="fo-zeitrow"><input class="fo-in fo-vd" type="date" value="${this._isoTag(von)}" max="${this._isoTag(jetzt)}"><input class="fo-in fo-vz" type="time" value="${this._hm(von)}"></div>
+      <div class="fo-lbl">Aufgewacht</div>
+      <input class="fo-in fo-bz" type="time" value="${this._hm(bis)}">
+      <div class="fo-sh-hint">Liegt das Aufwachen vor dem Einschlafen, war es am nächsten Tag.</div>
+      <button class="fo-ok" type="button">${e ? "Speichern" : "Eintragen"}</button>
+      ${e ? `<button class="fo-del" type="button">Schlaf löschen</button>` : ""}`);
+    const mark = () => ov.querySelectorAll("[data-k]").forEach(b => b.classList.toggle("fo-on", b.dataset.k === key));
+    ov.querySelectorAll("[data-k]").forEach(b => b.addEventListener("click", () => { key = b.dataset.k; mark(); }));
+    mark();
+    ov.querySelector(".fo-ok").addEventListener("click", async () => {
+      const ds = ov.querySelector(".fo-vd").value, vz = ov.querySelector(".fo-vz").value, bz = ov.querySelector(".fo-bz").value;
+      if (!ds || !vz || !bz) { U.toast(this, "Bitte Datum und beide Uhrzeiten angeben"); return; }
+      const a = this._day(ds), [vh, vmi] = vz.split(":").map(Number), [bh, bm] = bz.split(":").map(Number);
+      a.setHours(vh, vmi || 0, 0, 0);
+      const b = new Date(a); b.setHours(bh, bm || 0, 0, 0);
+      if (b <= a) b.setDate(b.getDate() + 1);   // über Mitternacht
+      if (b - Date.now() > 5 * MIN) { U.toast(this, "Das Aufwachen liegt in der Zukunft"); return; }
+      if (b - a > 16 * STD) { U.toast(this, "Länger als 16 Stunden – bitte die Zeiten prüfen"); return; }
+      const ziel = e ? [kid] : key === "*" ? kids : [this._kid(key)];
+      // Wie die Kollisionsprüfung bei Napper: keine zwei Schlafphasen eines Kinds übereinander.
+      for (const k of ziel) {
+        const x = this._vm(k).schlaf.find(y => (!e || y.uid !== e.uid) && +y.start < +b && +y.end > +a);
+        if (x) { U.toast(this, `${k.name}: überschneidet sich mit ${this._hm(x.start)}–${x.laeuft ? "jetzt" : this._hm(x.end)}`); return; }
+      }
+      this._closeSheet();
+      let ok = true;
+      for (const k of ziel) ok = (e ? await this._schlafAendern(e, k, a, b) : await this._schlafNeu(k, a, b)) && ok;
+      if (ok) U.toast(this, e ? "Schlaf geändert ✓" : `${ziel.map(k => k.name).join(" und ")}: Schlaf ${this._hm(a)}–${this._hm(b)} eingetragen ✓`);
+      this._load();
+    });
+    if (e) ov.querySelector(".fo-del").addEventListener("click", async () => {
+      if (!window.confirm(`${kid.name}: Schlaf ${this._hm(e.start)}–${this._hm(e.end)} löschen?`)) return;
+      this._closeSheet();
+      if (await this._schlafLoeschen(kid, e.uid)) this._load();
+    });
+  }
+  async _schlafNeu(kid, a, b) {
+    try {
+      await this._hass.callService("calendar", "create_event", { entity_id: kid.sleep_calendar, summary: "Schlaf", description: JSON.stringify({ typ: "schlaf", auto: false }),
+        start_date_time: this._local(a, " "), end_date_time: this._local(b, " ") });
+      return true;
+    } catch (x) { U.toast(this, "Schlaf konnte nicht gespeichert werden"); return false; }
+  }
+  async _schlafLoeschen(kid, uid, leise) {
+    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: kid.sleep_calendar, uid }); return true; }
+    catch (x) { if (!leise) U.toast(this, "Schlaf konnte nicht gelöscht werden"); return false; }
+  }
+  // Ändern entfernt die Markierung „automatisch beendet“, wie bei der Stillkarte.
+  async _schlafAendern(alt, kid, a, b) {
+    try {
+      await this._hass.callWS({ type: "calendar/event/update", entity_id: kid.sleep_calendar, uid: alt.uid,
+        event: { summary: "Schlaf", description: JSON.stringify({ typ: "schlaf", auto: false }), dtstart: this._local(a, "T"), dtend: this._local(b, "T") } });
+      return true;
+    } catch (x) {
+      if (!(await this._schlafNeu(kid, a, b))) return false;
+      if (!(await this._schlafLoeschen(kid, alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
+      return true;
+    }
+  }
   _isoTag(d) { return `${d.getFullYear()}-${this._p(d.getMonth() + 1)}-${this._p(d.getDate())}`; }
   // Eingabe in Gramm oder Kilo: "3450", "3,45", "3.45 kg" → 3450
   _gramm(v) {
@@ -7336,6 +7529,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const kids = this.config.kids, n = kids.map(k => k.name);
     const s = ["Wie war die letzte Nacht?", "Fasse den heutigen Tag zusammen", "Siehst du ein Muster bei den Abständen?"];
     if (kids.length === 2) s.push(`Vergleiche ${n[0]} und ${n[1]} diese Woche`);
+    if (kids.some(k => k.sleep_calendar)) s.push(kids.length === 2 ? `Wie haben ${n[0]} und ${n[1]} geschlafen?` : `Wie hat ${n[0]} geschlafen?`);
     if (this.config.weight_calendar) s.push("Wie entwickelt sich das Gewicht?");
     box.innerHTML = s.map(x => `<button type="button">${U.esc(x)}</button>`).join("");
     box.hidden = this._chat.length > 0;
@@ -7385,7 +7579,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const verlauf = this._chat.slice(0, -1).slice(-8).map(m => `${m.role === "me" ? "Eltern" : "Assistent"}: ${m.text}`).join("\n");
     return [
       `Du bist der freundliche Assistent im Familienplaner einer Familie mit ${kids.length === 1 ? "einem Baby" : kids.length === 2 ? "zwei Babys" : `${kids.length} Kindern`} (${kids.map(k => k.name).join(", ")}).`,
-      "Die Eltern fragen nach den protokollierten Daten: Stillen, Fläschchen, Windeln, Gewicht und Meilensteine.",
+      "Die Eltern fragen nach den protokollierten Daten: Stillen, Fläschchen, Windeln, Schlaf, Gewicht und Meilensteine.",
       "Regeln:",
       "- Antworte auf Deutsch (österreichisch), warm und kurz: höchstens 6 Sätze oder eine kurze Liste.",
       "- Stütze dich nur auf die Daten unten. Rechne sorgfältig und nenne konkrete Zahlen und Uhrzeiten. Wenn die Daten etwas nicht hergeben, sag das ehrlich.",
@@ -7440,6 +7634,23 @@ class FpBabyOverviewCard extends HTMLElement {
         ].sort((a, b) => a.t - b.t);
         if (einzel.length) { L.push("Einzelne Einträge seit vorgestern:"); einzel.forEach(x => L.push(`${tagName(new Date(x.t))} ${this._hm(new Date(x.t))} ${x.s}`)); }
       }
+      if (kid.sleep_calendar || kid.sleep_switch) {
+        if (vm.schlaeft) L.push(`Gerade läuft: Schlaf seit ${this._hm(new Date(vm.schlafAb))}.`);
+        L.push("Schlaf je Tag (0–24 Uhr, Schlaf über Mitternacht aufgeteilt; nachts = 19–7 Uhr vor dem Morgen dieses Tags):");
+        L.push("Tag | Schlaf gesamt | nachts | Schlafphasen | längste");
+        for (let i = tage - 1; i >= 0; i--) {
+          const d0 = this._mitternacht(jetzt, -i), t0 = +d0, t1 = t0 + TAG;
+          const ph = vm.schlaf.filter(e => +e.end > t0 && +e.start < t1);
+          if (!vm.schlaf.length || t1 <= +vm.schlaf[0].start) continue;   // vor dem ersten Eintrag wurde noch nicht protokolliert
+          if (!ph.length) { L.push(`${tagName(d0)} | kein Schlaf eingetragen`); continue; }
+          const sum = ph.reduce((a, e) => a + this._ueber(+e.start, +e.end, t0, t1), 0), nacht = vm.schlaf.reduce((a, e) => a + this._ueber(+e.start, +e.end, t0 - 5 * STD, t0 + 7 * STD), 0);
+          const lang = ph.reduce((m, e) => (e.end - e.start > m.end - m.start ? e : m));
+          L.push(`${tagName(d0)}${i === 0 ? " (bis jetzt)" : ""} | ${this._hDauer(sum)} | ${this._hDauer(nacht)} | ${ph.length} | ${this._hDauer(lang.end - lang.start)} ab ${+lang.start < t0 ? `${WT[lang.start.getDay()]} ` : ""}${this._hm(lang.start)}`);
+        }
+        const ab2 = +this._mitternacht(jetzt, -2), neu = vm.schlaf.filter(e => +e.end >= ab2);
+        if (neu.length) { L.push("Schlafphasen seit vorgestern:"); neu.forEach(e => L.push(`${tagName(new Date(e.start))} ${this._hm(e.start)}–${e.laeuft ? "jetzt" : this._hm(e.end)} (${this._hDauer(e.end - e.start)})${e.auto ? " automatisch beendet, Ende unsicher" : ""}`)); }
+        if (vm.schlafProg) L.push(`Typische Wachzeit zuletzt: ${this._hDauer(vm.schlafProg.med)}; nächster Schlaf erwartet etwa ${this._hm(new Date(vm.schlafProg.lo))}–${this._hm(new Date(vm.schlafProg.hi))}.`);
+      }
       if (vm.weights.length) L.push(`Gewicht: ${vm.weights.map(w => `${this._dmy(w.date)} ${w.g} g`).join("; ")}`);
       if (vm.ms.length) L.push(`Meilensteine: ${vm.ms.map(m => `${this._dmy(m.date)} ${m.t}`).join("; ")}`);
     }
@@ -7451,11 +7662,11 @@ class FpBabyOverviewCard extends HTMLElement {
       /* Farben wie Buma: dunkel mit Lachs als Akzent, je Art eine eigene Farbe. */
       .fo-card{--b-bg:#1C1917;--b-card:#27221F;--b-card2:#322B27;--b-line:rgba(255,255,255,.07);--b-text:#F4EEE6;--b-mut:#9C9289;--b-faint:#6E655E;
         --b-acc:#E8957A;--b-acc2:rgba(232,149,122,.16);--b-due:#3A2722;--b-sky:#203052;--b-bar:#2C2522;--b-track:#2E2724;--b-shadow:rgba(0,0,0,.45);
-        --c-nurse:#E77BB4;--c-bottle:#F0A73F;--c-diaper:#5DB36E;--c-stool:#B07A4A;
+        --c-nurse:#E77BB4;--c-bottle:#F0A73F;--c-diaper:#5DB36E;--c-stool:#B07A4A;--c-sleep:#8F8CF0;
         position:relative;padding:18px 16px 14px;background:var(--b-bg);color:var(--b-text);border-radius:22px;container:fo-card / inline-size;}
       .fo-card.fo-light{--b-bg:#FBF6EF;--b-card:#F1E9DF;--b-card2:#E7DDD0;--b-line:rgba(60,40,20,.09);--b-text:#2B2420;--b-mut:#7A7067;--b-faint:#A89E94;
         --b-acc:#C9674A;--b-acc2:rgba(201,103,74,.12);--b-due:#F7E0D6;--b-sky:#D6E0F2;--b-bar:#FFFFFF;--b-track:#EAE2D6;--b-shadow:rgba(70,50,30,.18);
-        --c-nurse:#D9619E;--c-bottle:#E0921F;--c-diaper:#3F9A52;--c-stool:#9A6438;}
+        --c-nurse:#D9619E;--c-bottle:#E0921F;--c-diaper:#3F9A52;--c-stool:#9A6438;--c-sleep:#6662D6;}
       :where(.fo-card) button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;}   /* ohne Gewicht, damit Klassen mit eigener Schriftgröße gewinnen */
       .fo-sky{position:absolute;left:0;right:0;top:0;height:200px;border-radius:22px 22px 0 0;pointer-events:none;
         background:linear-gradient(180deg,var(--b-sky) 0%,color-mix(in srgb,var(--b-sky) 45%,var(--b-bg)) 45%,var(--b-bg) 100%);}
@@ -7496,6 +7707,22 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-col{min-width:0;}
       .fo-colhead{display:flex;align-items:center;gap:10px;margin:0 2px 12px;}
       .fo-colhead b{font-size:1.1rem;font-weight:800;} .fo-colhead small{color:var(--b-mut);font-weight:600;font-size:.8rem;}
+
+      /* Schlafleiste: Beide schlafen und je Kind */
+      .fo-sleep{display:flex;gap:8px;margin:0 0 16px;}
+      .fo-sl{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:9px;border:none;border-radius:16px;padding:10px 12px;cursor:pointer;text-align:left;
+        background:color-mix(in srgb,var(--c-sleep) 16%,var(--b-card));}
+      .fo-sl:active{transform:scale(.97);}
+      .fo-sl-an{background:var(--c-sleep);color:#1C1917 !important;box-shadow:0 4px 14px color-mix(in srgb,var(--c-sleep) 35%,transparent);}
+      .fo-sle{font-size:1.35rem;line-height:1;flex:none;}
+      .fo-slx{display:flex;flex-direction:column;min-width:0;}
+      .fo-slt{font-weight:800;font-size:.9rem;line-height:1.2;}
+      .fo-sls{font-size:.74rem;opacity:.75;font-variant-numeric:tabular-nums;}
+      .fo-sl-plus{flex:none;width:44px;border:none;border-radius:16px;background:var(--b-card);color:var(--b-mut) !important;font-size:1.3rem;cursor:pointer;}
+      .fo-s{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--c-sleep);opacity:.4;}
+      .fo-s.fo-s1{opacity:.9;}
+      .fo-zeitrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+      .fo-kids button.fo-on{background:var(--c-sleep);color:#1C1917 !important;}
 
       /* Schnellknöpfe */
       .fo-quick{display:flex;gap:10px;margin-bottom:14px;}
