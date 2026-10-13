@@ -14,6 +14,8 @@
     norm: s => { let out = ""; for (const ch of String(s).toLowerCase()) { const c = ch.codePointAt(0); if (c === 0xe4) out += "a"; else if (c === 0xf6) out += "o"; else if (c === 0xfc) out += "u"; else if (c === 0xdf) out += "ss"; else out += ch; } return out; },
     reEsc: s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
     toast: (el, msg) => { try { el.dispatchEvent(new CustomEvent("hass-notification", { detail: { message: msg }, bubbles: true, composed: true })); } catch (e) {} },
+    // Hinweis mit Knopf "Rueckgaengig" (HA zeigt ihn ms lang, Vorgabe 8 s); fn laeuft beim Tipp darauf.
+    undo: (el, msg, fn, ms) => { try { el.dispatchEvent(new CustomEvent("hass-notification", { detail: { message: msg, duration: ms || 8000, action: { text: "Rückgängig", action: fn } }, bubbles: true, composed: true })); } catch (e) {} },
     // Karte fuellt ihre Rasterzelle aus.
     // HA gibt dem Grid-Item (div.card) die Zeilenhoehe, dazwischen sitzt aber
     // <hui-card> ganz ohne eigene Hoehe (light DOM, keine Styles). Damit reisst
@@ -6355,12 +6357,12 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v8 (Erinnerung tags/nachts und Pause bis zur neuen Mahlzeit aus denselben Helfern wie Stillkarte und Automation; Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card-beta v9 (jeder Eintrag antippbar zum Ändern und Löschen; „Rückgängig“ nach Schnelleinträgen, Stillen- und Schlafstart; „＋ Nachtragen“ je Kind; ⚙ Einstellungen für Erinnerung und Pause; details_path als Link in „Heute“ und Knopf „Bericht“ in „Muster“; Erinnerung tags/nachts und Pause bis zur neuen Mahlzeit aus denselben Helfern wie Stillkarte und Automation; Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
-// Schreibt selbst Windeln, Fläschchen und Gewichte im Format jener Karten und schaltet den
-// Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
+// Schreibt selbst Windeln, Fläschchen, Gewichte und nachgetragenes oder geändertes Stillen im Format
+// jener Karten und schaltet den Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
 (() => {
 const U = window.__fpUtils;
 const MIN = 60000, STD = 3600000, TAG = 86400000;
@@ -6388,6 +6390,7 @@ class FpBabyOverviewCard extends HTMLElement {
       days: 14,                  // so viele Tage bekommt die KI
       growth_data: "",           // optional: Perzentilkurven wie bei der fp-weight-card-beta (dazu je Kind birth, ga, sex)
       memories_path: "",         // nur noch Rückfall ohne milestone_calendar: Tab, zu dem „Momente“ springt
+      details_path: "",          // optional: Unteransicht mit Still- und Windelkarten (Link in „Heute“, Knopf „Bericht“ in „Muster“)
       bottle_presets: [40, 60, 90, 120],
       reminder_hours: 3,         // ab hier ist die Mahlzeit „fällig“, wie in der Stillkarte (Rückfall ohne Helfer)
       reminder_entity: "",       // optional: input_number (Stunden) tagsüber, dieselben Helfer wie Stillkarte und Automation
@@ -6431,9 +6434,11 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this._ms) this._ms.hass = hass;
     // Verglichen wird mit dem, was die Karte zuletzt gesehen hat — nicht mit dem vorigen hass-Objekt.
     const kids = this.config.kids, lauf = kids.map(k => this._laeuft(k)), schlaf = kids.map(k => this._schlaeft(k));
-    const sig = JSON.stringify([lauf, schlaf, kids.map((k, i) => [this._seite(k), lauf[i] ? this._beginn(k) : 0, schlaf[i] ? this._schlafBeginn(k) : 0]), this._dunkel()]);
+    const sig = JSON.stringify([lauf, schlaf, kids.map((k, i) => [this._seite(k), lauf[i] ? this._beginn(k) : 0, schlaf[i] ? this._schlafBeginn(k) : 0]), this._dunkel(),
+      this._pauseMin(), kids.map(k => this._grenze(k, Date.now()))]);   // Erinnerung und Pause aus den Helfern (⚙)
     const vorher = this._lauf, vorherS = this._schlaf;
     this._lauf = lauf; this._schlaf = schlaf;
+    if (this._einstOffen) this._einstZeichne();   // das Einstellungsblatt folgt dem Zustand der Helfer
     if (!this._built) { this._swSig = sig; this._build(); this._load(); return; }
     // Beim Stopp schreibt die Automation den Termin erst nach ein paar Sekunden — mehrfach nachladen.
     const gestoppt = (alt, neu) => alt && alt.some((v, i) => v && !neu[i]);
@@ -6542,12 +6547,12 @@ class FpBabyOverviewCard extends HTMLElement {
     let ml = Number(meta.ml) || 0;
     if (!ml) { const m = sum.match(/(\d+)\s*ml/i); if (m) ml = Number(m[1]); }
     const seite = meta.seite || (/rechts/i.test(sum) ? "rechts" : /links/i.test(sum) ? "links" : "");
-    return { start: this._start(ev), end: this._ende(ev), typ, ml, seite };
+    return { uid: ev.uid, start: this._start(ev), end: this._ende(ev), typ, ml, seite };
   }
   _parseDiaper(ev) {
     const meta = this._meta(ev), sum = String(ev.summary || "");
     const art = meta.art || (/beides|\+/.test(sum) ? "beides" : /voll/i.test(sum) ? "voll" : "nass");
-    return { start: this._start(ev), art };
+    return { uid: ev.uid, start: this._start(ev), art };
   }
   _parseSleep(ev) {
     const meta = this._meta(ev);
@@ -6878,6 +6883,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const z = sel => ev.target.closest(sel);
     let b;
     if ((b = z(".fo-spark"))) { this._openChat(); return; }
+    if ((b = z(".fo-gear"))) { this._sheetEinst(); return; }
     // Klicks in den eingebetteten Meilensteinen gehören der Meilensteinkarte. Sie baut dabei Teile neu auf,
     // der angeklickte Knopf hängt danach nicht mehr im Dokument — deshalb über den Pfad beim Auslösen prüfen.
     // Hat sie das Kind gewechselt, zieht der Kopf der Übersicht nach.
@@ -6900,6 +6906,14 @@ class FpBabyOverviewCard extends HTMLElement {
       if (e) this._sheetSchlaf(kid, e); return;
     }
     if ((b = z("[data-walle]"))) { this._wAlle = !this._wAlle; this._paint(true); return; }
+    if ((b = z("[data-euid]"))) {
+      // Stillen und Fläschchen liegen im Stillkalender, Windeln im Windelkalender
+      const kid = this._kid(b.dataset.kind), raw = this._d && this._d.kids[kid.key], windel = b.dataset.ek === "w";
+      const e = raw && (windel ? raw.diapers : raw.feeds).find(x => x.uid === b.dataset.euid);
+      if (e) this._sheetEintrag(kid, windel ? "windel" : e.typ, e);
+      return;
+    }
+    if ((b = z("[data-nt]"))) { this._sheetNachtrag(this._kid(b.dataset.kind)); return; }
     if ((b = z("[data-wuid]"))) { const w = ((this._d && this._d.weights) || []).find(x => x.uid === b.dataset.wuid); if (w) this._sheetWiegen(this._kid(w.kind), w); return; }
     if ((b = z("[data-act]"))) {
       const kid = this._kid(b.dataset.kind);
@@ -6918,7 +6932,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
     const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
       kids.map(k => [this._laeuft(k), this._seite(k), this._schlaeft(k)]),
-      vms.map(v => [v.raw.feeds.length, v.raw.diapers.length, v.letzte && v.letzte.start, v.windel && +v.windel.start, v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length,
+      vms.map(v => [v.raw.feeds.map(e => `${e.uid}:${+e.start}:${+e.end}:${e.typ}:${e.ml}:${e.seite}`).join(), v.raw.diapers.map(e => `${e.uid}:${+e.start}:${e.art}`).join(), v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length,
         v.schlaf.filter(x => !x.laeuft).map(x => `${x.uid}:${+x.start}:${+x.end}`).join()])]);
     if (!force && sig === this._sig) return;
     this._sig = sig;
@@ -6935,7 +6949,7 @@ class FpBabyOverviewCard extends HTMLElement {
       ${Array.from({ length: n }, (_, j) => `<div class="fo-blk">${teile[i][j] || ""}</div>`).join("")}</section>`).join("");
     const kopf = this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav() + (this._off === 0 ? this._schlafLeiste() : "");
     if (this._view === "momente") this._zeigeMomente(body);
-    else body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
+    else body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>` + (this._view === "heute" ? this._detailsLink() : "");
     const views = [["heute", "Heute"], ["muster", "Muster"]];
     if (this.config.weight_calendar) views.push(["wachstum", "Wachstum"]);
     if (this.config.milestone_calendar) views.push(["momente", "Momente"]);
@@ -6945,7 +6959,7 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this._view === "wachstum") this._zeichne();
   }
 
-  // Kopf wie in Buma: Foto, Name mit ⌄ zum Wechseln, Alter; rechts ✦ für „Frag nach“.
+  // Kopf wie in Buma: Foto, Name mit ⌄ zum Wechseln, Alter; rechts ⚙ (nur mit Helfern) und ✦ für „Frag nach“.
   // Am Tablet stehen Zwillinge nebeneinander — dann zeigt der Kopf beide.
   _kopf() {
     const kids = this.config.kids, k = this._kid(this._kind);
@@ -6954,7 +6968,9 @@ class FpBabyOverviewCard extends HTMLElement {
       ${kids.length > 1 ? `<div class="fo-menu" hidden>${kids.map(x => `<button type="button" data-kind-sel="${U.esc(x.key)}" class="${x.key === k.key ? "fo-on" : ""}">${this._avatar(x, 28)}${U.esc(x.name)}</button>`).join("")}</div>` : ""}</div>`;
     const alle = kids.length > 1 ? `<div class="fo-who fo-who-all"><span class="fo-avs">${kids.map(x => this._avatar(x, 46)).join("")}</span>
       <span class="fo-wn"><b>${kids.map(x => U.esc(x.name)).join(" & ")}</b><small>${gleichAlt ? this._alterZeile(kids[0]) : ""}</small></span></div>` : "";
-    return einer + alle + (this.config.chat ? `<button class="fo-spark" type="button" aria-label="Frag nach" title="Frag nach">${SPARK}</button>` : "");
+    const c = this.config, gear = c.reminder_entity || c.reminder_night_entity || c.meal_pause_entity
+      ? `<button class="fo-gear" type="button" aria-label="Einstellungen" title="Einstellungen">⚙\uFE0E</button>` : "";
+    return einer + alle + gear + (c.chat ? `<button class="fo-spark" type="button" aria-label="Frag nach" title="Frag nach">${SPARK}</button>` : "");
   }
   _tagNav() {
     const d = this._mitternacht(new Date(), this._off);
@@ -7111,17 +7127,24 @@ class FpBabyOverviewCard extends HTMLElement {
   _ticks() { return `<div class="fo-ticks">${[0, 6, 12, 18, 24].map(h => `<span style="left:${h / 24 * 100}%">${h}</span>`).join("")}</div>`; }
 
   _liste(vm, fe, wi, sl) {
+    // ek: s = Schlaf, f = Stillen/Fläschchen, w = Windel — jede Zeile mit uid lässt sich per Tipp ändern oder löschen
     const z = [
-      ...(sl || []).map(e => ({ t: +e.start, f: "var(--c-sleep)", s: e.laeuft ? "Schläft" : `Schlaf bis ${this._hm(e.end)}`, d: this._minText(e.end - e.start), uid: e.laeuft ? "" : e.uid })),
-      ...fe.map(e => ({ t: +e.start, f: this._farbe(e.typ), s: e.typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""}` : `Stillen${e.seite ? ` ${e.seite}` : ""}`, d: e.typ === "flasche" ? "" : this._minText(e.end - e.start) })),
-      ...wi.map(e => ({ t: +e.start, f: this._farbe(e.art), s: `Windel ${e.art === "beides" ? "nass + voll" : e.art}`, d: "" })),
+      ...(sl || []).map(e => ({ t: +e.start, f: "var(--c-sleep)", s: e.laeuft ? "Schläft" : `Schlaf bis ${this._hm(e.end)}`, d: this._minText(e.end - e.start), uid: e.laeuft ? "" : e.uid, ek: "s" })),
+      ...fe.map(e => ({ t: +e.start, f: this._farbe(e.typ), s: e.typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""}` : `Stillen${e.seite ? ` ${e.seite}` : ""}`, d: e.typ === "flasche" ? "" : this._minText(e.end - e.start), uid: e.uid, ek: "f" })),
+      ...wi.map(e => ({ t: +e.start, f: this._farbe(e.art), s: `Windel ${e.art === "beides" ? "nass + voll" : e.art}`, d: "", uid: e.uid, ek: "w" })),
     ].sort((a, b) => b.t - a.t);
-    if (!z.length) return `<div class="fo-leer">An diesem Tag ist nichts eingetragen.</div>`;
-    // Schlafphasen lassen sich per Tipp ändern; Stillen und Windeln bleiben bei ihren Karten.
+    const kk = U.esc(vm.kid.key), plus = this._nachtragOptionen(vm.kid).length
+      ? `<button type="button" class="fo-plus" data-nt data-kind="${kk}">＋ Nachtragen</button>` : "";
+    const kopf = `<div class="fo-sec fo-sech"><span>Einträge</span>${plus}</div>`;
+    if (!z.length) return `${kopf}<div class="fo-leer">An diesem Tag ist nichts eingetragen.</div>`;
     const zeile = x => `<i style="background:${x.f}"></i><span>${U.esc(x.s)}</span><small>${x.d}</small><time>${this._hm(new Date(x.t))}</time>`;
-    return `<div class="fo-sec">Einträge</div><div class="fo-list">${z.map(x => x.uid
-      ? `<button type="button" class="fo-li fo-wli" data-suid="${U.esc(x.uid)}" data-kind="${U.esc(vm.kid.key)}">${zeile(x)}</button>`
-      : `<div class="fo-li">${zeile(x)}</div>`).join("")}</div>`;
+    return `${kopf}<div class="fo-list">${z.map(x => !x.uid ? `<div class="fo-li">${zeile(x)}</div>`
+      : x.ek === "s" ? `<button type="button" class="fo-li fo-wli" data-suid="${U.esc(x.uid)}" data-kind="${kk}">${zeile(x)}</button>`
+      : `<button type="button" class="fo-li fo-wli" data-euid="${U.esc(x.uid)}" data-ek="${x.ek}" data-kind="${kk}">${zeile(x)}</button>`).join("")}</div>`;
+  }
+  // Link unter den Spalten in „Heute“ zur Unteransicht mit den Still- und Windelkarten.
+  _detailsLink() {
+    return this.config.details_path ? `<button type="button" class="fo-details" data-nav="details_path"><span>Stillprotokoll, Windeln und Bericht</span><i>›</i></button>` : "";
   }
 
   // Wachstum und Momente — in Buma eigene Bereiche, hier zwei kleine Karten.
@@ -7139,7 +7162,8 @@ class FpBabyOverviewCard extends HTMLElement {
   _musterKopf() {
     const chips = [["alle", "Alle", ""], ["stillen", "Stillen", "var(--c-nurse)"], ["flasche", "Fläschchen", "var(--c-bottle)"], ["windel", "Windel", "var(--c-diaper)"]];
     if (this.config.kids.some(k => k.sleep_calendar)) chips.push(["schlaf", "Schlaf", "var(--c-sleep)"]);
-    return `<div class="fo-mtitle"><b>Muster</b><span>Jeder Tag nebeneinander</span></div>
+    const bericht = this.config.details_path ? `<div class="fo-bericht"><button type="button" data-nav="details_path">🖨 Bericht</button><span>Bericht je Kind in den Stillkarten</span></div>` : "";
+    return `<div class="fo-mtitle"><b>Muster</b><span>Jeder Tag nebeneinander</span></div>${bericht}
       <div class="fo-mctl"><div class="fo-seg"><button type="button" data-sp="7" class="${this._spanne === 7 ? "fo-on" : ""}">Woche</button><button type="button" data-sp="14" class="${this._spanne === 14 ? "fo-on" : ""}">2 Wochen</button></div>
       <div class="fo-chips">${chips.map(([f, t, c]) => `<button type="button" data-f="${f}" class="${this._filter === f ? "fo-on" : ""}" style="--chip:${c || "var(--b-acc)"}">${c ? `<i></i>` : ""}${t}</button>`).join("")}</div></div>`;
   }
@@ -7374,7 +7398,17 @@ class FpBabyOverviewCard extends HTMLElement {
     const laeuft = this._laeuft(kid);
     if (laeuft && Date.now() - this._beginn(kid) < 30000) U.toast(this, "Unter 30 Sekunden – als Fehltipp verworfen, nicht protokolliert");
     this._hass.callService("input_boolean", laeuft ? "turn_off" : "turn_on", { entity_id: kid.switch })
-      .catch(() => U.toast(this, "Stillen konnte nicht umgeschaltet werden"));
+      .then(() => { if (!laeuft) this._rueckAus(`${kid.name}: Stillen gestartet`, [kid.switch]); }, () => U.toast(this, "Stillen konnte nicht umgeschaltet werden"));
+  }
+  // Hinweis mit „Rückgängig“ nach dem Einschalten: schaltet aus, was dann noch läuft. Kurze Einträge verwirft die Automation selbst.
+  _rueckAus(text, schalter) {
+    const fn = () => {
+      const noch = schalter.filter(e => { const st = this._hass.states[e]; return st && st.state === "on"; });
+      if (!noch.length) return;
+      this._hass.callService("input_boolean", "turn_off", { entity_id: noch })
+        .then(() => U.toast(this, "Rückgängig gemacht"), () => U.toast(this, "Rückgängig ging nicht – bitte von Hand ausschalten"));
+    };
+    if (U.undo) U.undo(this, text, fn); else U.toast(this, text);
   }
   // „*“ = alle mit Schlafschalter: schläft noch keiner oder nur einer, legen sich alle hin; schlafen alle, wachen alle auf.
   // Die Karte schaltet nur — den Termin schreibt wie beim Stillen die Protokoll-Automation.
@@ -7384,7 +7418,8 @@ class FpBabyOverviewCard extends HTMLElement {
     const an = !ziel.every(k => this._schlaeft(k)), betroffen = ziel.filter(k => this._schlaeft(k) !== an);
     if (!an && betroffen.some(k => Date.now() - this._schlafBeginn(k) < MIN)) U.toast(this, "Unter einer Minute – als Fehltipp verworfen, nicht protokolliert");
     this._hass.callService("input_boolean", an ? "turn_on" : "turn_off", { entity_id: betroffen.map(k => k.sleep_switch) })
-      .catch(() => U.toast(this, "Schlaf konnte nicht umgeschaltet werden"));
+      .then(() => { if (an && betroffen.length) this._rueckAus(`${betroffen.map(k => k.name).join(" und ")}: Schlaf gestartet`, betroffen.map(k => k.sleep_switch)); },
+        () => U.toast(this, "Schlaf konnte nicht umgeschaltet werden"));
   }
   async _eintrag(cal, summary, meta, start, okText) {
     try {
@@ -7392,14 +7427,29 @@ class FpBabyOverviewCard extends HTMLElement {
         entity_id: cal, summary, description: JSON.stringify(meta),
         start_date_time: this._local(start, " "), end_date_time: this._local(new Date(+start + MIN), " "),
       });
-      U.toast(this, okText);
+      const zurueck = () => this._rueckgaengig(cal, summary, start);
+      if (U.undo) U.undo(this, okText, zurueck); else U.toast(this, okText);
       this._load();
       return true;
     } catch (e) { U.toast(this, "Konnte nicht gespeichert werden"); return false; }
   }
+  // „Rückgängig“ nach einem Schnelleintrag: das eben angelegte Ereignis im Kalender suchen (gleiche Überschrift,
+  // Beginn innerhalb einer Minute) und löschen.
+  async _rueckgaengig(cal, summary, start) {
+    try {
+      const von = new Date(+start - MIN), bis = new Date(+start + 2 * MIN);
+      const evts = await this._hass.callApi("GET", `calendars/${cal}?start=${encodeURIComponent(von.toISOString())}&end=${encodeURIComponent(bis.toISOString())}`);
+      const ev = (Array.isArray(evts) ? evts : []).filter(x => x.uid && x.summary === summary && Math.abs(this._start(x) - start) <= MIN)
+        .sort((x, y) => Math.abs(this._start(x) - start) - Math.abs(this._start(y) - start))[0];
+      if (!ev) { U.toast(this, "Eintrag nicht gefunden – bitte in der Liste löschen"); return; }
+      await this._hass.callWS({ type: "calendar/event/delete", entity_id: cal, uid: ev.uid });
+      U.toast(this, "Rückgängig gemacht");
+      this._load();
+    } catch (e) { U.toast(this, "Rückgängig ging nicht – bitte in der Liste löschen"); }
+  }
 
-  // ---------- Blätter (Windel, Fläschchen, Frag nach) ----------
-  _closeSheet() { if (this._ov) { this._ov.remove(); this._ov = null; this._chatOffen = false; } }
+  // ---------- Blätter (Windel, Fläschchen, Nachtragen, Ändern, Einstellungen, Frag nach) ----------
+  _closeSheet() { if (this._ov) { this._ov.remove(); this._ov = null; this._chatOffen = false; this._einstOffen = false; } }
   _sheet(inner, cls) {
     this._closeSheet();
     const ov = document.createElement("div");
@@ -7442,6 +7492,186 @@ class FpBabyOverviewCard extends HTMLElement {
       this._eintrag(kid.feeding_calendar, `Fläschchen ${ml} ml`, { typ: "flasche", ml }, start, `${kid.name}: Fläschchen ${ml} ml eingetragen ✓`);
     });
   }
+  // ＋ Nachtragen: Art wählen, danach dasselbe Blatt wie beim Ändern (mit Tag Heute/Gestern). Schlaf hat sein eigenes Blatt.
+  _nachtragOptionen(kid) {
+    const o = [];
+    if (kid.feeding_calendar) o.push("stillen", "flasche");
+    if (kid.diaper_calendar) o.push("windel");
+    if (kid.sleep_calendar) o.push("schlaf");
+    return o;
+  }
+  _sheetNachtrag(kid) {
+    const opt = this._nachtragOptionen(kid);
+    if (!opt.length) return;
+    const los = typ => (typ === "schlaf" ? this._sheetSchlaf(kid, null) : this._sheetEintrag(kid, typ, null));
+    if (opt.length === 1) { los(opt[0]); return; }
+    const T = { stillen: ["🤱", "Stillen", "var(--c-nurse)"], flasche: ["🍼", "Fläschchen", "var(--c-bottle)"], windel: ["💩", "Windel", "var(--c-diaper)"], schlaf: ["😴", "Schlaf", "var(--c-sleep)"] };
+    const ov = this._sheet(`<div class="fo-sh-head"><b>＋ Nachtragen · ${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-big3 fo-big2">${opt.map(t => `<button type="button" data-nt-typ="${t}" style="--q:${T[t][2]}"><span>${T[t][0]}</span>${T[t][1]}</button>`).join("")}</div>`);
+    ov.querySelectorAll("[data-nt-typ]").forEach(b => b.addEventListener("click", () => los(b.dataset.ntTyp)));
+  }
+  _at(basis, hhmm) { const [h, m] = String(hhmm || "").split(":").map(Number), d = new Date(basis); d.setHours(h || 0, m || 0, 0, 0); return d; }
+  _artText(a) { return a === "beides" ? "nass + voll" : a; }
+  // Stillen, Fläschchen oder Windel ändern und löschen (e gesetzt) oder nachtragen (e leer, mit Tag Heute/Gestern).
+  // Das Datum eines vorhandenen Eintrags bleibt; ein Ende vor dem Beginn heißt über Mitternacht.
+  _sheetEintrag(kid, typ, e) {
+    const neu = !e, jetzt = new Date(), pre = (this.config.bottle_presets || []).map(Number).filter(x => x > 0);
+    let tag = this._off === -1 ? "gestern" : "heute", seite = e ? e.seite : this._seite(kid), ml = e ? e.ml : (pre[0] || 0), art = e ? e.art : "nass";
+    if (seite !== "links" && seite !== "rechts") seite = "links";
+    const von = e ? e.start : typ === "stillen" ? new Date(+jetzt - 15 * MIN) : jetzt, bis = (e && e.end) || jetzt;   // Windeln haben kein Ende
+    const titel = { stillen: "🤱 Stillen", flasche: "🍼 Fläschchen", windel: "💩 Windel" }[typ];
+    const felder = {
+      stillen: `<div class="fo-zeitrow"><div><div class="fo-lbl">Beginn</div><input class="fo-in fo-von" type="time" value="${this._hm(von)}"></div>
+          <div><div class="fo-lbl">Ende</div><input class="fo-in fo-bis" type="time" value="${this._hm(bis)}"></div></div>
+        <div class="fo-sh-hint">Liegt das Ende vor dem Beginn, war es am nächsten Tag.</div>
+        <div class="fo-lbl">Seite</div>
+        <div class="fo-wahl"><button type="button" data-seite="links">Links</button><button type="button" data-seite="rechts">Rechts</button></div>`,
+      flasche: `<div class="fo-lbl">Menge</div>
+        <div class="fo-mls">${pre.map(x => `<button type="button" data-ml="${x}">${x} ml</button>`).join("")}<input class="fo-in fo-mlin" type="number" inputmode="numeric" min="1" max="400" placeholder="ml" value="${ml && !pre.includes(ml) ? ml : ""}"></div>
+        <div class="fo-lbl">Fertig getrunken um</div>
+        <input class="fo-in fo-zeit" type="time" value="${this._hm(von)}">`,
+      windel: `<div class="fo-lbl">Art</div>
+        <div class="fo-big3"><button type="button" data-art="nass" style="--q:var(--c-diaper)"><span>💧</span>Nass</button><button type="button" data-art="voll" style="--q:var(--c-stool)"><span>💩</span>Voll</button><button type="button" data-art="beides" style="--q:var(--c-stool)"><span>💧💩</span>Beides</button></div>
+        <div class="fo-lbl">Uhrzeit</div>
+        <input class="fo-in fo-zeit" type="time" value="${this._hm(von)}">`,
+    }[typ];
+    if (!felder) return;
+    const ov = this._sheet(`<div class="fo-sh-head"><b>${titel} · ${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      ${neu ? `<div class="fo-lbl">Tag</div><div class="fo-wahl"><button type="button" data-tag="heute">Heute</button><button type="button" data-tag="gestern">Gestern</button></div>` : ""}
+      ${felder}
+      <button class="fo-ok" type="button">${neu ? "Eintragen" : "Speichern"}</button>
+      ${neu ? "" : `<button class="fo-del" type="button">Eintrag löschen</button>`}`);
+    const mark = () => {
+      ov.querySelectorAll("[data-tag]").forEach(b => b.classList.toggle("fo-on", b.dataset.tag === tag));
+      ov.querySelectorAll("[data-seite]").forEach(b => b.classList.toggle("fo-on", b.dataset.seite === seite));
+      ov.querySelectorAll("[data-ml]").forEach(b => b.classList.toggle("fo-on", Number(b.dataset.ml) === ml));
+      ov.querySelectorAll("[data-art]").forEach(b => b.classList.toggle("fo-on", b.dataset.art === art));
+    };
+    ov.querySelectorAll("[data-tag]").forEach(b => b.addEventListener("click", () => { tag = b.dataset.tag; mark(); }));
+    ov.querySelectorAll("[data-seite]").forEach(b => b.addEventListener("click", () => { seite = b.dataset.seite; mark(); }));
+    ov.querySelectorAll("[data-art]").forEach(b => b.addEventListener("click", () => { art = b.dataset.art; mark(); }));
+    ov.querySelectorAll("[data-ml]").forEach(b => b.addEventListener("click", () => { ml = Number(b.dataset.ml); ov.querySelector(".fo-mlin").value = ""; mark(); }));
+    const mlin = ov.querySelector(".fo-mlin");
+    if (mlin) mlin.addEventListener("input", ev => { ml = Number(ev.target.value) || 0; mark(); });
+    mark();
+    ov.querySelector(".fo-ok").addEventListener("click", async () => {
+      const basis = neu ? this._mitternacht(new Date(), tag === "gestern" ? -1 : 0) : e.start;
+      let a, b, p;
+      if (typ === "stillen") {
+        const vz = ov.querySelector(".fo-von").value, bz = ov.querySelector(".fo-bis").value;
+        if (!vz || !bz) { U.toast(this, "Bitte Beginn und Ende angeben"); return; }
+        a = this._at(basis, vz); b = this._at(basis, bz);
+        if (b <= a) b.setDate(b.getDate() + 1);   // über Mitternacht
+        if (a - Date.now() > 5 * MIN) { U.toast(this, "Der Beginn liegt in der Zukunft – Tag prüfen"); return; }
+        if (b - a > 3 * STD) { U.toast(this, "Länger als 3 Stunden – Zeiten prüfen"); return; }
+        if (neu && b - Date.now() > 5 * MIN) b = new Date(Math.max(+a + MIN, Date.now()));
+        p = { seite };
+      } else {
+        const zt = ov.querySelector(".fo-zeit").value;
+        if (!zt) { U.toast(this, "Bitte die Uhrzeit angeben"); return; }
+        if (typ === "flasche" && !(ml > 0 && ml <= 400)) { U.toast(this, "Bitte eine Menge angeben"); return; }
+        a = this._at(basis, zt);
+        if (a - Date.now() > 5 * MIN) { U.toast(this, "Die Uhrzeit liegt in der Zukunft – Tag prüfen"); return; }
+        b = new Date(+a + MIN);   // Fläschchen und Windel sind Punkte: eine Minute ab der Uhrzeit
+        p = typ === "flasche" ? { ml } : { art };
+      }
+      const raw = this._d && this._d.kids[kid.key], letzteEnde = Math.max(0, ...((raw && raw.feeds) || []).filter(x => x.typ === "stillen").map(x => +x.end));
+      this._closeSheet();
+      let ok;
+      if (neu) {
+        ok = await this._evNeu(kid, typ, p, a, b);
+        if (ok) {
+          U.toast(this, `${kid.name}: ${this._evDaten(typ, p).summary} eingetragen ✓`);
+          // Ist es die jüngste Mahlzeit, gilt für das nächste Mal die andere Seite — wie beim Nachtragen in der Stillkarte.
+          if (typ === "stillen" && kid.side && !this._laeuft(kid) && +b >= letzteEnde)
+            this._hass.callService("input_select", "select_option", { entity_id: kid.side, option: seite === "links" ? "rechts" : "links" }).catch(() => { /* nur Komfort */ });
+        }
+      } else {
+        ok = await this._evAendern(kid, typ, e, p, a, b);
+        if (ok) U.toast(this, "Eintrag geändert ✓");
+      }
+      if (ok) this._load();
+    });
+    if (!neu) ov.querySelector(".fo-del").addEventListener("click", async () => {
+      const was = typ === "stillen" ? `Stillen${e.seite ? ` ${e.seite}` : ""} ${this._hm(e.start)}–${this._hm(e.end)}`
+        : typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""} um ${this._hm(e.start)}` : `Windel ${this._artText(e.art)} um ${this._hm(e.start)}`;
+      if (!window.confirm(`${kid.name}: ${was} löschen?`)) return;
+      this._closeSheet();
+      if (await this._evLoeschen(kid, typ, e.uid)) this._load();
+    });
+  }
+  // Überschrift und Beschreibung genau wie die Stillkarte und die Windelkarte sie schreiben.
+  _evDaten(typ, p) {
+    if (typ === "stillen") return { summary: `Stillen ${p.seite}`, description: JSON.stringify({ typ: "stillen", seite: p.seite, auto: false }) };
+    if (typ === "flasche") return { summary: `Fläschchen ${p.ml} ml`, description: JSON.stringify({ typ: "flasche", ml: p.ml }) };
+    return { summary: `Windel ${this._artText(p.art)}`, description: JSON.stringify({ typ: "windel", art: p.art }) };
+  }
+  _evKal(kid, typ) { return typ === "windel" ? kid.diaper_calendar : kid.feeding_calendar; }
+  async _evNeu(kid, typ, p, a, b) {
+    const d = this._evDaten(typ, p);
+    try {
+      await this._hass.callService("calendar", "create_event", { entity_id: this._evKal(kid, typ), summary: d.summary, description: d.description,
+        start_date_time: this._local(a, " "), end_date_time: this._local(b, " ") });
+      return true;
+    } catch (x) { U.toast(this, "Eintrag konnte nicht gespeichert werden"); return false; }
+  }
+  async _evLoeschen(kid, typ, uid, leise) {
+    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this._evKal(kid, typ), uid }); return true; }
+    catch (x) { if (!leise) U.toast(this, "Eintrag konnte nicht gelöscht werden"); return false; }
+  }
+  // Ändern wie in Still- und Windelkarte: erst aktualisieren, sonst neu anlegen und den alten löschen.
+  async _evAendern(kid, typ, alt, p, a, b) {
+    const d = this._evDaten(typ, p);
+    try {
+      await this._hass.callWS({ type: "calendar/event/update", entity_id: this._evKal(kid, typ), uid: alt.uid,
+        event: { summary: d.summary, description: d.description, dtstart: this._local(a, "T"), dtend: this._local(b, "T") } });
+      return true;
+    } catch (x) {
+      if (!(await this._evNeu(kid, typ, p, a, b))) return false;
+      if (!(await this._evLoeschen(kid, typ, alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
+      return true;
+    }
+  }
+
+  // ⚙ Erinnerung und Pause: direkt am Helfer, dieselben wie in Stillkarte und Erinnerungs-Automation.
+  _sheetEinst() {
+    const ov = this._sheet(`<div class="fo-sh-head"><b>⚙ Einstellungen</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-einst"></div>
+      <div class="fo-sh-hint">Dieselben Helfer nutzen die Stillkarte und die Erinnerung.</div>`);
+    this._einstOffen = true; this._einstHtml = "";
+    ov.querySelector(".fo-einst").addEventListener("click", ev => {
+      const b = ev.target.closest("[data-es]");
+      if (b && !b.disabled) this._einstSetzen(b.dataset.es, Number(b.dataset.d));
+    });
+    this._einstZeichne();
+  }
+  _einstZeichne() {
+    const box = this._ov && this._ov.querySelector(".fo-einst"); if (!box) return;
+    const c = this.config;
+    const html = [["reminder_entity", "Erinnerung tagsüber"], ["reminder_night_entity", `Erinnerung nachts (${c.night_start}–${c.night_end} Uhr)`], ["meal_pause_entity", "Pause bis neue Mahlzeit"]]
+      .filter(([opt]) => c[opt]).map(([opt, titel]) => {
+        const st = this._hass && this._hass.states[c[opt]], a = (st && st.attributes) || {}, n = st ? parseFloat(st.state) : NaN, da = isFinite(n);
+        const min = a.min != null && isFinite(Number(a.min)) ? Number(a.min) : -Infinity, max = a.max != null && isFinite(Number(a.max)) ? Number(a.max) : Infinity;
+        const wert = da ? `${n.toLocaleString("de-AT", { maximumFractionDigits: 2 })}${a.unit_of_measurement ? ` ${U.esc(a.unit_of_measurement)}` : ""}` : "–";
+        return `<div class="fo-er"><span>${U.esc(titel)}</span>
+          <button type="button" data-es="${opt}" data-d="-1" aria-label="weniger" ${!da || n <= min ? "disabled" : ""}>−</button>
+          <b class="fo-er-v">${wert}</b>
+          <button type="button" data-es="${opt}" data-d="1" aria-label="mehr" ${!da || n >= max ? "disabled" : ""}>＋</button></div>`;
+      }).join("");
+    if (html === this._einstHtml) return;   // der Zustand hat sich nicht geändert
+    this._einstHtml = html; box.innerHTML = html;
+  }
+  _einstSetzen(opt, richtung) {
+    const id = this.config[opt], st = id && this._hass && this._hass.states[id], n = st ? parseFloat(st.state) : NaN;
+    if (!isFinite(n)) return;
+    const a = st.attributes || {}, step = Number(a.step) > 0 ? Number(a.step) : 1;
+    let v = Number((n + richtung * step).toFixed(6));
+    if (a.min != null && isFinite(Number(a.min))) v = Math.max(Number(a.min), v);
+    if (a.max != null && isFinite(Number(a.max))) v = Math.min(Number(a.max), v);
+    if (v === n) return;
+    this._hass.callService(id.split(".")[0], "set_value", { entity_id: id, value: v }).catch(() => U.toast(this, "Der Wert konnte nicht geändert werden"));
+  }
+
   // Wiegen und Ändern im Format der fp-weight-card-beta: Ganztagstermin „Name 3450 g“, höchstens ein Wert je Kind und Tag.
   _sheetWiegen(kid, e) {
     const heute = this._isoTag(new Date());
@@ -7762,6 +7992,8 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-menu button.fo-on{background:var(--b-card);}
       .fo-spark{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-acc);cursor:pointer;display:flex;align-items:center;justify-content:center;}
       .fo-spark:active{background:var(--b-acc2);}
+      .fo-gear{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-mut) !important;font-size:1.45rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+      .fo-gear:active{background:var(--b-acc2);}
 
       /* Tag blättern */
       .fo-daynav{display:flex;align-items:center;justify-content:center;gap:28px;margin:14px 0 12px;font-weight:700;font-size:1rem;}
@@ -7829,6 +8061,8 @@ class FpBabyOverviewCard extends HTMLElement {
 
       /* Jetzt */
       .fo-sec{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--b-faint);margin:18px 2px 8px;}
+      .fo-sech{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .fo-plus{flex:none;min-height:36px;border:none;border-radius:999px;padding:8px 14px;background:var(--b-acc2);color:var(--b-acc) !important;font-size:.82rem;font-weight:800;letter-spacing:0;text-transform:none;cursor:pointer;}
       .fo-nowgrid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:10px;}
       .fo-nowgrid>:last-child:nth-child(odd){grid-column:span 2;}
       .fo-nc{display:flex;flex-direction:column;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
@@ -7879,6 +8113,11 @@ class FpBabyOverviewCard extends HTMLElement {
       /* Muster */
       .fo-mtitle{display:flex;flex-direction:column;margin:16px 2px 12px;}
       .fo-mtitle b{font-size:1.5rem;font-weight:800;} .fo-mtitle span{color:var(--b-mut);font-size:.9rem;}
+      .fo-bericht{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:-4px 2px 14px;}
+      .fo-bericht button{border:none;border-radius:999px;padding:8px 14px;background:var(--b-acc2);color:var(--b-acc) !important;font-size:.86rem;font-weight:800;cursor:pointer;}
+      .fo-bericht span{font-size:.8rem;color:var(--b-mut);}
+      .fo-details{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin-top:18px;padding:13px 16px;border:none;border-radius:16px;background:var(--b-card);color:var(--b-acc) !important;font-size:.92rem;font-weight:700;text-align:left;cursor:pointer;}
+      .fo-details i{font-style:normal;font-size:1.3rem;line-height:1;}
       .fo-mctl{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:16px;}
       .fo-seg{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--b-card);}
       .fo-seg button{border:none;background:transparent;border-radius:999px;padding:6px 14px;font-weight:700;font-size:.86rem;color:var(--b-mut) !important;cursor:pointer;}
@@ -7935,6 +8174,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-gl-band{height:10px;border-radius:3px;background:var(--kl);opacity:.3;}
       .fo-gl-mid{border-top:1.5px dashed var(--kl);opacity:.8;}
       .fo-wli{width:100%;border:none;border-bottom:1px solid var(--b-line);background:transparent;text-align:left;cursor:pointer;}
+      .fo-list .fo-wli:last-child{border-bottom:none;}
       .fo-wli em{font-style:normal;font-size:.72rem;font-weight:800;color:var(--b-acc);margin-left:8px;}
       .fo-more{display:block;margin:8px auto 0;border:none;background:transparent;color:var(--b-acc) !important;font-weight:700;font-size:.86rem;cursor:pointer;}
       .fo-quelle{font-size:.72rem;line-height:1.45;color:var(--b-faint);margin-top:12px;}
@@ -7963,6 +8203,17 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-big3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
       .fo-big3 button{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;border-radius:18px;padding:16px 6px;background:color-mix(in srgb,var(--q) 22%,var(--b-card));font-weight:800;cursor:pointer;}
       .fo-big3 span{font-size:1.8rem;}
+      .fo-big3 button.fo-on{box-shadow:inset 0 0 0 3px var(--q);}
+      .fo-big2{grid-template-columns:repeat(2,1fr);}
+      .fo-wahl{display:flex;gap:8px;}
+      .fo-wahl button{flex:1 1 0;border:none;border-radius:12px;padding:11px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
+      .fo-wahl button.fo-on{background:var(--b-acc);color:var(--b-bg) !important;}
+      .fo-er{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--b-line);}
+      .fo-er:last-child{border-bottom:none;}
+      .fo-er>span{flex:1;min-width:0;font-weight:700;}
+      .fo-er-v{min-width:70px;text-align:center;font-weight:800;font-variant-numeric:tabular-nums;}
+      .fo-er button{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:var(--b-card);font-size:1.4rem;font-weight:800;line-height:1;cursor:pointer;}
+      .fo-er button:disabled{opacity:.3;cursor:default;}
       .fo-lbl{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--b-faint);margin:14px 0 8px;}
       .fo-mls{display:flex;flex-wrap:wrap;gap:8px;}
       .fo-mls button{border:none;border-radius:12px;padding:10px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
