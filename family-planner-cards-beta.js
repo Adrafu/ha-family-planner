@@ -6357,7 +6357,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v9 (jeder Eintrag antippbar zum Ändern und Löschen; „Rückgängig“ nach Schnelleinträgen, Stillen- und Schlafstart; „＋ Nachtragen“ je Kind; ⚙ Einstellungen für Erinnerung und Pause; details_path als Link in „Heute“ und Knopf „Bericht“ in „Muster“; Erinnerung tags/nachts und Pause bis zur neuen Mahlzeit aus denselben Helfern wie Stillkarte und Automation; Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card-beta v10 (Kindwechsel als Segment-Schalter im Kopf und per Wischen; Stillprotokoll als Ansicht „Protokoll“ mit eingebetteter Still- und Windelkarte, erreichbar über die Leiste, „Jetzt“ und „Muster“; details_path entfällt; jeder Eintrag antippbar zum Ändern und Löschen; „Rückgängig“ nach Schnelleinträgen, Stillen- und Schlafstart; „＋ Nachtragen“ je Kind; ⚙ Einstellungen für Erinnerung und Pause; Erinnerung tags/nachts und Pause bis zur neuen Mahlzeit aus denselben Helfern wie Stillkarte und Automation; Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Protokoll/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -6375,6 +6375,7 @@ const ICO = {
   muster: '<rect x="4" y="11" width="4" height="9" rx="1.5"/><rect x="10" y="5" width="4" height="15" rx="1.5"/><rect x="16" y="8" width="4" height="12" rx="1.5"/>',
   wachstum: '<path d="M3 20h18" stroke-width="2" stroke="currentColor" fill="none"/><path d="m4 16 5-5 4 3 7-8" stroke-width="2.4" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   momente: '<rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="2" fill="var(--b-bar)"/><path d="m5 18 5-5 3 3 2-2 4 4z" fill="var(--b-bar)"/>',
+  protokoll: '<rect x="4.5" y="4" width="15" height="17" rx="3"/><rect x="8.5" y="2.5" width="7" height="4" rx="1.5"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4" stroke="var(--b-bar)" stroke-width="1.8" stroke-linecap="round" fill="none"/>',
 };
 const SPARK = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2c.7 5.2 4.5 9.1 10 10-5.5.9-9.3 4.8-10 10-.7-5.2-4.5-9.1-10-10 5.5-.9 9.3-4.8 10-10Z"/></svg>';
 
@@ -6390,7 +6391,6 @@ class FpBabyOverviewCard extends HTMLElement {
       days: 14,                  // so viele Tage bekommt die KI
       growth_data: "",           // optional: Perzentilkurven wie bei der fp-weight-card-beta (dazu je Kind birth, ga, sex)
       memories_path: "",         // nur noch Rückfall ohne milestone_calendar: Tab, zu dem „Momente“ springt
-      details_path: "",          // optional: Unteransicht mit Still- und Windelkarten (Link in „Heute“, Knopf „Bericht“ in „Muster“)
       bottle_presets: [40, 60, 90, 120],
       reminder_hours: 3,         // ab hier ist die Mahlzeit „fällig“, wie in der Stillkarte (Rückfall ohne Helfer)
       reminder_entity: "",       // optional: input_number (Stunden) tagsüber, dieselben Helfer wie Stillkarte und Automation
@@ -6408,11 +6408,12 @@ class FpBabyOverviewCard extends HTMLElement {
     this._kind = this._pref("kind", "");
     if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
     const v = this._pref("view", "heute");
-    this._view = ["muster", "wachstum", "momente"].includes(v) ? v : "heute";
+    this._view = ["protokoll", "muster", "wachstum", "momente"].includes(v) ? v : "heute";
     this._filter = this._pref("filter", "alle");
     this._spanne = this._pref("spanne", "7") === "14" ? 14 : 7;
     this._off = 0;   // 0 = heute, -1 = gestern …
     this._wAlle = false;   // Wachstum: alle Messungen statt der letzten
+    this._emb = {};        // Protokoll: eingebettete Still- und Windelkarte je Kind, einmal angelegt
     this._ref = null;
     if (this.config.growth_data) this._loadRef();
   }
@@ -6432,6 +6433,7 @@ class FpBabyOverviewCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (this._ms) this._ms.hass = hass;
+    Object.values(this._emb).forEach(e => { if (e.feed) e.feed.hass = hass; if (e.diaper) e.diaper.hass = hass; });
     // Verglichen wird mit dem, was die Karte zuletzt gesehen hat — nicht mit dem vorigen hass-Objekt.
     const kids = this.config.kids, lauf = kids.map(k => this._laeuft(k)), schlaf = kids.map(k => this._schlaeft(k));
     const sig = JSON.stringify([lauf, schlaf, kids.map((k, i) => [this._seite(k), lauf[i] ? this._beginn(k) : 0, schlaf[i] ? this._schlafBeginn(k) : 0]), this._dunkel(),
@@ -6792,10 +6794,12 @@ class FpBabyOverviewCard extends HTMLElement {
     if (m < 24) return `${m} Mon.${t ? ` ${t} T.` : ""}`;
     return `${Math.floor(m / 12)} J. ${m % 12} Mon.`;
   }
-  _alterZeile(kid) {
+  // Alter und, bei Frühgeborenen, das korrigierte Alter getrennt (der Kindschalter am Handy braucht dafür zwei Zeilen).
+  _alterTeile(kid) {
     const a = this._alterKurz(kid, false), k = this._frueh(kid) ? this._alterKurz(kid, true) : "";
-    return a ? `${a}${k && k !== a ? ` · korr. ${k.replace(/ \d+ T\.$/, "")}` : ""}` : "";
+    return [a, a && k && k !== a ? `korr. ${k.replace(/ \d+ T\.$/, "")}` : ""];
   }
+  _alterZeile(kid) { return this._alterTeile(kid).filter(Boolean).join(" · "); }
   _avatar(kid, px) {
     let bild = kid.picture || "";
     const st = !bild && kid.entity && this._hass && this._hass.states[kid.entity];
@@ -6878,24 +6882,56 @@ class FpBabyOverviewCard extends HTMLElement {
       </ha-card>${this._styles()}`;
     this._card = this.querySelector(".fo-card");
     this._card.addEventListener("click", ev => this._klick(ev));
+    this._wischen(this.querySelector(".fo-body"));
+  }
+  // Kind wählen (Schalter im Kopf, Wischen) — die Ansichten zeichnen sich danach für das neue Kind.
+  _kindWahl(key) {
+    if (key === this._kind || !this.config.kids.some(k => k.key === key)) return;
+    this._kind = key; this._setPref("kind", key); this._paint(true);
+  }
+  // Ist nur eine Spalte zu sehen? Dieselbe Grenze wie die Container-Query im CSS: 680 px Inhaltsbreite (ohne 2 × 16 px Rand).
+  _eineSpalte() { return this.config.kids.length > 1 && this._card.clientWidth - 32 < 680; }
+  // Waagrechtes Wischen über dem Inhalt wechselt das Kind: nach links das nächste, nach rechts das vorige.
+  // Nicht in Bereichen, die selbst wischen oder tippen (Chips, Blätter, eingebettete Karten, Eingabefelder).
+  _wischen(body) {
+    let von = null;
+    body.addEventListener("touchstart", ev => {
+      const t = ev.touches.length === 1 && ev.touches[0];
+      von = t && !(ev.target.closest && ev.target.closest(".fo-chips,.fo-sheet,.fo-emb,.fo-ms-host,input,textarea")) ? { x: t.clientX, y: t.clientY } : null;
+    }, { passive: true });
+    body.addEventListener("touchcancel", () => { von = null; }, { passive: true });
+    body.addEventListener("touchend", ev => {
+      const t = von && ev.changedTouches[0]; if (!t) return;
+      const dx = t.clientX - von.x, dy = t.clientY - von.y; von = null;
+      if (!this._eineSpalte() || Math.abs(dx) <= 70 || Math.abs(dx) <= 2 * Math.abs(dy)) return;
+      const kids = this.config.kids, i = kids.findIndex(k => k.key === this._kind), j = i + (dx < 0 ? 1 : -1);   // am Ende nicht herumspringen
+      if (j >= 0 && j < kids.length) this._kindWahl(kids[j].key);
+    }, { passive: true });
   }
   _klick(ev) {
     const z = sel => ev.target.closest(sel);
     let b;
-    if ((b = z(".fo-spark"))) { this._openChat(); return; }
-    if ((b = z(".fo-gear"))) { this._sheetEinst(); return; }
-    // Klicks in den eingebetteten Meilensteinen gehören der Meilensteinkarte. Sie baut dabei Teile neu auf,
-    // der angeklickte Knopf hängt danach nicht mehr im Dokument — deshalb über den Pfad beim Auslösen prüfen.
-    // Hat sie das Kind gewechselt, zieht der Kopf der Übersicht nach.
-    if (this._ms && ev.composedPath && ev.composedPath().includes(this._ms)) {
-      const k = this.config.kids.find(x => (x.milestone_key || x.key) === this._ms._kind);
-      if (k && k.key !== this._kind) { this._kind = k.key; this._setPref("kind", k.key); this.querySelector(".fo-top").innerHTML = this._kopf(); }
+    // Klicks in eingebetteten Karten (Momente, Protokoll) gehören der jeweiligen Karte, die Übersicht ignoriert sie.
+    // Die Karten bauen dabei Teile neu auf, der angeklickte Knopf hängt danach nicht mehr im Dokument —
+    // deshalb über den Pfad beim Auslösen prüfen. Hat die Meilensteinkarte das Kind gewechselt, zieht der Kopf nach.
+    const pfad = ev.composedPath ? ev.composedPath() : [];
+    if (pfad.some(el => el.classList && el.classList.contains("fo-emb"))) {
+      if (this._ms && pfad.includes(this._ms)) {
+        const k = this.config.kids.find(x => (x.milestone_key || x.key) === this._ms._kind);
+        if (k && k.key !== this._kind) { this._kind = k.key; this._setPref("kind", k.key); this.querySelector(".fo-top").innerHTML = this._kopf(); }
+      }
       return;
     }
-    if ((b = z(".fo-kidbtn"))) { const m = this.querySelector(".fo-menu"); if (m) m.hidden = !m.hidden; return; }
-    if ((b = z("[data-kind-sel]"))) { this._kind = b.dataset.kindSel; this._setPref("kind", this._kind); this._paint(true); return; }
+    if ((b = z(".fo-spark"))) { this._openChat(); return; }
+    if ((b = z(".fo-gear"))) { this._sheetEinst(); return; }
+    if ((b = z("[data-kind-sel]"))) { this._kindWahl(b.dataset.kindSel); return; }
     if ((b = z("[data-off]"))) { this._off = Math.min(0, Math.max(-(LADETAGE - 1), this._off + Number(b.dataset.off))); this._paint(true); return; }
-    if ((b = z("[data-view]"))) { this._view = b.dataset.view; this._setPref("view", this._view); this._off = 0; this._paint(true); window.scrollTo && this._card.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
+    if ((b = z("[data-view]"))) {
+      const vorher = this._view;
+      this._view = b.dataset.view; this._setPref("view", this._view); this._off = 0; this._paint(true);
+      if (vorher === "protokoll" && this._view !== vorher) this._load();   // was dort eingetragen wurde, soll gleich in den anderen Ansichten stehen
+      window.scrollTo && this._card.scrollIntoView({ block: "start", behavior: "smooth" }); return;
+    }
     if ((b = z("[data-nav]"))) { const p = this.config[b.dataset.nav]; if (p) { history.pushState(null, "", p); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); } return; }
     if ((b = z("[data-f]"))) { this._filter = b.dataset.f; this._setPref("filter", this._filter); this._paint(true); return; }
     if ((b = z("[data-sp]"))) { this._spanne = Number(b.dataset.sp); this._setPref("spanne", String(this._spanne)); this._paint(true); return; }
@@ -6923,12 +6959,11 @@ class FpBabyOverviewCard extends HTMLElement {
       if (b.dataset.act === "wiegen") this._sheetWiegen(kid, null);
       return;
     }
-    const m = this.querySelector(".fo-menu"); if (m && !m.hidden) m.hidden = true;
   }
 
   _paint(force) {
     if (!this._built || !this._d) return;
-    if ((this._view === "wachstum" && !this.config.weight_calendar) || (this._view === "momente" && !this.config.milestone_calendar)) this._view = "heute";
+    if ((this._view === "protokoll" && !this._hatProtokoll()) || (this._view === "wachstum" && !this.config.weight_calendar) || (this._view === "momente" && !this.config.milestone_calendar)) this._view = "heute";
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
     const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
       kids.map(k => [this._laeuft(k), this._seite(k), this._schlaeft(k)]),
@@ -6949,8 +6984,11 @@ class FpBabyOverviewCard extends HTMLElement {
       ${Array.from({ length: n }, (_, j) => `<div class="fo-blk">${teile[i][j] || ""}</div>`).join("")}</section>`).join("");
     const kopf = this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav() + (this._off === 0 ? this._schlafLeiste() : "");
     if (this._view === "momente") this._zeigeMomente(body);
+    else if (this._view === "protokoll") this._zeigeProtokoll(body);
     else body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>` + (this._view === "heute" ? this._detailsLink() : "");
-    const views = [["heute", "Heute"], ["muster", "Muster"]];
+    const views = [["heute", "Heute"]];
+    if (this._hatProtokoll()) views.push(["protokoll", "Protokoll"]);
+    views.push(["muster", "Muster"]);
     if (this.config.weight_calendar) views.push(["wachstum", "Wachstum"]);
     if (this.config.milestone_calendar) views.push(["momente", "Momente"]);
     const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
@@ -6959,13 +6997,15 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this._view === "wachstum") this._zeichne();
   }
 
-  // Kopf wie in Buma: Foto, Name mit ⌄ zum Wechseln, Alter; rechts ⚙ (nur mit Helfern) und ✦ für „Frag nach“.
-  // Am Tablet stehen Zwillinge nebeneinander — dann zeigt der Kopf beide.
+  // Kopf wie in Buma: Foto, Name, Alter; rechts ⚙ (nur mit Helfern) und ✦ für „Frag nach“.
+  // Bei mehreren Kindern steht statt des Namens ein Schalter mit einem großen Knopf je Kind (Foto, Name, Alter);
+  // der gewählte ist in der Kinderfarbe gefüllt. Am Tablet stehen Zwillinge nebeneinander — dann zeigt der Kopf beide.
   _kopf() {
     const kids = this.config.kids, k = this._kid(this._kind);
     const gleichAlt = kids.every(x => x.birth === kids[0].birth && x.ga === kids[0].ga);
-    const einer = `<div class="fo-who fo-who-one"><button class="fo-kidbtn" type="button">${this._avatar(k, 46)}<span class="fo-wn"><b>${U.esc(k.name)}${kids.length > 1 ? `<i class="fo-caret">⌄</i>` : ""}</b><small>${this._alterZeile(k)}</small></span></button>
-      ${kids.length > 1 ? `<div class="fo-menu" hidden>${kids.map(x => `<button type="button" data-kind-sel="${U.esc(x.key)}" class="${x.key === k.key ? "fo-on" : ""}">${this._avatar(x, 28)}${U.esc(x.name)}</button>`).join("")}</div>` : ""}</div>`;
+    const einer = kids.length > 1
+      ? `<div class="fo-who fo-who-one fo-kseg">${kids.map(x => `<button type="button" class="fo-kb${x.key === k.key ? " fo-on" : ""}" data-kind-sel="${U.esc(x.key)}" style="--k:${U.esc(x.color)};--k2:${U.esc(this._tint(x.color, .22))}" aria-pressed="${x.key === k.key}">${this._avatar(x, 30)}<span class="fo-kbn"><b>${U.esc(x.name)}</b><small>${this._alterTeile(x).filter(Boolean).join("<br>")}</small></span></button>`).join("")}</div>`
+      : `<div class="fo-who fo-who-one">${this._avatar(k, 46)}<span class="fo-wn"><b>${U.esc(k.name)}</b><small>${this._alterZeile(k)}</small></span></div>`;
     const alle = kids.length > 1 ? `<div class="fo-who fo-who-all"><span class="fo-avs">${kids.map(x => this._avatar(x, 46)).join("")}</span>
       <span class="fo-wn"><b>${kids.map(x => U.esc(x.name)).join(" & ")}</b><small>${gleichAlt ? this._alterZeile(kids[0]) : ""}</small></span></div>` : "";
     const c = this.config, gear = c.reminder_entity || c.reminder_night_entity || c.meal_pause_entity
@@ -7065,13 +7105,15 @@ class FpBabyOverviewCard extends HTMLElement {
     const k = vm.kid, jetzt = Date.now(), karten = [];
     // Welche Karten es gibt, hängt nur an der Konfiguration — so stehen sie bei Zwillingen auf einer Linie.
     // Die untere Zeile ist immer da (notfalls leer), damit alle Karten gleich hoch sind.
-    const karte = (farbe, titel, wert, unter, naechst, faellig) => `<div class="fo-nc${faellig ? " fo-due" : ""}">
+    // Stillen und Fläschchen führen per Tipp ins Stillprotokoll (Ansicht „Protokoll“).
+    const proto = this._hatProtokoll() ? ` data-view="protokoll"` : "";
+    const karte = (farbe, titel, wert, unter, naechst, faellig, link) => `<div class="fo-nc${faellig ? " fo-due" : ""}"${link ? proto : ""}>
       <div class="fo-ncl"><i style="background:${farbe}"></i>${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div>
       <div class="fo-ncn">${naechst || "&nbsp;"}</div></div>`;
     const spanne = p => `Nächste ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}`;
     // Unter einem Tag „1:47 h her“, sonst Wochentag und Uhrzeit statt „2 T. 11 h“
     const her = t => { const d = jetzt - t; if (d < TAG) return [this._her(d), "her"]; const n = Math.floor(d / TAG); return [`${WT[new Date(t).getDay()]} ${this._hm(new Date(t))}`, `vor ${n} ${n === 1 ? "Tag" : "Tagen"}`]; };
-    const leer = (farbe, titel, text) => karte(farbe, titel, "–", text, "");
+    const leer = (farbe, titel, text, link) => karte(farbe, titel, "–", text, "", false, link);
     if (k.sleep_calendar || k.sleep_switch) {
       const l = vm.schlaf[vm.schlaf.length - 1], p = vm.schlafProg;
       if (vm.schlaeft) karten.push(karte("var(--c-sleep)", "Schlaf", `<span class="fo-dauer" data-ab="${vm.schlafAb}">${this._hDauer(jetzt - vm.schlafAb)}</span>`, `schläft seit ${this._hm(new Date(vm.schlafAb))}`, ""));
@@ -7084,14 +7126,14 @@ class FpBabyOverviewCard extends HTMLElement {
     if (k.feeding_calendar || k.switch) {
       const st = vm.raw.feeds.filter(e => e.typ === "stillen").pop(), l = vm.letzte;
       const ziel = this._grenze(k, jetzt) * STD, faellig = !lauf && l && jetzt - l.start >= ziel && jetzt - l.start <= 8 * STD;
-      if (lauf) karten.push(karte("var(--c-nurse)", "Stillen", `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>`, "läuft gerade", ""));
-      else if (st) { const [w, u] = her(+st.start); karten.push(karte("var(--c-nurse)", "Stillen", w, u, faellig ? `<span class="fo-due-t">Fällig</span>` : vm.prog && jetzt < vm.prog.hi ? spanne(vm.prog) : "", faellig)); }
-      else karten.push(leer("var(--c-nurse)", "Stillen", "noch nichts eingetragen"));
+      if (lauf) karten.push(karte("var(--c-nurse)", "Stillen", `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>`, "läuft gerade", "", false, true));
+      else if (st) { const [w, u] = her(+st.start); karten.push(karte("var(--c-nurse)", "Stillen", w, u, faellig ? `<span class="fo-due-t">Fällig</span>` : vm.prog && jetzt < vm.prog.hi ? spanne(vm.prog) : "", faellig, true)); }
+      else karten.push(leer("var(--c-nurse)", "Stillen", "noch nichts eingetragen", true));
     }
     if (k.feeding_calendar) {
       const fl = vm.raw.feeds.filter(e => e.typ === "flasche").pop();
-      if (fl) { const [w, u] = her(+fl.start); karten.push(karte("var(--c-bottle)", "Fläschchen", w, `${u}${fl.ml ? ` · ${fl.ml} ml` : ""}`, "")); }
-      else karten.push(leer("var(--c-bottle)", "Fläschchen", "noch keins"));
+      if (fl) { const [w, u] = her(+fl.start); karten.push(karte("var(--c-bottle)", "Fläschchen", w, `${u}${fl.ml ? ` · ${fl.ml} ml` : ""}`, "", false, true)); }
+      else karten.push(leer("var(--c-bottle)", "Fläschchen", "noch keins", true));
     }
     if (k.diaper_calendar) {
       if (vm.windel) {
@@ -7142,9 +7184,9 @@ class FpBabyOverviewCard extends HTMLElement {
       : x.ek === "s" ? `<button type="button" class="fo-li fo-wli" data-suid="${U.esc(x.uid)}" data-kind="${kk}">${zeile(x)}</button>`
       : `<button type="button" class="fo-li fo-wli" data-euid="${U.esc(x.uid)}" data-ek="${x.ek}" data-kind="${kk}">${zeile(x)}</button>`).join("")}</div>`;
   }
-  // Link unter den Spalten in „Heute“ zur Unteransicht mit den Still- und Windelkarten.
+  // Knopf unter den Spalten in „Heute“ zur Ansicht „Protokoll“ mit den Still- und Windelkarten.
   _detailsLink() {
-    return this.config.details_path ? `<button type="button" class="fo-details" data-nav="details_path"><span>Stillprotokoll, Windeln und Bericht</span><i>›</i></button>` : "";
+    return this._hatProtokoll() ? `<button type="button" class="fo-details" data-view="protokoll"><span>Stillprotokoll, Windeln und Bericht</span><i>›</i></button>` : "";
   }
 
   // Wachstum und Momente — in Buma eigene Bereiche, hier zwei kleine Karten.
@@ -7162,7 +7204,7 @@ class FpBabyOverviewCard extends HTMLElement {
   _musterKopf() {
     const chips = [["alle", "Alle", ""], ["stillen", "Stillen", "var(--c-nurse)"], ["flasche", "Fläschchen", "var(--c-bottle)"], ["windel", "Windel", "var(--c-diaper)"]];
     if (this.config.kids.some(k => k.sleep_calendar)) chips.push(["schlaf", "Schlaf", "var(--c-sleep)"]);
-    const bericht = this.config.details_path ? `<div class="fo-bericht"><button type="button" data-nav="details_path">🖨 Bericht</button><span>Bericht je Kind in den Stillkarten</span></div>` : "";
+    const bericht = this._hatProtokoll() ? `<div class="fo-bericht"><button type="button" data-view="protokoll">🖨 Bericht</button><span>Bericht je Kind im Stillprotokoll</span></div>` : "";
     return `<div class="fo-mtitle"><b>Muster</b><span>Jeder Tag nebeneinander</span></div>${bericht}
       <div class="fo-mctl"><div class="fo-seg"><button type="button" data-sp="7" class="${this._spanne === 7 ? "fo-on" : ""}">Woche</button><button type="button" data-sp="14" class="${this._spanne === 14 ? "fo-on" : ""}">2 Wochen</button></div>
       <div class="fo-chips">${chips.map(([f, t, c]) => `<button type="button" data-f="${f}" class="${this._filter === f ? "fo-on" : ""}" style="--chip:${c || "var(--b-acc)"}">${c ? `<i></i>` : ""}${t}</button>`).join("")}</div></div>`;
@@ -7212,13 +7254,58 @@ class FpBabyOverviewCard extends HTMLElement {
     // Nur beim Wechsel in die Ansicht neu aufbauen; sonst würde jedes Neuzeichnen die Karte umhängen
     // und einem offenen Dialog den Fokus nehmen.
     let host = body.querySelector(":scope > .fo-ms-host");
-    if (!host) { body.innerHTML = `<div class="fo-mtitle"><b>Momente</b><span>Erste Male, Entwicklung und Bewegung</span></div><div class="fo-ms-host"></div>`; host = body.querySelector(".fo-ms-host"); }
+    if (!host) { body.innerHTML = `<div class="fo-mtitle"><b>Momente</b><span>Erste Male, Entwicklung und Bewegung</span></div><div class="fo-emb fo-ms-host"></div>`; host = body.querySelector(".fo-ms-host"); }
     const ms = this._momente();
     if (!ms) { host.innerHTML = `<div class="fo-leer">Die Meilensteinkarte ist nicht geladen.</div>`; return; }
     if (ms.parentNode !== host) host.appendChild(ms);
     // Gewähltes Kind der Übersicht übernehmen
     const k = this._kid(this._kind), key = k.milestone_key || k.key;
     if (ms._kind !== key && ms.config.kids.some(x => x.key === key)) { ms._kind = key; ms._band = null; if (ms._paint) ms._paint(true); }
+  }
+
+  // ---------- Protokoll ----------
+  // Stillprotokoll und Windeln als eigene Ansicht statt einer Unterseite im Dashboard: je Kind die fp-feeding-card-beta
+  // (mit Bericht) und die fp-diaper-card-beta, eingebettet wie die Meilensteinkarte und einmal angelegt. Ihre Konfiguration
+  // ergibt sich aus der der Übersicht; die Karten bringen Ändern, Nachtragen und Bericht selbst mit.
+  _hatProtokoll() { return this.config.kids.some(k => k.feeding_calendar || k.diaper_calendar); }
+  _protokollKarten(kid) {
+    const c = this.config, e = this._emb[kid.key] = this._emb[kid.key] || {};
+    const rein = o => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v != null));   // leere Werte nicht übergeben, die Karte hat eigene Vorgaben
+    if (!e.feed && kid.feeding_calendar && kid.switch && customElements.get("fp-feeding-card-beta")) {
+      e.feed = document.createElement("fp-feeding-card-beta");
+      e.feed.setConfig(rein({ name: kid.name, color: kid.color, calendar: kid.feeding_calendar, switch: kid.switch, side: kid.side, start: kid.start,
+        diaper_calendar: kid.diaper_calendar, weight_calendar: c.weight_calendar, weight_key: kid.weight_key || kid.key,
+        reminder_entity: c.reminder_entity, reminder_night_entity: c.reminder_night_entity, meal_pause_entity: c.meal_pause_entity }));
+    }
+    if (!e.diaper && kid.diaper_calendar && customElements.get("fp-diaper-card-beta")) {
+      e.diaper = document.createElement("fp-diaper-card-beta");
+      e.diaper.setConfig({ name: kid.name, color: kid.color, calendar: kid.diaper_calendar });
+    }
+    if (this._hass) { if (e.feed) e.feed.hass = this._hass; if (e.diaper) e.diaper.hass = this._hass; }
+    return e;
+  }
+  _zeigeProtokoll(body) {
+    const kids = this.config.kids;
+    // Nur beim Wechsel in die Ansicht neu aufbauen; sonst würde jedes Neuzeichnen die Karten umhängen
+    // und einem offenen Dialog darin den Fokus nehmen. Zwei Bausteine je Spalte (Stillen, Windeln), damit sie
+    // am Tablet Zeile für Zeile auf einer Höhe stehen; am Handy zeigt das CSS nur die Spalte des gewählten Kinds.
+    let grid = body.querySelector(":scope > .fo-pgrid");
+    if (!grid) {
+      body.innerHTML = `<div class="fo-mtitle"><b>Protokoll</b><span>Stillen und Windeln – zum Ändern, Nachtragen und für den Bericht</span></div>
+        <div class="fo-grid fo-pgrid" style="--rows:2">${kids.map(() => `<section class="fo-col"><div class="fo-blk fo-emb"></div><div class="fo-blk fo-emb"></div></section>`).join("")}</div>`;
+      grid = body.querySelector(".fo-pgrid");
+      kids.forEach((k, i) => {
+        const [stillen, windeln] = grid.children[i].children, alt = this._emb[k.key] || {}, bestand = [alt.feed, alt.diaper], e = this._protokollKarten(k);
+        // Beim Zurückkehren stehen die schon vorhandenen Karten noch mit altem Stand da — gleich neu lesen.
+        bestand.forEach(c => { if (c && c._load) c._load(); });
+        if (e.feed) stillen.appendChild(e.feed);
+        else if (k.feeding_calendar && k.switch) stillen.innerHTML = `<div class="fo-leer">Die Stillkarte ist nicht geladen.</div>`;
+        if (e.diaper) windeln.appendChild(e.diaper);
+        else if (k.diaper_calendar) windeln.innerHTML = `<div class="fo-leer">Die Windelkarte ist nicht geladen.</div>`;
+        if (!stillen.firstChild && !windeln.firstChild) stillen.innerHTML = `<div class="fo-leer">Für ${U.esc(k.name)} ist kein Protokoll eingerichtet.</div>`;
+      });
+    }
+    Array.from(grid.children).forEach((col, i) => col.classList.toggle("fo-sel", kids[i].key === this._kind));
   }
 
   // ---------- Wachstum ----------
@@ -7974,22 +8061,26 @@ class FpBabyOverviewCard extends HTMLElement {
 
       /* Kopf */
       .fo-top{display:flex;align-items:center;gap:10px;min-height:50px;}
-      .fo-who{display:flex;align-items:center;gap:12px;position:relative;flex:1;min-width:0;}
+      .fo-who{display:flex;align-items:center;gap:12px;flex:1;min-width:0;}
       .fo-who-all{display:none;}
       .fo-card.fo-multi .fo-who-all{display:none;}
       @container fo-card (min-width: 680px){ .fo-card.fo-multi .fo-who-one{display:none;} .fo-card.fo-multi .fo-who-all{display:flex;} }
-      .fo-kidbtn{display:flex;align-items:center;gap:12px;border:none;background:transparent;padding:0;cursor:pointer;text-align:left;}
+      /* Kindwechsel am Handy: ein großer Knopf je Kind, der gewählte in der Kinderfarbe gefüllt */
+      .fo-kseg{gap:8px;align-items:stretch;}
+      .fo-kb{flex:1 1 0;min-width:0;min-height:48px;display:flex;align-items:center;gap:8px;padding:6px 10px;border:2px solid transparent;border-radius:16px;background:var(--b-card);text-align:left;cursor:pointer;}
+      .fo-kb.fo-on{background:var(--k2);border-color:var(--k);}
+      .fo-kb:active{transform:scale(.97);}
+      .fo-kbn{display:flex;flex-direction:column;min-width:0;line-height:1.15;}
+      .fo-kbn b,.fo-kbn small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .fo-kbn b{font-size:.98rem;font-weight:800;}
+      .fo-kbn small{font-size:.72rem;color:var(--b-mut);font-weight:600;}
+      @container fo-card (max-width: 420px){ .fo-kb{gap:6px;padding:6px 8px;} }
       .fo-wn{display:flex;flex-direction:column;min-width:0;}
       .fo-wn b{font-size:1.45rem;font-weight:800;letter-spacing:-.01em;line-height:1.15;}
       .fo-wn small{font-size:.86rem;color:var(--b-mut);font-weight:600;}
-      .fo-caret{font-style:normal;font-size:1rem;margin-left:6px;color:var(--b-mut);}
       .fo-av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:800;flex:none;overflow:hidden;}
       .fo-av img{width:100%;height:100%;object-fit:cover;}
       .fo-avs{display:flex;} .fo-avs .fo-av{box-shadow:0 0 0 2px var(--b-bg);} .fo-avs .fo-av+.fo-av{margin-left:-12px;}
-      .fo-menu{position:absolute;top:56px;left:0;z-index:5;display:flex;flex-direction:column;gap:2px;padding:6px;border-radius:16px;background:var(--b-card2);box-shadow:0 10px 30px var(--b-shadow);}
-      .fo-menu[hidden]{display:none;}
-      .fo-menu button{display:flex;align-items:center;gap:10px;border:none;background:transparent;padding:8px 14px 8px 8px;border-radius:12px;font-weight:700;cursor:pointer;}
-      .fo-menu button.fo-on{background:var(--b-card);}
       .fo-spark{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-acc);cursor:pointer;display:flex;align-items:center;justify-content:center;}
       .fo-spark:active{background:var(--b-acc2);}
       .fo-gear{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-mut) !important;font-size:1.45rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
@@ -8066,6 +8157,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-nowgrid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:10px;}
       .fo-nowgrid>:last-child:nth-child(odd){grid-column:span 2;}
       .fo-nc{display:flex;flex-direction:column;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
+      .fo-nc[data-view]{cursor:pointer;}
       .fo-nc.fo-due{background:var(--b-due);}
       .fo-ncl{display:flex;align-items:center;gap:7px;font-size:.84rem;color:var(--b-mut);font-weight:600;}
       .fo-ncl i{width:9px;height:9px;border-radius:50%;flex:none;}
@@ -8141,12 +8233,14 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-ins div{border-radius:14px;padding:10px 12px;background:var(--b-card);font-size:.88rem;line-height:1.35;}
       .fo-ins span{color:var(--b-mut);}
 
-      /* Momente: die eingebettete Meilensteinkarte in den Farben der Übersicht, ohne eigenen Kartenrahmen */
-      .fo-ms-host{--primary-text-color:var(--b-text);--secondary-text-color:var(--b-mut);--secondary-background-color:var(--b-card);
+      /* Eingebettete Karten (Momente, Protokoll) in den Farben der Übersicht, ohne eigenen Kartenrahmen */
+      .fo-emb{--primary-text-color:var(--b-text);--secondary-text-color:var(--b-mut);--secondary-background-color:var(--b-card);
         --card-background-color:var(--b-bg);--divider-color:var(--b-line);--ha-card-box-shadow:none;--ha-card-border-width:0;}
-      .fo-ms-host ha-card{background:transparent !important;box-shadow:none !important;border:none !important;}
+      .fo-emb ha-card{background:transparent !important;box-shadow:none !important;border:none !important;}
       .fo-ms-host .fm-card{padding:0 0 8px;}
       .fo-ms-host .fm-title:empty{display:none;}
+      .fo-emb .ff-card,.fo-emb .fd-card{padding:0 0 8px;}
+      .fo-pgrid .fo-blk:not(:empty) + .fo-blk:not(:empty){margin-top:14px;}
 
       /* Wachstum: Kurve in der Kinderfarbe, im Dunkeln aufgehellt */
       .fo-gtiles{margin-top:10px;}
