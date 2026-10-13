@@ -6357,7 +6357,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v10 (Kindwechsel als Segment-Schalter im Kopf und per Wischen; Stillprotokoll als Ansicht „Protokoll“ mit eingebetteter Still- und Windelkarte, erreichbar über die Leiste, „Jetzt“ und „Muster“; details_path entfällt; jeder Eintrag antippbar zum Ändern und Löschen; „Rückgängig“ nach Schnelleinträgen, Stillen- und Schlafstart; „＋ Nachtragen“ je Kind; ⚙ Einstellungen für Erinnerung und Pause; Erinnerung tags/nachts und Pause bis zur neuen Mahlzeit aus denselben Helfern wie Stillkarte und Automation; Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Protokoll/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card-beta v11 (Farben und Radien aus dem Theme statt fester Palette, hell oder dunkel nach Gerät, Nachthimmel nur im dunklen Modus, Windel blaugrün; appearance entfällt; Kindwechsel als Segment-Schalter im Kopf und per Wischen; Stillprotokoll als Ansicht „Protokoll“ mit eingebetteter Still- und Windelkarte, erreichbar über die Leiste, „Jetzt“ und „Muster“; details_path entfällt; jeder Eintrag antippbar zum Ändern und Löschen; „Rückgängig“ nach Schnelleinträgen, Stillen- und Schlafstart; „＋ Nachtragen“ je Kind; ⚙ Einstellungen für Erinnerung und Pause; Erinnerung tags/nachts und Pause bis zur neuen Mahlzeit aus denselben Helfern wie Stillkarte und Automation; Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Protokoll/Muster/Wachstum/Momente) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -6385,7 +6385,6 @@ class FpBabyOverviewCard extends HTMLElement {
     this.config = Object.assign({
       weight_calendar: "",       // Kalender der fp-weight-card-beta (alle Kinder)
       milestone_calendar: "",    // Kalender der fp-milestone-card-beta (alle Kinder)
-      appearance: "dark",        // dark (wie Buma), light oder auto (folgt dem Theme)
       chat: true,                // ✦ „Frag nach“
       ai_entity: "",             // ai_task-Entity für den Chat; leer = die in HA voreingestellte
       days: 14,                  // so viele Tage bekommt die KI
@@ -6468,12 +6467,7 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this._t % 30 === 0) this._paint();
     if (this._t % 60 === 0) this._load();
   }
-  _dunkel() {
-    const a = this.config.appearance;
-    if (a === "light") return false;
-    if (a === "auto") return !!(this._hass && this._hass.themes && this._hass.themes.darkMode);
-    return true;
-  }
+  _dunkel() { return !!(this._hass && this._hass.themes && this._hass.themes.darkMode); }   // hell oder dunkel entscheidet das Gerät
   _pref(n, d) { try { return localStorage.getItem(`${this._pfx}:${n}`) || d; } catch (e) { return d; } }
   _setPref(n, v) { try { localStorage.setItem(`${this._pfx}:${n}`, v); } catch (e) { /* nur Komfort */ } }
 
@@ -6881,6 +6875,7 @@ class FpBabyOverviewCard extends HTMLElement {
         <nav class="fo-tabbar"></nav>
       </ha-card>${this._styles()}`;
     this._card = this.querySelector(".fo-card");
+    this._card.classList.toggle("fo-dark", this._dunkel());
     this._card.addEventListener("click", ev => this._klick(ev));
     this._wischen(this.querySelector(".fo-body"));
   }
@@ -6971,7 +6966,7 @@ class FpBabyOverviewCard extends HTMLElement {
         v.schlaf.filter(x => !x.laeuft).map(x => `${x.uid}:${+x.start}:${+x.end}`).join()])]);
     if (!force && sig === this._sig) return;
     this._sig = sig;
-    this._card.classList.toggle("fo-light", !dunkel);
+    this._card.classList.toggle("fo-dark", dunkel);
     this._card.classList.toggle("fo-multi", kids.length > 1);
     this.querySelector(".fo-top").innerHTML = this._kopf();
     const body = this.querySelector(".fo-body");
@@ -8045,17 +8040,22 @@ class FpBabyOverviewCard extends HTMLElement {
 
   _styles() {
     return `<style>
-      /* Farben wie Buma: dunkel mit Lachs als Akzent, je Art eine eigene Farbe. */
-      .fo-card{--b-bg:#1C1917;--b-card:#27221F;--b-card2:#322B27;--b-line:rgba(255,255,255,.07);--b-text:#F4EEE6;--b-mut:#9C9289;--b-faint:#6E655E;
-        --b-acc:#E8957A;--b-acc2:rgba(232,149,122,.16);--b-due:#3A2722;--b-sky:#203052;--b-bar:#2C2522;--b-track:#2E2724;--b-shadow:rgba(0,0,0,.45);
-        --c-nurse:#E77BB4;--c-bottle:#F0A73F;--c-diaper:#5DB36E;--c-stool:#B07A4A;--c-sleep:#8F8CF0;
-        position:relative;padding:18px 16px 14px;background:var(--b-bg);color:var(--b-text);border-radius:22px;container:fo-card / inline-size;}
-      .fo-card.fo-light{--b-bg:#FBF6EF;--b-card:#F1E9DF;--b-card2:#E7DDD0;--b-line:rgba(60,40,20,.09);--b-text:#2B2420;--b-mut:#7A7067;--b-faint:#A89E94;
-        --b-acc:#C9674A;--b-acc2:rgba(201,103,74,.12);--b-due:#F7E0D6;--b-sky:#D6E0F2;--b-bar:#FFFFFF;--b-track:#EAE2D6;--b-shadow:rgba(70,50,30,.18);
-        --c-nurse:#D9619E;--c-bottle:#E0921F;--c-diaper:#3F9A52;--c-stool:#9A6438;--c-sleep:#6662D6;}
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fo-card{--b-bg:var(--ha-card-background, var(--card-background-color, #fff));--b-card:var(--fp-surface, var(--secondary-background-color, #f2f0ea));
+        --b-card2:var(--fp-surface-2, var(--divider-color, #e0ddd4));--b-track:var(--b-card2);--b-line:var(--divider-color, rgba(0,0,0,.12));
+        --b-text:var(--primary-text-color, #212121);--b-mut:var(--secondary-text-color, #727272);--b-faint:var(--disabled-text-color, var(--secondary-text-color, #9e9e9e));
+        --b-acc:var(--fp-accent, var(--primary-color, #4F6B57));--b-acc2:rgba(var(--fp-accent-rgb, 79, 107, 87), .14);
+        --b-alert:var(--fp-alert, var(--warning-color, #B97F06));--b-due:var(--fp-alert-bg, rgba(217, 154, 11, .14));
+        --b-on:var(--fp-c-on, #1E1C18);--b-bar:var(--b-bg);--b-shadow:rgba(0,0,0,.18);
+        --c-nurse:var(--fp-c-nurse, #D9719F);--c-bottle:var(--fp-c-bottle, #E3A43A);--c-diaper:var(--fp-c-diaper, #3E9DB0);--c-stool:var(--fp-c-stool, #A77446);--c-sleep:var(--fp-c-sleep, #8A87E0);
+        --fo-hero-fb:linear-gradient(180deg, rgba(var(--fp-tint-rgb, 125,155,132), .28) 0%, rgba(var(--fp-tint-rgb, 125,155,132), 0) 100%);
+        position:relative;padding:18px 16px 14px;background:var(--b-bg);color:var(--b-text);border-radius:var(--fp-radius, var(--ha-card-border-radius, 16px));container:fo-card / inline-size;}
+      /* fo-dark: nur für die Rückfälle, die vom Modus abhängen (Nachthimmel, Schatten, Uhrzeitfelder, Kinderfarbe in der Kurve) */
+      .fo-card.fo-dark{--fo-hero-fb:linear-gradient(180deg, #26324D 0%, rgba(38,50,77,0) 100%);--b-shadow:rgba(0,0,0,.45);}
       :where(.fo-card) button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;}   /* ohne Gewicht, damit Klassen mit eigener Schriftgröße gewinnen */
-      .fo-sky{position:absolute;left:0;right:0;top:0;height:200px;border-radius:22px 22px 0 0;pointer-events:none;
-        background:linear-gradient(180deg,var(--b-sky) 0%,color-mix(in srgb,var(--b-sky) 45%,var(--b-bg)) 45%,var(--b-bg) 100%);}
+      .fo-sky{position:absolute;left:0;right:0;top:0;height:200px;border-radius:var(--fp-radius, var(--ha-card-border-radius, 16px)) var(--fp-radius, var(--ha-card-border-radius, 16px)) 0 0;pointer-events:none;
+        background:var(--fp-hero-bg, var(--fo-hero-fb));}
       .fo-top,.fo-body,.fo-tabbar{position:relative;}
       .fo-laden,.fo-leer{padding:24px 8px;text-align:center;color:var(--b-mut);font-size:.9rem;}
 
@@ -8067,7 +8067,7 @@ class FpBabyOverviewCard extends HTMLElement {
       @container fo-card (min-width: 680px){ .fo-card.fo-multi .fo-who-one{display:none;} .fo-card.fo-multi .fo-who-all{display:flex;} }
       /* Kindwechsel am Handy: ein großer Knopf je Kind, der gewählte in der Kinderfarbe gefüllt */
       .fo-kseg{gap:8px;align-items:stretch;}
-      .fo-kb{flex:1 1 0;min-width:0;min-height:48px;display:flex;align-items:center;gap:8px;padding:6px 10px;border:2px solid transparent;border-radius:16px;background:var(--b-card);text-align:left;cursor:pointer;}
+      .fo-kb{flex:1 1 0;min-width:0;min-height:48px;display:flex;align-items:center;gap:8px;padding:6px 10px;border:2px solid transparent;border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);text-align:left;cursor:pointer;}
       .fo-kb.fo-on{background:var(--k2);border-color:var(--k);}
       .fo-kb:active{transform:scale(.97);}
       .fo-kbn{display:flex;flex-direction:column;min-width:0;line-height:1.15;}
@@ -8081,7 +8081,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:800;flex:none;overflow:hidden;}
       .fo-av img{width:100%;height:100%;object-fit:cover;}
       .fo-avs{display:flex;} .fo-avs .fo-av{box-shadow:0 0 0 2px var(--b-bg);} .fo-avs .fo-av+.fo-av{margin-left:-12px;}
-      .fo-spark{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-acc);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+      .fo-spark{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--accent-color, var(--b-acc));cursor:pointer;display:flex;align-items:center;justify-content:center;}
       .fo-spark:active{background:var(--b-acc2);}
       .fo-gear{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-mut) !important;font-size:1.45rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
       .fo-gear:active{background:var(--b-acc2);}
@@ -8089,7 +8089,7 @@ class FpBabyOverviewCard extends HTMLElement {
       /* Tag blättern */
       .fo-daynav{display:flex;align-items:center;justify-content:center;gap:28px;margin:14px 0 12px;font-weight:700;font-size:1rem;}
       .fo-daynav span{min-width:110px;text-align:center;}
-      .fo-daynav button{border:none;background:transparent;font-size:1.6rem;line-height:1;width:40px;height:36px;border-radius:12px;color:var(--b-mut);cursor:pointer;}
+      .fo-daynav button{border:none;background:transparent;font-size:1.6rem;line-height:1;width:40px;height:36px;border-radius:var(--fp-radius-sm, 12px);color:var(--b-mut);cursor:pointer;}
       .fo-daynav button:disabled{opacity:.25;cursor:default;}
 
       /* Spalten: Zwillinge am Tablet nebeneinander, am Handy eins mit Wechsel im Kopf */
@@ -8111,11 +8111,10 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-sleep{display:flex;flex-direction:column;gap:10px;margin:0 0 18px;}
       .fo-sl-row{display:flex;gap:10px;}
       @container fo-card (min-width: 680px){ .fo-sleep{flex-direction:row;} .fo-sl-row{display:contents;} .fo-sl-plus{order:9;} }
-      .fo-sl{flex:1 1 0;min-width:0;min-height:76px;display:flex;align-items:center;gap:12px;border:none;border-radius:18px;padding:12px 16px;cursor:pointer;text-align:left;
-        background:var(--c-sleep);color:#1C1917 !important;box-shadow:0 4px 16px color-mix(in srgb,var(--c-sleep) 40%,transparent);}
-      .fo-card.fo-light .fo-sl{color:#fff !important;}
+      .fo-sl{flex:1 1 0;min-width:0;min-height:76px;display:flex;align-items:center;gap:12px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:12px 16px;cursor:pointer;text-align:left;
+        background:var(--c-sleep);color:var(--b-on) !important;box-shadow:0 4px 16px color-mix(in srgb,var(--c-sleep) 40%,transparent);}
       .fo-sl:active{transform:scale(.97);}
-      .fo-sl.fo-sl-an,.fo-card.fo-light .fo-sl.fo-sl-an{background:color-mix(in srgb,var(--c-sleep) 24%,var(--b-bg));color:var(--b-text) !important;
+      .fo-sl.fo-sl-an{background:color-mix(in srgb,var(--c-sleep) 24%,var(--b-bg));color:var(--b-text) !important;
         box-shadow:inset 0 0 0 3px var(--c-sleep),0 0 22px color-mix(in srgb,var(--c-sleep) 45%,transparent);}
       .fo-sle{font-size:2rem;line-height:1;flex:none;}
       .fo-slx{display:flex;flex-direction:column;min-width:0;}
@@ -8125,28 +8124,28 @@ class FpBabyOverviewCard extends HTMLElement {
       /* Handy: in der Reihe je Kind Symbol über dem Text, sonst bricht „Kind B schläft“ um */
       @container fo-card (max-width: 679px){ .fo-sl-row + .fo-sl-row .fo-sl{flex-direction:column;justify-content:center;gap:6px;padding:12px 8px;text-align:center;}
         .fo-sl-row + .fo-sl-row .fo-slx{align-items:center;} }
-      .fo-sl-plus{flex:none;width:56px;min-height:76px;border:none;border-radius:18px;background:var(--b-card);color:var(--b-mut) !important;font-size:1.5rem;cursor:pointer;}
+      .fo-sl-plus{flex:none;width:56px;min-height:76px;border:none;border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);color:var(--b-mut) !important;font-size:1.5rem;cursor:pointer;}
       .fo-s{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--c-sleep);opacity:.4;}
       .fo-s.fo-s1{opacity:.9;}
       .fo-zeitrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-      .fo-kids button.fo-on{background:var(--c-sleep);color:#1C1917 !important;}
+      .fo-kids button.fo-on{background:var(--c-sleep);color:var(--b-on) !important;}
 
       /* Schnellknöpfe */
       .fo-quick{display:flex;gap:10px;margin-bottom:14px;}
-      .fo-q{flex:1 1 0;min-width:0;height:68px;border:none;border-radius:16px;background:var(--q);color:#1C1917 !important;cursor:pointer;
+      .fo-q{flex:1 1 0;min-width:0;height:68px;border:none;border-radius:var(--fp-radius-sm, 12px);background:var(--q);color:var(--b-on) !important;cursor:pointer;
         display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.74rem;font-weight:700;box-shadow:0 4px 14px color-mix(in srgb,var(--q) 35%,transparent);}
       .fo-q:active{transform:scale(.95);}
       .fo-qe{font-size:1.45rem;line-height:1;}
       .fo-q-run{outline:3px solid color-mix(in srgb,var(--q) 45%,transparent);outline-offset:2px;font-variant-numeric:tabular-nums;font-size:.9rem;}
 
       /* „Nächste Mahlzeit“ */
-      .fo-next{border-radius:20px;padding:16px 18px;background:var(--b-card);border:1.5px solid var(--b-acc);box-shadow:0 8px 24px var(--b-shadow);}
+      .fo-next{border-radius:var(--fp-radius, 16px);padding:16px 18px;background:var(--b-card);border:1.5px solid var(--b-acc);box-shadow:0 8px 24px var(--b-shadow);}
       .fo-nl{display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--b-acc);}
       .fo-nb{font-size:2rem;font-weight:800;letter-spacing:-.01em;line-height:1.15;margin-top:4px;font-variant-numeric:tabular-nums;}
-      .fo-next-due .fo-nb{color:var(--b-acc);}
+      .fo-next-due .fo-nb{color:var(--b-alert);}
       .fo-ns{font-size:.92rem;color:var(--b-mut);margin-top:4px;}
       .fo-nf{font-size:.88rem;color:var(--b-faint);margin-top:6px;}
-      .fo-nbtn{margin-top:12px;border:none;border-radius:12px;padding:10px 16px;background:var(--b-acc2);color:var(--b-acc) !important;font-weight:800;cursor:pointer;}
+      .fo-nbtn{margin-top:12px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:10px 16px;background:var(--b-acc2);color:var(--b-acc) !important;font-weight:800;cursor:pointer;}
       .fo-puls{width:9px;height:9px;border-radius:50%;background:var(--c-nurse);animation:fo-puls 1.4s ease-in-out infinite;}
       @keyframes fo-puls{50%{transform:scale(1.7);opacity:.35;}}
 
@@ -8156,7 +8155,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-plus{flex:none;min-height:36px;border:none;border-radius:999px;padding:8px 14px;background:var(--b-acc2);color:var(--b-acc) !important;font-size:.82rem;font-weight:800;letter-spacing:0;text-transform:none;cursor:pointer;}
       .fo-nowgrid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:10px;}
       .fo-nowgrid>:last-child:nth-child(odd){grid-column:span 2;}
-      .fo-nc{display:flex;flex-direction:column;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
+      .fo-nc{display:flex;flex-direction:column;border-radius:var(--fp-radius-sm, 12px);padding:12px 14px;background:var(--b-card);min-width:0;}
       .fo-nc[data-view]{cursor:pointer;}
       .fo-nc.fo-due{background:var(--b-due);}
       .fo-ncl{display:flex;align-items:center;gap:7px;font-size:.84rem;color:var(--b-mut);font-weight:600;}
@@ -8164,11 +8163,11 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-ncb{font-size:1.55rem;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.1;}
       .fo-ncs{font-size:.8rem;color:var(--b-mut);}
       .fo-ncn{font-size:.78rem;color:var(--b-faint);margin-top:auto;padding-top:8px;}
-      .fo-due-t{color:var(--b-acc);font-weight:700;font-size:.86rem;}
+      .fo-due-t{color:var(--b-alert);font-weight:700;font-size:.86rem;}
 
       /* Tageszahlen */
       .fo-pills{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:8px;margin-top:16px;}
-      .fo-pills div{display:flex;flex-direction:column;align-items:center;border-radius:14px;padding:9px 4px;background:var(--b-card);}
+      .fo-pills div{display:flex;flex-direction:column;align-items:center;border-radius:var(--fp-radius-sm, 12px);padding:9px 4px;background:var(--b-card);}
       .fo-pills b{font-size:1.15rem;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;}
       .fo-pills span{font-size:.72rem;color:var(--b-mut);font-weight:600;white-space:nowrap;}
       @container fo-card (max-width: 420px){ .fo-pills b{font-size:1rem;} .fo-pills span{font-size:.66rem;} }
@@ -8186,7 +8185,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-ticks span:first-child{transform:none;} .fo-ticks span:last-child{transform:translateX(-100%);}
 
       /* Einträge */
-      .fo-list{border-radius:16px;background:var(--b-card);padding:4px 14px;}
+      .fo-list{border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);padding:4px 14px;}
       .fo-li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b-line);font-size:.9rem;}
       .fo-li:last-child{border-bottom:none;}
       .fo-li i{width:9px;height:9px;border-radius:50%;flex:none;}
@@ -8194,7 +8193,7 @@ class FpBabyOverviewCard extends HTMLElement {
 
       /* Wachstum & Momente */
       .fo-minis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
-      .fo-mini{display:flex;align-items:center;gap:12px;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
+      .fo-mini{display:flex;align-items:center;gap:12px;border-radius:var(--fp-radius-sm, 12px);padding:12px 14px;background:var(--b-card);min-width:0;}
       .fo-mini[data-nav],.fo-mini[data-view]{cursor:pointer;}
       .fo-mi{font-size:1.6rem;flex:none;}
       .fo-mini div{display:flex;flex-direction:column;min-width:0;}
@@ -8208,7 +8207,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-bericht{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:-4px 2px 14px;}
       .fo-bericht button{border:none;border-radius:999px;padding:8px 14px;background:var(--b-acc2);color:var(--b-acc) !important;font-size:.86rem;font-weight:800;cursor:pointer;}
       .fo-bericht span{font-size:.8rem;color:var(--b-mut);}
-      .fo-details{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin-top:18px;padding:13px 16px;border:none;border-radius:16px;background:var(--b-card);color:var(--b-acc) !important;font-size:.92rem;font-weight:700;text-align:left;cursor:pointer;}
+      .fo-details{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin-top:18px;padding:13px 16px;border:none;border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);color:var(--b-acc) !important;font-size:.92rem;font-weight:700;text-align:left;cursor:pointer;}
       .fo-details i{font-style:normal;font-size:1.3rem;line-height:1;}
       .fo-mctl{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:16px;}
       .fo-seg{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--b-card);}
@@ -8217,12 +8216,12 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;max-width:100%;padding-bottom:2px;} .fo-chips::-webkit-scrollbar{display:none;}
       .fo-chips button{flex:none;display:flex;align-items:center;gap:7px;border:none;border-radius:999px;padding:8px 14px;background:var(--b-card);font-weight:700;font-size:.88rem;cursor:pointer;}
       .fo-chips i{width:9px;height:9px;border-radius:50%;background:var(--chip);}
-      .fo-chips button.fo-on{background:var(--chip);color:#1C1917 !important;} .fo-chips button.fo-on i{background:#1C1917;opacity:.35;}
-      .fo-mcard{border-radius:20px;padding:16px 18px;background:var(--b-card);}
+      .fo-chips button.fo-on{background:var(--chip);color:var(--b-on) !important;} .fo-chips button.fo-on i{background:var(--b-on);opacity:.35;}
+      .fo-mcard{border-radius:var(--fp-radius, 16px);padding:16px 18px;background:var(--b-card);}
       .fo-mh{font-size:1.2rem;font-weight:800;}
       .fo-mt{font-size:.92rem;color:var(--b-mut);line-height:1.45;margin-top:6px;}
       .fo-avg{margin-top:16px;font-size:.95rem;} .fo-avg span{color:var(--b-mut);}
-      .fo-hint{font-size:.8rem;color:var(--c-diaper);margin-top:4px;opacity:.9;}
+      .fo-hint{font-size:.8rem;color:var(--b-mut);margin-top:4px;opacity:.9;}
       .fo-rows{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
       .fo-row{display:flex;align-items:center;gap:10px;}
       .fo-rl{flex:0 0 48px;font-size:.84rem;font-weight:700;color:var(--b-mut);font-variant-numeric:tabular-nums;}
@@ -8230,22 +8229,21 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-row .fo-track{height:22px;}
       .fo-row-ticks .fo-ticks{height:14px;}
       .fo-ins{display:flex;flex-direction:column;gap:6px;}
-      .fo-ins div{border-radius:14px;padding:10px 12px;background:var(--b-card);font-size:.88rem;line-height:1.35;}
+      .fo-ins div{border-radius:var(--fp-radius-sm, 12px);padding:10px 12px;background:var(--b-card);font-size:.88rem;line-height:1.35;}
       .fo-ins span{color:var(--b-mut);}
 
-      /* Eingebettete Karten (Momente, Protokoll) in den Farben der Übersicht, ohne eigenen Kartenrahmen */
-      .fo-emb{--primary-text-color:var(--b-text);--secondary-text-color:var(--b-mut);--secondary-background-color:var(--b-card);
-        --card-background-color:var(--b-bg);--divider-color:var(--b-line);--ha-card-box-shadow:none;--ha-card-border-width:0;}
+      /* Eingebettete Karten (Momente, Protokoll) ohne eigenen Kartenrahmen; ihre Farben kommen wie die der Übersicht aus dem Theme */
+      .fo-emb{--ha-card-box-shadow:none;--ha-card-border-width:0;}
       .fo-emb ha-card{background:transparent !important;box-shadow:none !important;border:none !important;}
       .fo-ms-host .fm-card{padding:0 0 8px;}
       .fo-ms-host .fm-title:empty{display:none;}
       .fo-emb .ff-card,.fo-emb .fd-card{padding:0 0 8px;}
       .fo-pgrid .fo-blk:not(:empty) + .fo-blk:not(:empty){margin-top:14px;}
 
-      /* Wachstum: Kurve in der Kinderfarbe, im Dunkeln aufgehellt */
+      /* Wachstum: Kurve in der Kinderfarbe */
       .fo-gtiles{margin-top:10px;}
-      .fo-gcard{border-radius:20px;padding:12px 8px 10px;background:var(--b-card);--kl:color-mix(in srgb,var(--k) 55%,var(--b-text));}
-      .fo-card.fo-light .fo-gcard{--kl:var(--k);}
+      .fo-gcard{border-radius:var(--fp-radius, 16px);padding:12px 8px 10px;background:var(--b-card);--kl:var(--k);}
+      .fo-card.fo-dark .fo-gcard{--kl:color-mix(in srgb,var(--k) 55%,var(--b-text));}   /* im Dunkeln aufgehellt */
       .fo-gchart{height:230px;}
       .fo-gchart svg{display:block;overflow:visible;}
       .fo-ggrid{stroke:var(--b-line);stroke-width:1;}
@@ -8285,23 +8283,23 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-ov{position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;animation:fo-fade .2s;}
       @keyframes fo-fade{from{opacity:0;}}
       .fo-sheet{width:100%;max-width:560px;max-height:88vh;overflow:auto;box-sizing:border-box;background:var(--b-bg);color:var(--b-text);
-        border-radius:26px 26px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px var(--b-shadow);animation:fo-up .3s cubic-bezier(.2,.9,.3,1);}
-      @media (min-width: 700px){ .fo-ov{align-items:center;} .fo-sheet{border-radius:26px;} }
+        border-radius:var(--fp-radius, 16px) var(--fp-radius, 16px) 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px var(--b-shadow);animation:fo-up .3s cubic-bezier(.2,.9,.3,1);}
+      @media (min-width: 700px){ .fo-ov{align-items:center;} .fo-sheet{border-radius:var(--fp-radius, 16px);} }
       @keyframes fo-up{from{transform:translateY(40px);opacity:0;}}
       .fo-sh-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
       .fo-sh-head b{flex:1;font-size:1.15rem;font-weight:800;display:flex;align-items:center;gap:8px;}
-      .fo-sh-ai svg{color:var(--b-acc);}
+      .fo-sh-ai svg{color:var(--accent-color, var(--b-acc));}
       .fo-x{border:none;background:var(--b-card);width:34px;height:34px;border-radius:50%;cursor:pointer;flex:none;}
       .fo-neu{border:none;background:transparent;color:var(--b-mut) !important;font-size:.8rem;font-weight:700;cursor:pointer;}
       .fo-sh-sub{font-size:.8rem;color:var(--b-mut);margin:-6px 0 12px;}
       .fo-big3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-      .fo-big3 button{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;border-radius:18px;padding:16px 6px;background:color-mix(in srgb,var(--q) 22%,var(--b-card));font-weight:800;cursor:pointer;}
+      .fo-big3 button{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:16px 6px;background:color-mix(in srgb,var(--q) 22%,var(--b-card));font-weight:800;cursor:pointer;}
       .fo-big3 span{font-size:1.8rem;}
       .fo-big3 button.fo-on{box-shadow:inset 0 0 0 3px var(--q);}
       .fo-big2{grid-template-columns:repeat(2,1fr);}
       .fo-wahl{display:flex;gap:8px;}
-      .fo-wahl button{flex:1 1 0;border:none;border-radius:12px;padding:11px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
-      .fo-wahl button.fo-on{background:var(--b-acc);color:var(--b-bg) !important;}
+      .fo-wahl button{flex:1 1 0;border:none;border-radius:var(--fp-radius-sm, 12px);padding:11px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
+      .fo-wahl button.fo-on{background:var(--b-acc);color:var(--fp-accent-fg, #fff) !important;}
       .fo-er{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--b-line);}
       .fo-er:last-child{border-bottom:none;}
       .fo-er>span{flex:1;min-width:0;font-weight:700;}
@@ -8310,15 +8308,15 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-er button:disabled{opacity:.3;cursor:default;}
       .fo-lbl{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--b-faint);margin:14px 0 8px;}
       .fo-mls{display:flex;flex-wrap:wrap;gap:8px;}
-      .fo-mls button{border:none;border-radius:12px;padding:10px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
-      .fo-mls button.fo-on{background:var(--c-bottle);color:#1C1917 !important;}
+      .fo-mls button{border:none;border-radius:var(--fp-radius-sm, 12px);padding:10px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
+      .fo-mls button.fo-on{background:var(--c-bottle);color:var(--b-on) !important;}
       .fo-mls .fo-in{width:90px;}
-      .fo-in{box-sizing:border-box;width:100%;padding:11px 12px;border:1px solid var(--b-line);border-radius:12px;background:var(--b-card);color:var(--b-text);font:inherit;font-size:1rem;}
-      .fo-in[type=time],.fo-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:dark;}
+      .fo-in{box-sizing:border-box;width:100%;padding:11px 12px;border:1px solid var(--b-line);border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);color:var(--b-text);font:inherit;font-size:1rem;}
+      .fo-in[type=time],.fo-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;}
       .fo-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum und Uhrzeit sonst breiter als das Blatt */
-      .fo-card.fo-light .fo-in[type=time],.fo-card.fo-light .fo-in[type=date]{color-scheme:light;}
+      .fo-card.fo-dark .fo-in[type=time],.fo-card.fo-dark .fo-in[type=date]{color-scheme:dark;}
       .fo-sh-hint{font-size:.78rem;color:var(--b-mut);margin-top:6px;}
-      .fo-ok{display:block;width:100%;margin-top:18px;border:none;border-radius:14px;padding:13px;background:var(--b-acc);color:#fff !important;font-weight:800;font-size:1rem;cursor:pointer;}
+      .fo-ok{display:block;width:100%;margin-top:18px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:13px;background:var(--b-acc);color:var(--fp-accent-fg, #fff) !important;font-weight:800;font-size:1rem;cursor:pointer;}
       .fo-del{display:block;width:100%;margin-top:6px;border:none;background:transparent;padding:11px;color:var(--b-mut) !important;font-weight:700;cursor:pointer;}
 
       /* Frag nach */
@@ -8326,9 +8324,9 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-msgs{flex:1;display:flex;flex-direction:column;gap:8px;overflow-y:auto;margin-bottom:10px;min-height:0;}
       .fo-msgs[hidden]{display:none;}
       .fo-chat .fo-sugg{margin-top:auto;}
-      .fo-msg{max-width:88%;border-radius:18px;padding:10px 14px;font-size:.93rem;line-height:1.45;overflow-wrap:anywhere;}
+      .fo-msg{max-width:88%;border-radius:var(--fp-radius, 16px);padding:10px 14px;font-size:.93rem;line-height:1.45;overflow-wrap:anywhere;}
       .fo-msg p{margin:0 0 6px;} .fo-msg p:last-child{margin-bottom:0;} .fo-msg ul{margin:4px 0;padding-left:20px;} .fo-msg li{margin:2px 0;}
-      .fo-me{align-self:flex-end;background:var(--b-acc);color:#fff;border-bottom-right-radius:6px;}
+      .fo-me{align-self:flex-end;background:var(--b-acc);color:var(--fp-accent-fg, #fff);border-bottom-right-radius:6px;}
       .fo-ai{align-self:flex-start;background:var(--b-card);border-bottom-left-radius:6px;}
       .fo-tipp{display:flex;gap:5px;padding:14px 16px;}
       .fo-tipp i{width:8px;height:8px;border-radius:50%;background:var(--b-mut);opacity:.4;animation:fo-tipp 1.2s infinite;}
@@ -8339,7 +8337,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-sugg button{border:1px solid var(--b-line);border-radius:999px;padding:8px 13px;background:var(--b-card);font-size:.86rem;font-weight:600;cursor:pointer;text-align:left;}
       .fo-ask{display:flex;gap:8px;}
       .fo-ask .fo-in{flex:1;min-width:0;}
-      .fo-send{flex:none;width:48px;border:none;border-radius:12px;background:var(--b-acc);color:#fff !important;font-size:1.1rem;cursor:pointer;}
+      .fo-send{flex:none;width:48px;border:none;border-radius:var(--fp-radius-sm, 12px);background:var(--b-acc);color:var(--fp-accent-fg, #fff) !important;font-size:1.1rem;cursor:pointer;}
       @media (prefers-reduced-motion: reduce){ .fo-puls,.fo-tipp i,.fo-sheet,.fo-ov{animation:none !important;} }
     </style>`;
   }
