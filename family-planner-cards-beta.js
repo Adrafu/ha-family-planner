@@ -5535,7 +5535,7 @@ if (!customElements.get("fp-diaper-card-beta")) {
 }
 })();
 
-/* ===== fp-milestone-card-beta v1 (Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
+/* ===== fp-milestone-card-beta v2 (Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
 // Ein erreichter Meilenstein = ein Ganztagstermin im eigenen Kalender an dem Tag,
 // an dem es passiert ist: Titel "🐢 Kind A: Krabbelt", Beschreibung
 // {"typ":"meilenstein","kind":"kind_a","id":"krabbeln"}, dazu optional notiz,
@@ -6052,8 +6052,11 @@ class FpMilestoneCard extends HTMLElement {
   // ---------- Bewegung ----------
   _htmlMotor(kid) {
     const pos = m => `${(Math.max(0, Math.min(WHO_MAX, m)) / WHO_MAX * 100).toFixed(2)}%`;
+    // Die Heute-Linie steht immer, sobald das Alter bekannt ist. Vor dem errechneten Termin
+    // (korrigiertes Alter unter 0) steht sie am linken Rand, nach 18 Monaten am rechten.
     const jetzt = this._alterMon(kid, this._heute());
-    const now = jetzt != null && jetzt >= 0 && jetzt <= WHO_MAX ? `<span class="fm-now" style="left:${pos(jetzt)}"></span>` : "";
+    const jx = jetzt == null ? null : Math.max(0, Math.min(WHO_MAX, jetzt));
+    const now = jx != null ? `<span class="fm-now" style="left:${pos(jx)}"></span>` : "";
     const rows = WHO.map(([id, e, t, lo, hi]) => {
       const h = this._get(kid.key, id);
       // Der eigene Punkt zuletzt, damit er oben liegt.
@@ -6066,10 +6069,13 @@ class FpMilestoneCard extends HTMLElement {
         <span class="fm-ml"><span class="fm-mi">${e}</span><span class="fm-mt">${U.esc(t)}</span>${h ? `<span class="fm-md">⭐ ${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}</span>
         <span class="fm-track"><span class="fm-win" style="left:${pos(lo)};width:${pos(hi - lo)}"></span>${now}${dots}</span></button>`;
     }).join("");
-    const ticks = [0, 3, 6, 9, 12, 15, 18].map(m => `<span style="left:${pos(m)}">${m}</span>`).join("");
+    // Zahlen, die mit „heute“ zusammenstoßen würden, fallen weg; am Rand steht „heute“ bündig statt mittig.
+    const ticks = [0, 3, 6, 9, 12, 15, 18].filter(m => jx == null || Math.abs(m - jx) >= 1).map(m => `<span style="left:${pos(m)}">${m}</span>`).join("")
+      + (jx != null ? `<span class="fm-nowl" style="left:${pos(jx)};transform:translateX(${jx < .7 ? "0" : jx > WHO_MAX - .7 ? "-100%" : "-50%"})">heute</span>` : "");
     const korr = this._frueh(kid) && kid.birth ? ", nach korrigiertem Alter" : "";
+    const linie = jx == null ? "" : jetzt < 0 ? ", die Linie steht bei heute (noch vor dem errechneten Termin)" : ", die Linie steht bei heute";
     return `<div class="fm-motor">${rows}<div class="fm-axis"><span class="fm-axl">Monate</span><span class="fm-ticks">${ticks}</span></div></div>
-      <div class="fm-quelle">Farbiges Feld: In dieser Zeit lernen es gesunde Kinder – so breit ist die Spanne (WHO-Motorikstudie, 1.–99. Perzentil). Punkte zeigen, wann es so weit war${korr}${now ? ", die Linie steht bei heute" : ""}.</div>`;
+      <div class="fm-quelle">Farbiges Feld: In dieser Zeit lernen es gesunde Kinder – so breit ist die Spanne (WHO-Motorikstudie, 1.–99. Perzentil). Punkte zeigen, wann es so weit war${korr}${linie}.</div>`;
   }
 
   // ---------- Feiern ----------
@@ -6287,7 +6293,8 @@ class FpMilestoneCard extends HTMLElement {
       .fm-win{position:absolute;top:5px;bottom:5px;border-radius:9px;--w1:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 18%,transparent);--w2:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 42%,transparent);
         background:linear-gradient(90deg,var(--w1,var(--fm-k1)),var(--w2,var(--fm-k3)) 50%,var(--w1,var(--fm-k1)));}
       .fm-mo.fm-on .fm-win{--w1:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 30%,transparent);}
-      .fm-now{position:absolute;top:-4px;bottom:-4px;width:0;border-left:2px dashed var(--secondary-text-color);opacity:.55;}
+      .fm-now{position:absolute;top:-5px;bottom:-5px;width:2px;margin-left:-1px;border-radius:1px;background:var(--primary-text-color);opacity:.7;pointer-events:none;}
+      .fm-ticks .fm-nowl{font-weight:800;color:var(--primary-text-color);}
       .fm-dot{position:absolute;top:50%;transform:translate(-50%,-50%);width:20px;height:20px;box-sizing:border-box;border-radius:50%;color:#fff;font-size:.6rem;font-weight:800;
         display:flex;align-items:center;justify-content:center;border:2px solid var(--card-background-color,#fff);box-shadow:0 1px 3px rgba(0,0,0,.25);}
       .fm-dot.fm-me{width:26px;height:26px;font-size:.78rem;box-shadow:0 0 0 3px var(--fm-k3),0 1px 3px rgba(0,0,0,.25);}
