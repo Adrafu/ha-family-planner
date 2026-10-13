@@ -6355,7 +6355,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v5 (Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card-beta v6 (aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -6903,11 +6903,15 @@ class FpBabyOverviewCard extends HTMLElement {
     this._card.classList.toggle("fo-multi", kids.length > 1);
     this.querySelector(".fo-top").innerHTML = this._kopf();
     const body = this.querySelector(".fo-body");
-    const spalten = vms.map(vm => `<section class="fo-col${vm.kid.key === this._kind ? " fo-sel" : ""}">
-      ${kids.length > 1 ? `<div class="fo-colhead">${this._avatar(vm.kid, 30)}<b>${U.esc(vm.kid.name)}</b><small>${this._alterZeile(vm.kid)}</small></div>` : ""}
-      ${this._view === "muster" ? this._musterSpalte(vm) : this._view === "wachstum" ? this._wachstumSpalte(vm) : this._heuteSpalte(vm)}</section>`).join("");
+    // Jede Spalte besteht aus denselben Bausteinen in derselben Reihenfolge (leere bleiben als Platzhalter
+    // stehen). Am Tablet teilen sich die Spalten die Zeilenhöhen (Subgrid), so steht nebeneinander, was zusammengehört.
+    const teile = vms.map(vm => this._view === "muster" ? this._musterSpalte(vm) : this._view === "wachstum" ? this._wachstumSpalte(vm) : this._heuteSpalte(vm));
+    const multi = kids.length > 1, n = Math.max(...teile.map(t => t.length));
+    const spalten = vms.map((vm, i) => `<section class="fo-col${vm.kid.key === this._kind ? " fo-sel" : ""}">
+      ${multi ? `<div class="fo-blk"><div class="fo-colhead">${this._avatar(vm.kid, 30)}<b>${U.esc(vm.kid.name)}</b><small>${this._alterZeile(vm.kid)}</small></div></div>` : ""}
+      ${Array.from({ length: n }, (_, j) => `<div class="fo-blk">${teile[i][j] || ""}</div>`).join("")}</section>`).join("");
     const kopf = this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav() + (this._off === 0 ? this._schlafLeiste() : "");
-    body.innerHTML = kopf + `<div class="fo-grid">${spalten}</div>`;
+    body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
     const views = [["heute", "Heute"], ["muster", "Muster"]];
     if (this.config.weight_calendar) views.push(["wachstum", "Wachstum"]);
     const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
@@ -6960,18 +6964,19 @@ class FpBabyOverviewCard extends HTMLElement {
   }
 
   // ---------- Heute ----------
+  // Feste Bausteine: Schnellknöpfe, Hauptkarte, Jetzt, Tageszahlen, Streifen, Wachstum/Momente, Einträge.
   _heuteSpalte(vm) {
     const k = vm.kid, jetzt = Date.now(), heute = this._off === 0, tag = this._mitternacht(new Date(), this._off);
-    let html = "";
+    const b = ["", "", ""];
     if (heute) {
       const lauf = this._laeuft(k), ab = lauf ? this._beginn(k) : 0;
-      html += `<div class="fo-quick">
+      b[0] = `<div class="fo-quick">
         ${k.switch ? `<button class="fo-q${lauf ? " fo-q-run" : ""}" style="--q:var(--c-nurse)" data-act="still" data-kind="${U.esc(k.key)}"><span class="fo-qe">${lauf ? "⏸" : "🤱"}</span>${lauf ? `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>` : "<span>Stillen</span>"}</button>` : ""}
         ${k.diaper_calendar ? `<button class="fo-q" style="--q:var(--c-diaper)" data-act="windel" data-kind="${U.esc(k.key)}"><span class="fo-qe">💩</span><span>Windel</span></button>` : ""}
         ${k.feeding_calendar ? `<button class="fo-q" style="--q:var(--c-bottle)" data-act="flasche" data-kind="${U.esc(k.key)}"><span class="fo-qe">🍼</span><span>Fläschchen</span></button>` : ""}
       </div>`;
-      html += this._naechsteKarte(vm, lauf, ab);
-      html += this._jetztKarten(vm, lauf, ab);
+      b[1] = this._naechsteKarte(vm, lauf, ab);
+      b[2] = this._jetztKarten(vm, lauf, ab);
     }
     // Zahlen, Streifen und Einträge des gewählten Tags
     const t0 = +tag, t1 = t0 + TAG;
@@ -6979,18 +6984,16 @@ class FpBabyOverviewCard extends HTMLElement {
     const wi = vm.raw.diapers.filter(e => +e.start >= t0 && +e.start < t1);
     const still = fe.filter(e => e.typ === "stillen").reduce((s, e) => s + Math.max(0, e.end - e.start), 0), ml = fe.filter(e => e.typ === "flasche").reduce((s, e) => s + (e.ml || 0), 0);
     const schlafTag = vm.schlaf.reduce((s, e) => s + this._ueber(+e.start, +e.end, t0, t1), 0), sl = vm.schlaf.filter(e => +e.start >= t0 && +e.start < t1);
+    // Immer dieselben Zahlen (nach Konfiguration, nicht nach Daten), gleich breit
     const pills = [
       k.feeding_calendar ? `<div><b>${still ? this._hDauer(still) : "–"}</b><span>gestillt</span></div>` : "",
       k.feeding_calendar ? `<div><b>${meals.length}</b><span>${meals.length === 1 ? "Mahlzeit" : "Mahlzeiten"}</span></div>` : "",
-      k.feeding_calendar && ml ? `<div><b>${ml} ml</b><span>Fläschchen</span></div>` : "",
+      k.feeding_calendar ? `<div><b>${ml ? `${ml} ml` : "–"}</b><span>Fläschchen</span></div>` : "",
       k.diaper_calendar ? `<div><b>${wi.length}</b><span>${wi.length === 1 ? "Windel" : "Windeln"}</span></div>` : "",
       k.sleep_calendar || k.sleep_switch ? `<div><b>${schlafTag ? this._hDauer(schlafTag) : "–"}</b><span>geschlafen</span></div>` : "",
-    ].join("");
-    html += `<div class="fo-pills">${pills}</div>`;
-    html += this._streifen(vm, tag, "alle", true);
-    html += this._liste(vm, fe, wi, sl);
-    if (heute) html += this._miniKarten(vm);
-    return html;
+    ].filter(Boolean);
+    return [...b, `<div class="fo-pills" style="--n:${pills.length}">${pills.join("")}</div>`, this._streifen(vm, tag, "alle", true),
+      heute ? this._miniKarten(vm) : "", this._liste(vm, fe, wi, sl)];
   }
 
   // Die hervorgehobene Karte — bei Buma „Next sleep“, hier die nächste Mahlzeit.
@@ -7019,32 +7022,43 @@ class FpBabyOverviewCard extends HTMLElement {
   // „Right now“: je Art, wie lange es her ist, und wann es wieder so weit sein dürfte.
   _jetztKarten(vm, lauf, ab) {
     const k = vm.kid, jetzt = Date.now(), karten = [];
+    // Welche Karten es gibt, hängt nur an der Konfiguration — so stehen sie bei Zwillingen auf einer Linie.
+    // Die untere Zeile ist immer da (notfalls leer), damit alle Karten gleich hoch sind.
     const karte = (farbe, titel, wert, unter, naechst, faellig) => `<div class="fo-nc${faellig ? " fo-due" : ""}">
       <div class="fo-ncl"><i style="background:${farbe}"></i>${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div>
-      ${naechst ? `<div class="fo-ncn">${naechst}</div>` : ""}</div>`;
+      <div class="fo-ncn">${naechst || "&nbsp;"}</div></div>`;
     const spanne = p => `Nächste ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}`;
+    // Unter einem Tag „1:47 h her“, sonst Wochentag und Uhrzeit statt „2 T. 11 h“
+    const her = t => { const d = jetzt - t; if (d < TAG) return [this._her(d), "her"]; const n = Math.floor(d / TAG); return [`${WT[new Date(t).getDay()]} ${this._hm(new Date(t))}`, `vor ${n} ${n === 1 ? "Tag" : "Tagen"}`]; };
+    const leer = (farbe, titel, text) => karte(farbe, titel, "–", text, "");
     if (k.sleep_calendar || k.sleep_switch) {
       const l = vm.schlaf[vm.schlaf.length - 1], p = vm.schlafProg;
       if (vm.schlaeft) karten.push(karte("var(--c-sleep)", "Schlaf", `<span class="fo-dauer" data-ab="${vm.schlafAb}">${this._hDauer(jetzt - vm.schlafAb)}</span>`, `schläft seit ${this._hm(new Date(vm.schlafAb))}`, ""));
-      else if (l && jetzt - l.end < 2 * TAG) {
+      else if (l && jetzt - l.end < TAG) {
         const lang = p && jetzt > p.hi && jetzt - l.end <= 8 * STD;
         karten.push(karte("var(--c-sleep)", "Schlaf", this._her(jetzt - l.end), `wach seit ${this._hm(new Date(l.end))}`,
           lang ? `<span class="fo-due-t">Länger wach als sonst</span>` : p ? `Schlaf ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}` : "", lang));
-      }
+      } else karten.push(leer("var(--c-sleep)", "Schlaf", l ? "länger nichts eingetragen" : "noch nichts eingetragen"));
     }
     if (k.feeding_calendar || k.switch) {
       const st = vm.raw.feeds.filter(e => e.typ === "stillen").pop(), l = vm.letzte;
       const ziel = Number(k.reminder_hours || this.config.reminder_hours) * STD, faellig = !lauf && l && jetzt - l.start >= ziel && jetzt - l.start <= 8 * STD;
       if (lauf) karten.push(karte("var(--c-nurse)", "Stillen", `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>`, "läuft gerade", ""));
-      else if (st) karten.push(karte("var(--c-nurse)", "Stillen", this._her(jetzt - st.start), "her",
-        faellig ? `<span class="fo-due-t">Fällig</span>` : vm.prog && jetzt < vm.prog.hi ? spanne(vm.prog) : "", faellig));
-      const fl = vm.raw.feeds.filter(e => e.typ === "flasche").pop();
-      if (fl && jetzt - fl.start < 7 * TAG) karten.push(karte("var(--c-bottle)", "Fläschchen", this._her(jetzt - fl.start), `her${fl.ml ? ` · ${fl.ml} ml` : ""}`, ""));
+      else if (st) { const [w, u] = her(+st.start); karten.push(karte("var(--c-nurse)", "Stillen", w, u, faellig ? `<span class="fo-due-t">Fällig</span>` : vm.prog && jetzt < vm.prog.hi ? spanne(vm.prog) : "", faellig)); }
+      else karten.push(leer("var(--c-nurse)", "Stillen", "noch nichts eingetragen"));
     }
-    if (k.diaper_calendar && vm.windel) {
-      const p = this._prognoseWindel(vm.raw.diapers, jetzt), faellig = p && jetzt > p.hi && jetzt - vm.windel.start <= 8 * STD;
-      karten.push(karte("var(--c-diaper)", "Windel", this._her(jetzt - vm.windel.start), "her", faellig ? `<span class="fo-due-t">Fällig</span>` : p ? spanne(p) : "", faellig));
-      if (vm.stuhl) karten.push(karte("var(--c-stool)", "Stuhl", this._her(jetzt - vm.stuhl.start), "her", ""));
+    if (k.feeding_calendar) {
+      const fl = vm.raw.feeds.filter(e => e.typ === "flasche").pop();
+      if (fl) { const [w, u] = her(+fl.start); karten.push(karte("var(--c-bottle)", "Fläschchen", w, `${u}${fl.ml ? ` · ${fl.ml} ml` : ""}`, "")); }
+      else karten.push(leer("var(--c-bottle)", "Fläschchen", "noch keins"));
+    }
+    if (k.diaper_calendar) {
+      if (vm.windel) {
+        const p = this._prognoseWindel(vm.raw.diapers, jetzt), faellig = p && jetzt > p.hi && jetzt - vm.windel.start <= 8 * STD, [w, u] = her(+vm.windel.start);
+        // Stuhl als Zeile in der Windelkarte statt als fünfte Karte
+        const stuhl = !vm.stuhl ? "noch kein Stuhl" : vm.stuhl === vm.windel ? "mit Stuhl" : `Stuhl ${her(+vm.stuhl.start)[1] === "her" ? `vor ${this._her(jetzt - vm.stuhl.start)}` : her(+vm.stuhl.start)[0]}`;
+        karten.push(karte("var(--c-diaper)", "Windel", w, `${u} · ${stuhl}`, faellig ? `<span class="fo-due-t">Fällig</span>` : p ? spanne(p) : "", faellig));
+      } else karten.push(leer("var(--c-diaper)", "Windel", "noch nichts eingetragen"));
     }
     return karten.length ? `<div class="fo-sec">Jetzt</div><div class="fo-nowgrid">${karten.join("")}</div>` : "";
   }
@@ -7124,11 +7138,11 @@ class FpBabyOverviewCard extends HTMLElement {
       rows.push(`<div class="fo-row"><span class="fo-rl">${i === 0 ? "Heute" : `${WT[d.getDay()]} ${d.getDate()}.`}</span>${this._streifen(vm, d, f, false)}<span class="fo-rt">${summe}</span></div>`);
     }
     const bem = this._bemerkt(vm);
-    return `<div class="fo-mcard"><div class="fo-mh">${U.esc(txt.h)}</div><div class="fo-mt">${U.esc(txt.t)}</div></div>
-      <div class="fo-avg"><b>${avg[0]}</b>${avg[1] ? `<span> ${avg[1]}</span>` : ""}</div>
-      <div class="fo-hint">Tage schwanken – der Trend zählt mehr als ein einzelner Tag.</div>
-      <div class="fo-rows"><div class="fo-row fo-row-ticks"><span class="fo-rl"></span>${this._ticks()}<span class="fo-rt"></span></div>${rows.join("")}</div>
-      ${bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>` : ""}`;
+    return [`<div class="fo-mcard"><div class="fo-mh">${U.esc(txt.h)}</div><div class="fo-mt">${U.esc(txt.t)}</div></div>`,
+      `<div class="fo-avg"><b>${avg[0]}</b>${avg[1] ? `<span> ${avg[1]}</span>` : ""}</div>
+      <div class="fo-hint">Tage schwanken – der Trend zählt mehr als ein einzelner Tag.</div>`,
+      `<div class="fo-rows"><div class="fo-row fo-row-ticks"><span class="fo-rl"></span>${this._ticks()}<span class="fo-rt"></span></div>${rows.join("")}</div>`,
+      bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>` : ""];
   }
 
   // ---------- Wachstum ----------
@@ -7187,16 +7201,16 @@ class FpBabyOverviewCard extends HTMLElement {
   _wachstumSpalte(vm) {
     const k = vm.kid, w = vm.weights, l = w[w.length - 1], kk = U.esc(k.key);
     const wiegen = `<button class="fo-nbtn" type="button" data-act="wiegen" data-kind="${kk}">⚖️ Wiegen</button>`;
-    if (!l) return `<div class="fo-next"><div class="fo-nl">Gewicht</div><div class="fo-nb">–</div>
-      <div class="fo-ns">Noch nicht gewogen. Am besten mit dem Geburtsgewicht anfangen.</div>${wiegen}</div>`;
+    if (!l) return [`<div class="fo-next"><div class="fo-nl">Gewicht</div><div class="fo-nb">–</div>
+      <div class="fo-ns">Noch nicht gewogen. Am besten mit dem Geburtsgewicht anfangen.</div>${wiegen}</div>`];
     const vor = w.slice(0, -1).reverse().find(x => l.date - x.date >= 5 * TAG) || w[w.length - 2];
     const tage = vor ? Math.max(1, Math.round((l.date - vor.date) / TAG)) : 0;
     const geb = this._geburtsgewicht(k, w), erst = geb || w[0], pzL = this._pz(k, l), alt = this._alterAm(k, l.date);
-    let html = `<div class="fo-next"><div class="fo-nl">Aktuelles Gewicht</div>
+    const b = [`<div class="fo-next"><div class="fo-nl">Aktuelles Gewicht</div>
       <div class="fo-nb">${this._kg(l.g)}</div>
       <div class="fo-ns">am ${this._dm(l.date)}${alt ? ` · ${alt}` : ""}${pzL != null ? ` · ${this._pzText(pzL)}` : ""}</div>
       ${vor ? `<div class="fo-nf">${this._g(l.g - vor.g)} seit ${this._dm(vor.date)} · Ø ${this._g((l.g - vor.g) / tage)} am Tag</div>` : ""}
-      ${wiegen}</div>`;
+      ${wiegen}</div>`];
     // Kennzahlen: Zunahme seit der Geburt, Schnitt pro Woche, Perzentile jetzt und damals
     const karte = (titel, wert, unter) => `<div class="fo-nc"><div class="fo-ncl">${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div></div>`;
     const karten = [], seit = geb ? "seit der Geburt" : `seit ${this._dm(erst.date)}`;
@@ -7206,21 +7220,21 @@ class FpBabyOverviewCard extends HTMLElement {
     }
     const pzE = w.length > 1 ? this._pz(k, erst) : null;
     if (pzL != null) karten.push(karte("Perzentile", this._pzText(pzL), pzE != null ? `${geb ? "bei der Geburt" : `am ${this._dm(erst.date)}`} ${this._pzText(pzE)}` : "nach Alter"));
-    if (karten.length) html += `<div class="fo-nowgrid fo-gtiles">${karten.join("")}</div>`;
+    b.push(karten.length ? `<div class="fo-nowgrid fo-gtiles">${karten.join("")}</div>` : "");
     // Kurve: wird nach dem Einfügen für die echte Breite gezeichnet (_zeichne)
-    html += `<div class="fo-sec">Verlauf</div><div class="fo-gcard" style="${this._kidStyle(k)}"><div class="fo-gchart" data-kind="${kk}"></div>
-      ${this._hatRef(k) ? `<div class="fo-gleg"><span><i class="fo-gl-line"></i>${U.esc(k.name)}</span><span><i class="fo-gl-band"></i>P3–P97</span><span><i class="fo-gl-mid"></i>P50</span></div>` : ""}</div>`;
+    b.push(`<div class="fo-sec">Verlauf</div><div class="fo-gcard" style="${this._kidStyle(k)}"><div class="fo-gchart" data-kind="${kk}"></div>
+      ${this._hatRef(k) ? `<div class="fo-gleg"><span><i class="fo-gl-line"></i>${U.esc(k.name)}</span><span><i class="fo-gl-band"></i>P3–P97</span><span><i class="fo-gl-mid"></i>P50</span></div>` : ""}</div>`);
     const bem = this._wBemerkt(k, w, geb, l);
-    if (bem.length) html += `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>`;
+    b.push(bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(x => `<div>${x}</div>`).join("")}</div>` : "");
     const liste = w.slice().reverse(), zeig = this._wAlle ? liste : liste.slice(0, 6);
-    html += `<div class="fo-sec">Messungen</div><div class="fo-list">${zeig.map(x => {
+    b.push(`<div class="fo-sec">Messungen</div><div class="fo-list">${zeig.map(x => {
       const i = w.indexOf(x), p = i > 0 ? w[i - 1] : null, pz = this._pz(k, x);
       return `<button class="fo-li fo-wli" type="button" data-wuid="${U.esc(x.uid)}"><i style="background:${U.esc(k.color)}"></i><span>${this._kg(x.g)}${x === geb ? "<em>Geburt</em>" : ""}</span>
         <small>${[p ? this._g(x.g - p.g) : "", this._pzText(pz)].filter(Boolean).join(" · ")}</small><time>${this._dm(x.date)}</time></button>`;
-    }).join("")}</div>${liste.length > 6 ? `<button class="fo-more" type="button" data-walle>${this._wAlle ? "Weniger zeigen" : `Alle ${liste.length} Messungen`}</button>` : ""}`;
-    if (this._hatRef(k)) html += `<div class="fo-quelle">Kurven P3–P97: ${this._ref.preterm && Object.keys(this._ref.preterm).length
-      ? "INTERGROWTH-21st für Frühgeborene bis 64 Wochen nach Beginn der Schwangerschaft, danach WHO" : "WHO"} nach korrigiertem Alter. Einzelne Messungen schwanken – der Verlauf zählt.</div>`;
-    return html;
+    }).join("")}</div>${liste.length > 6 ? `<button class="fo-more" type="button" data-walle>${this._wAlle ? "Weniger zeigen" : `Alle ${liste.length} Messungen`}</button>` : ""}`);
+    b.push(!this._hatRef(k) ? "" : `<div class="fo-quelle">Kurven P3–P97: ${this._ref.preterm && Object.keys(this._ref.preterm).length
+      ? "INTERGROWTH-21st für Frühgeborene bis 64 Wochen nach Beginn der Schwangerschaft, danach WHO" : "WHO"} nach korrigiertem Alter. Einzelne Messungen schwanken – der Verlauf zählt.</div>`);
+    return b;
   }
   // Gerechnete Beobachtungen, keine Bewertung: Tiefpunkt nach der Geburt, Geburtsgewicht wieder erreicht, Kilomarken.
   _wBemerkt(k, w, geb, l) {
@@ -7705,7 +7719,12 @@ class FpBabyOverviewCard extends HTMLElement {
 
       /* Spalten: Zwillinge am Tablet nebeneinander, am Handy eins mit Wechsel im Kopf */
       .fo-grid{display:grid;grid-template-columns:1fr;gap:22px;}
-      @container fo-card (min-width: 680px){ .fo-card.fo-multi .fo-grid{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));} }
+      @container fo-card (min-width: 680px){
+        .fo-card.fo-multi .fo-grid{grid-template-columns:repeat(auto-fit,minmax(300px,1fr));grid-template-rows:repeat(var(--rows),auto);row-gap:0;}
+        .fo-card.fo-multi .fo-col{display:grid;grid-template-rows:subgrid;grid-row:span var(--rows);}
+      }
+      .fo-blk{display:flex;flex-direction:column;min-width:0;}
+      .fo-blk > .fo-next,.fo-blk > .fo-mcard,.fo-blk > .fo-nowgrid,.fo-blk > .fo-minis{flex:1;}   /* nebeneinander gleich hoch */
       @container fo-card (max-width: 679px){ .fo-card.fo-multi .fo-col:not(.fo-sel){display:none;} .fo-colhead{display:none !important;} }
       .fo-col{min-width:0;}
       .fo-colhead{display:flex;align-items:center;gap:10px;margin:0 2px 12px;}
@@ -7739,7 +7758,7 @@ class FpBabyOverviewCard extends HTMLElement {
 
       /* Schnellknöpfe */
       .fo-quick{display:flex;gap:10px;margin-bottom:14px;}
-      .fo-q{flex:0 1 82px;min-width:0;height:64px;border:none;border-radius:16px;background:var(--q);color:#1C1917 !important;cursor:pointer;
+      .fo-q{flex:1 1 0;min-width:0;height:68px;border:none;border-radius:16px;background:var(--q);color:#1C1917 !important;cursor:pointer;
         display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.74rem;font-weight:700;box-shadow:0 4px 14px color-mix(in srgb,var(--q) 35%,transparent);}
       .fo-q:active{transform:scale(.95);}
       .fo-qe{font-size:1.45rem;line-height:1;}
@@ -7758,22 +7777,23 @@ class FpBabyOverviewCard extends HTMLElement {
 
       /* Jetzt */
       .fo-sec{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--b-faint);margin:18px 2px 8px;}
-      .fo-nowgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+      .fo-nowgrid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:10px;}
       .fo-nowgrid>:last-child:nth-child(odd){grid-column:span 2;}
-      .fo-nc{border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
+      .fo-nc{display:flex;flex-direction:column;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
       .fo-nc.fo-due{background:var(--b-due);}
       .fo-ncl{display:flex;align-items:center;gap:7px;font-size:.84rem;color:var(--b-mut);font-weight:600;}
       .fo-ncl i{width:9px;height:9px;border-radius:50%;flex:none;}
       .fo-ncb{font-size:1.55rem;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.1;}
       .fo-ncs{font-size:.8rem;color:var(--b-mut);}
-      .fo-ncn{font-size:.78rem;color:var(--b-faint);margin-top:8px;}
+      .fo-ncn{font-size:.78rem;color:var(--b-faint);margin-top:auto;padding-top:8px;}
       .fo-due-t{color:var(--b-acc);font-weight:700;font-size:.86rem;}
 
       /* Tageszahlen */
-      .fo-pills{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:8px;margin-top:16px;}
+      .fo-pills{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:8px;margin-top:16px;}
       .fo-pills div{display:flex;flex-direction:column;align-items:center;border-radius:14px;padding:9px 4px;background:var(--b-card);}
       .fo-pills b{font-size:1.15rem;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;}
-      .fo-pills span{font-size:.72rem;color:var(--b-mut);font-weight:600;}
+      .fo-pills span{font-size:.72rem;color:var(--b-mut);font-weight:600;white-space:nowrap;}
+      @container fo-card (max-width: 420px){ .fo-pills b{font-size:1rem;} .fo-pills span{font-size:.66rem;} }
 
       /* Streifen */
       .fo-strip{position:relative;flex:1;min-width:0;}
