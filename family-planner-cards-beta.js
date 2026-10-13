@@ -6355,7 +6355,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v4 (Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card-beta v5 (Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -6946,14 +6946,17 @@ class FpBabyOverviewCard extends HTMLElement {
     const zwei = kids.length === 2, beideText = zwei ? "Beide schlafen" : "Alle schlafen";
     const beide = kids.length > 1 ? knopf("*", alle ? "💤" : "😴", beideText,
       alle ? `☀️ ${zwei ? "Beide" : "Alle"} aufgewacht` : an.length ? `${an.map(k => U.esc(k.name)).join(", ")} schläft schon` : "", alle) : "";
-    return `<div class="fo-sleep">${beide}${kids.map(k => {
+    const einzeln = kids.map(k => {
       if (this._schlaeft(k)) {
         const ab = this._schlafBeginn(k);
         return knopf(k.key, "💤", `${U.esc(k.name)} · <span class="fo-dauer" data-ab="${ab}">${this._hDauer(jetzt - ab)}</span>`, "☀️ Aufgewacht", true);
       }
       const l = this._vm(k).schlaf.slice(-1)[0], wach = l && jetzt - l.end < TAG ? `wach seit ${this._hDauer(jetzt - l.end)}` : "";
       return knopf(k.key, "😴", `${U.esc(k.name)} schläft`, wach, false);
-    }).join("")}${this.config.kids.some(k => k.sleep_calendar) ? `<button type="button" class="fo-sl-plus" data-schlaf-neu aria-label="Schlaf nachtragen" title="Schlaf nachtragen">＋</button>` : ""}</div>`;
+    }).join("");
+    const plus = this.config.kids.some(k => k.sleep_calendar) ? `<button type="button" class="fo-sl-plus" data-schlaf-neu aria-label="Schlaf nachtragen" title="Schlaf nachtragen">＋</button>` : "";
+    // Am Handy zwei Reihen (oben „Beide schlafen“, darunter je Kind), am Tablet eine.
+    return `<div class="fo-sleep">${beide ? `<div class="fo-sl-row">${beide}${plus}</div><div class="fo-sl-row">${einzeln}</div>` : `<div class="fo-sl-row">${einzeln}${plus}</div>`}</div>`;
   }
 
   // ---------- Heute ----------
@@ -7709,16 +7712,26 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-colhead b{font-size:1.1rem;font-weight:800;} .fo-colhead small{color:var(--b-mut);font-weight:600;font-size:.8rem;}
 
       /* Schlafleiste: Beide schlafen und je Kind */
-      .fo-sleep{display:flex;gap:8px;margin:0 0 16px;}
-      .fo-sl{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:9px;border:none;border-radius:16px;padding:10px 12px;cursor:pointer;text-align:left;
-        background:color-mix(in srgb,var(--c-sleep) 16%,var(--b-card));}
+      /* So kräftig wie die Schnellknöpfe, damit sie nachts im Halbdunkel sofort zu finden sind.
+         Wach: volle Schlaffarbe. Schläft: dunkel mit leuchtendem Rand und großer Dauer. */
+      .fo-sleep{display:flex;flex-direction:column;gap:10px;margin:0 0 18px;}
+      .fo-sl-row{display:flex;gap:10px;}
+      @container fo-card (min-width: 680px){ .fo-sleep{flex-direction:row;} .fo-sl-row{display:contents;} .fo-sl-plus{order:9;} }
+      .fo-sl{flex:1 1 0;min-width:0;min-height:76px;display:flex;align-items:center;gap:12px;border:none;border-radius:18px;padding:12px 16px;cursor:pointer;text-align:left;
+        background:var(--c-sleep);color:#1C1917 !important;box-shadow:0 4px 16px color-mix(in srgb,var(--c-sleep) 40%,transparent);}
+      .fo-card.fo-light .fo-sl{color:#fff !important;}
       .fo-sl:active{transform:scale(.97);}
-      .fo-sl-an{background:var(--c-sleep);color:#1C1917 !important;box-shadow:0 4px 14px color-mix(in srgb,var(--c-sleep) 35%,transparent);}
-      .fo-sle{font-size:1.35rem;line-height:1;flex:none;}
+      .fo-sl.fo-sl-an,.fo-card.fo-light .fo-sl.fo-sl-an{background:color-mix(in srgb,var(--c-sleep) 24%,var(--b-bg));color:var(--b-text) !important;
+        box-shadow:inset 0 0 0 3px var(--c-sleep),0 0 22px color-mix(in srgb,var(--c-sleep) 45%,transparent);}
+      .fo-sle{font-size:2rem;line-height:1;flex:none;}
       .fo-slx{display:flex;flex-direction:column;min-width:0;}
-      .fo-slt{font-weight:800;font-size:.9rem;line-height:1.2;}
-      .fo-sls{font-size:.74rem;opacity:.75;font-variant-numeric:tabular-nums;}
-      .fo-sl-plus{flex:none;width:44px;border:none;border-radius:16px;background:var(--b-card);color:var(--b-mut) !important;font-size:1.3rem;cursor:pointer;}
+      .fo-slt{font-weight:800;font-size:1.08rem;line-height:1.2;font-variant-numeric:tabular-nums;}
+      .fo-sls{font-size:.84rem;opacity:.8;font-variant-numeric:tabular-nums;margin-top:2px;}
+      .fo-sl-an .fo-sls{color:var(--c-sleep);opacity:1;font-weight:700;}
+      /* Handy: in der Reihe je Kind Symbol über dem Text, sonst bricht „Kind B schläft“ um */
+      @container fo-card (max-width: 679px){ .fo-sl-row + .fo-sl-row .fo-sl{flex-direction:column;justify-content:center;gap:6px;padding:12px 8px;text-align:center;}
+        .fo-sl-row + .fo-sl-row .fo-slx{align-items:center;} }
+      .fo-sl-plus{flex:none;width:56px;min-height:76px;border:none;border-radius:18px;background:var(--b-card);color:var(--b-mut) !important;font-size:1.5rem;cursor:pointer;}
       .fo-s{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--c-sleep);opacity:.4;}
       .fo-s.fo-s1{opacity:.9;}
       .fo-zeitrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
