@@ -6703,7 +6703,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v15 („Heute“ ruhiger: „Jetzt“ als Liste mit farbigen Symbolen, „Tag“ mit Streifen und Zahlen als Textzeile, Wachstum und Momente als Chips, Einträge ohne Kachelflächen, Hauptkarte ohne „Zuletzt“, Schlaf ohne Prognose mit „wach seit“; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v16 („Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“: Kästen mit Linien statt beiger Flächen, Kennzahlen als Liste; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7623,11 +7623,12 @@ class FpBabyOverviewCard extends HTMLElement {
       rows.push(`<div class="fo-row"><span class="fo-rl">${i === 0 ? "Heute" : `${WT[d.getDay()]} ${d.getDate()}.`}</span>${this._streifen(vm, d, f, false)}<span class="fo-rt">${summe}</span></div>`);
     }
     const bem = this._bemerkt(vm);
-    return [`<div class="fo-mcard"><div class="fo-mh">${U.esc(txt.h)}</div><div class="fo-mt">${U.esc(txt.t)}</div></div>`,
-      `<div class="fo-avg"><b>${avg[0]}</b>${avg[1] ? `<span> ${avg[1]}</span>` : ""}</div>
-      <div class="fo-hint">Tage schwanken – der Trend zählt mehr als ein einzelner Tag.</div>`,
-      `<div class="fo-rows"><div class="fo-row fo-row-ticks"><span class="fo-rl"></span>${this._ticks()}<span class="fo-rt"></span></div>${rows.join("")}</div>`,
-      bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>` : ""];
+    // Drei Bausteine, alle als .fo-box: Zusammenfassung samt Tagesschnitt (unter einer Linie), die Tage, Bemerkt
+    return [`<div class="fo-box fo-mcard"><div class="fo-mh">${U.esc(txt.h)}</div><div class="fo-mt">${U.esc(txt.t)}</div>
+      <div class="fo-avgz"><div class="fo-avg"><b>${avg[0]}</b>${avg[1] ? `<span> ${avg[1]}</span>` : ""}</div>
+      <div class="fo-hint">Tage schwanken – der Trend zählt mehr als ein einzelner Tag.</div></div></div>`,
+      `<div class="fo-box fo-rows"><div class="fo-row fo-row-ticks"><span class="fo-rl"></span>${this._ticks()}<span class="fo-rt"></span></div>${rows.join("")}</div>`,
+      bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-box fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>` : ""];
   }
 
   // ---------- Momente ----------
@@ -7768,23 +7769,24 @@ class FpBabyOverviewCard extends HTMLElement {
       <div class="fo-ns">am ${this._dm(l.date)}${alt ? ` · ${alt}` : ""}${pzL != null ? ` · ${this._pzText(pzL)}` : ""}</div>
       ${vor ? `<div class="fo-nf">${this._g(l.g - vor.g)} seit ${this._dm(vor.date)} · Ø ${this._g((l.g - vor.g) / tage)} am Tag</div>` : ""}
       ${wiegen}</div>`];
-    // Kennzahlen: Zunahme seit der Geburt, Schnitt pro Woche, Perzentile jetzt und damals
-    const karte = (titel, wert, unter) => `<div class="fo-nc"><div class="fo-ncl">${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div></div>`;
-    const karten = [], seit = geb ? "seit der Geburt" : `seit ${this._dm(erst.date)}`;
+    // Kennzahlen als Liste wie „Jetzt“ in „Heute“, nur ohne Symbolkreis: Wert groß, darunter klein „Titel · Unterzeile“.
+    // Zunahme seit der Geburt, Schnitt pro Woche, Perzentile jetzt und damals
+    const zeile = (titel, wert, unter) => `<div class="fo-nr"><div class="fo-nrm"><b>${wert}</b><small>${titel} · ${unter}</small></div></div>`;
+    const zeilen = [], seit = geb ? "seit der Geburt" : `seit ${this._dm(erst.date)}`;
     if (w.length > 1) {
-      karten.push(karte(geb ? "Seit der Geburt" : `Seit ${this._dm(erst.date)}`, this._g(l.g - erst.g), `${geb ? "Geburtsgewicht" : "erste Messung"} ${this._kg(erst.g)}`));
-      karten.push(karte("Pro Woche", `Ø ${this._g((l.g - erst.g) / Math.max(1, (l.date - erst.date) / TAG) * 7)}`, seit));
+      zeilen.push(zeile(geb ? "Seit der Geburt" : `Seit ${this._dm(erst.date)}`, this._g(l.g - erst.g), `${geb ? "Geburtsgewicht" : "erste Messung"} ${this._kg(erst.g)}`));
+      zeilen.push(zeile("Pro Woche", `Ø ${this._g((l.g - erst.g) / Math.max(1, (l.date - erst.date) / TAG) * 7)}`, seit));
     }
     const pzE = w.length > 1 ? this._pz(k, erst) : null;
-    if (pzL != null) karten.push(karte("Perzentile", this._pzText(pzL), pzE != null ? `${geb ? "bei der Geburt" : `am ${this._dm(erst.date)}`} ${this._pzText(pzE)}` : "nach Alter"));
-    b.push(karten.length ? `<div class="fo-nowgrid fo-gtiles">${karten.join("")}</div>` : "");
+    if (pzL != null) zeilen.push(zeile("Perzentile", this._pzText(pzL), pzE != null ? `${geb ? "bei der Geburt" : `am ${this._dm(erst.date)}`} ${this._pzText(pzE)}` : "nach Alter"));
+    b.push(zeilen.length ? `<div class="fo-box fo-kenn">${zeilen.join("")}</div>` : "");
     // Kurve: wird nach dem Einfügen für die echte Breite gezeichnet (_zeichne)
-    b.push(`<div class="fo-sec">Verlauf</div><div class="fo-gcard" style="${this._kidStyle(k)}"><div class="fo-gchart" data-kind="${kk}"></div>
+    b.push(`<div class="fo-sec">Verlauf</div><div class="fo-box fo-gcard" style="${this._kidStyle(k)}"><div class="fo-gchart" data-kind="${kk}"></div>
       ${this._hatRef(k) ? `<div class="fo-gleg"><span><i class="fo-gl-line"></i>${U.esc(k.name)}</span><span><i class="fo-gl-band"></i>P3–P97</span><span><i class="fo-gl-mid"></i>P50</span></div>` : ""}</div>`);
     const bem = this._wBemerkt(k, w, geb, l);
-    b.push(bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(x => `<div>${x}</div>`).join("")}</div>` : "");
+    b.push(bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-box fo-ins">${bem.map(x => `<div>${x}</div>`).join("")}</div>` : "");
     const liste = w.slice().reverse(), zeig = this._wAlle ? liste : liste.slice(0, 6);
-    b.push(`<div class="fo-sec">Messungen</div><div class="fo-list">${zeig.map(x => {
+    b.push(`<div class="fo-sec">Messungen</div><div class="fo-box">${zeig.map(x => {
       const i = w.indexOf(x), p = i > 0 ? w[i - 1] : null, pz = this._pz(k, x);
       return `<button class="fo-li fo-wli" type="button" data-wuid="${U.esc(x.uid)}"><i style="background:${U.esc(k.color)}"></i><span>${this._kg(x.g)}${x === geb ? "<em>Geburt</em>" : ""}</span>
         <small>${[p ? this._g(x.g - p.g) : "", this._pzText(pz)].filter(Boolean).join(" · ")}</small><time>${this._dm(x.date)}</time></button>`;
@@ -8445,7 +8447,7 @@ class FpBabyOverviewCard extends HTMLElement {
         --b-card2:var(--fp-surface-2, var(--divider-color, #e0ddd4));--b-track:var(--b-card2);--b-line:var(--divider-color, rgba(0,0,0,.12));
         --b-text:var(--primary-text-color, #212121);--b-mut:var(--secondary-text-color, #727272);--b-faint:var(--disabled-text-color, var(--secondary-text-color, #9e9e9e));
         --b-acc:var(--fp-accent, var(--primary-color, #4F6B57));--b-acc2:rgba(var(--fp-accent-rgb, 79, 107, 87), .14);
-        --b-alert:var(--fp-alert, var(--warning-color, #B97F06));--b-due:var(--fp-alert-bg, rgba(217, 154, 11, .14));
+        --b-alert:var(--fp-alert, var(--warning-color, #B97F06));
         --b-on:var(--fp-c-on, #1E1C18);--b-bar:var(--b-bg);--b-shadow:rgba(0,0,0,.18);
         --c-nurse:var(--fp-c-nurse, #D9719F);--c-bottle:var(--fp-c-bottle, #E3A43A);--c-diaper:var(--fp-c-diaper, #3E9DB0);--c-stool:var(--fp-c-stool, #A77446);--c-sleep:var(--fp-c-sleep, #8A87E0);
         --fo-hero-fb:linear-gradient(180deg, rgba(var(--fp-tint-rgb, 125,155,132), .28) 0%, rgba(var(--fp-tint-rgb, 125,155,132), 0) 100%);
@@ -8498,7 +8500,7 @@ class FpBabyOverviewCard extends HTMLElement {
         .fo-card.fo-multi .fo-col{display:grid;grid-template-rows:subgrid;grid-row:span var(--rows);}
       }
       .fo-blk{display:flex;flex-direction:column;min-width:0;}
-      .fo-blk > .fo-next,.fo-blk > .fo-mcard,.fo-blk > .fo-nowgrid,.fo-blk > .fo-now,.fo-blk > .fo-tag{flex:1;}   /* nebeneinander gleich hoch */
+      .fo-blk > .fo-next,.fo-blk > .fo-mcard,.fo-blk > .fo-kenn,.fo-blk > .fo-now,.fo-blk > .fo-tag{flex:1;}   /* nebeneinander gleich hoch */
       @container fo-card (max-width: 679px){ .fo-card.fo-multi .fo-col:not(.fo-sel){display:none;} .fo-colhead{display:none !important;} }
       .fo-col{min-width:0;}
       .fo-colhead{display:flex;align-items:center;gap:10px;margin:0 2px 12px;}
@@ -8567,7 +8569,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-sec{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--b-faint);margin:18px 2px 8px;}
       .fo-sech{display:flex;align-items:center;justify-content:space-between;gap:10px;}
       .fo-plus{flex:none;min-height:36px;border:none;border-radius:999px;padding:8px 14px;background:var(--b-acc2);color:var(--b-acc) !important;font-size:.82rem;font-weight:800;letter-spacing:0;text-transform:none;cursor:pointer;}
-      /* Behälter für „Jetzt“, „Tag“ und die Einträge: Rand statt beiger Fläche, getrennt durch Linien */
+      /* Behälter für „Jetzt“, „Tag“, die Einträge und alles in „Muster“ und „Wachstum“: Rand statt beiger Fläche, getrennt durch Linien */
       .fo-box{box-sizing:border-box;min-width:0;background:var(--b-bg);border:1px solid var(--b-line);border-radius:var(--fp-radius, 16px);padding:2px 12px;}
       /* Jetzt als Liste: runder Kreis in der Tätigkeitsfarbe mit Symbol, Wert groß, „Tätigkeit · Detail“ klein, rechts Ausblick oder „Fällig“ */
       .fo-nr{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--b-line);min-width:0;}
@@ -8579,13 +8581,8 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-nrm small{font-size:.76rem;line-height:1.3;color:var(--b-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       .fo-nrr{flex:none;display:flex;flex-direction:column;align-items:flex-end;text-align:right;font-size:.74rem;font-weight:700;line-height:1.25;color:var(--b-mut);font-variant-numeric:tabular-nums;}
       .fo-nr-due{color:var(--b-alert);font-weight:900;}
-      /* Die Kacheln (.fo-nowgrid, .fo-nc*) braucht nur noch die Ansicht Wachstum */
-      .fo-nowgrid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:10px;}
-      .fo-nowgrid>:last-child:nth-child(odd){grid-column:span 2;}
-      .fo-nc{display:flex;flex-direction:column;border-radius:var(--fp-radius-sm, 12px);padding:12px 14px;background:var(--b-card);min-width:0;}
-      .fo-ncl{display:flex;align-items:center;gap:7px;font-size:.84rem;color:var(--b-mut);font-weight:600;}
-      .fo-ncb{font-size:1.55rem;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.1;}
-      .fo-ncs{font-size:.8rem;color:var(--b-mut);}
+      /* Kennzahlen in Wachstum: dieselben Zeilen (.fo-nr/.fo-nrm), nur ohne Symbolkreis */
+      .fo-kenn{margin-top:14px;}
 
       /* Tag: Streifen mit Stunden und darunter die Zahlen als Textzeile (Abstand per gap, keine Trennzeichen) */
       .fo-tag{padding:11px 12px;}
@@ -8606,8 +8603,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-ticks span{position:absolute;top:2px;transform:translateX(-50%);}
       .fo-ticks span:first-child{transform:none;} .fo-ticks span:last-child{transform:translateX(-100%);}
 
-      /* Einträge: in Heute im .fo-box (Linien statt Fläche); .fo-list mit beiger Fläche nur noch für die Messungen in Wachstum */
-      .fo-list{border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);padding:4px 14px;}
+      /* Einträge (Heute) und Messungen (Wachstum): Zeilen im .fo-box, getrennt durch Linien */
       .fo-li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b-line);font-size:.9rem;}
       .fo-li:last-child{border-bottom:none;}
       .fo-li i{width:9px;height:9px;border-radius:50%;flex:none;}
@@ -8636,19 +8632,25 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-chips button{flex:none;display:flex;align-items:center;gap:7px;border:none;border-radius:999px;padding:8px 14px;background:var(--b-card);font-weight:700;font-size:.88rem;cursor:pointer;}
       .fo-chips i{width:9px;height:9px;border-radius:50%;background:var(--chip);}
       .fo-chips button.fo-on{background:var(--chip);color:var(--b-on) !important;} .fo-chips button.fo-on i{background:var(--b-on);opacity:.35;}
-      .fo-mcard{border-radius:var(--fp-radius, 16px);padding:16px 18px;background:var(--b-card);}
+      /* Zusammenfassung mit Tagesschnitt: ein .fo-box; unter einer Linie der Schnitt, bei Zwillingen am unteren Rand auf einer Linie */
+      .fo-mcard{display:flex;flex-direction:column;padding:12px 14px;}
       .fo-mh{font-size:1.2rem;font-weight:800;}
-      .fo-mt{font-size:.92rem;color:var(--b-mut);line-height:1.45;margin-top:6px;}
-      .fo-avg{margin-top:16px;font-size:.95rem;} .fo-avg span{color:var(--b-mut);}
-      .fo-hint{font-size:.8rem;color:var(--b-mut);margin-top:4px;opacity:.9;}
-      .fo-rows{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
-      .fo-row{display:flex;align-items:center;gap:10px;}
+      .fo-mt{font-size:.92rem;color:var(--b-mut);line-height:1.45;margin:6px 0 10px;}
+      .fo-avgz{margin-top:auto;padding:9px 0 2px;border-top:1px solid var(--b-line);}
+      .fo-avg{font-size:.95rem;} .fo-avg span{color:var(--b-mut);}
+      .fo-hint{font-size:.8rem;color:var(--b-mut);margin-top:3px;opacity:.9;}
+      /* Tage: eine Zeile je Tag (Tag, Streifen, Summe), getrennt durch Linien; die Stundenmarken oben sind die Kopfzeile ohne Linie */
+      .fo-rows{margin-top:14px;}
+      .fo-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--b-line);}
+      .fo-row:first-child,.fo-row-ticks + .fo-row{border-top:none;}
       .fo-rl{flex:0 0 48px;font-size:.84rem;font-weight:700;color:var(--b-mut);font-variant-numeric:tabular-nums;}
       .fo-rt{flex:0 0 58px;text-align:right;font-size:.84rem;font-weight:700;font-variant-numeric:tabular-nums;}
       .fo-row .fo-track{height:22px;}
+      .fo-row-ticks{padding:8px 0 0;}
       .fo-row-ticks .fo-ticks{height:14px;}
-      .fo-ins{display:flex;flex-direction:column;gap:6px;}
-      .fo-ins div{border-radius:var(--fp-radius-sm, 12px);padding:10px 12px;background:var(--b-card);font-size:.88rem;line-height:1.35;}
+      /* Bemerkt (Muster und Wachstum): Zeilen im .fo-box mit Linien */
+      .fo-ins > div{padding:9px 0;border-top:1px solid var(--b-line);font-size:.88rem;line-height:1.35;}
+      .fo-ins > div:first-child{border-top:none;}
       .fo-ins span{color:var(--b-mut);}
 
       /* Eingebettete Karten (Momente, Protokoll) ohne eigenen Kartenrahmen; ihre Farben kommen wie die der Übersicht aus dem Theme */
@@ -8662,8 +8664,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-pgrid .fo-blk:not(:empty) + .fo-blk:not(:empty){margin-top:14px;}
 
       /* Wachstum: Kurve in der Kinderfarbe */
-      .fo-gtiles{margin-top:10px;}
-      .fo-gcard{border-radius:var(--fp-radius, 16px);padding:12px 8px 10px;background:var(--b-card);--kl:var(--k);}
+      .fo-gcard{padding:12px 8px 10px;--kl:var(--k);}   /* Kasten kommt von .fo-box */
       .fo-card.fo-dark .fo-gcard{--kl:color-mix(in srgb,var(--k) 55%,var(--b-text));}   /* im Dunkeln aufgehellt */
       .fo-gchart{height:230px;}
       .fo-gchart svg{display:block;overflow:visible;}
@@ -8677,7 +8678,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-gheute{stroke:var(--b-acc);stroke-width:1.5;}
       .fo-gheutel{font-size:10.5px;font-weight:800;fill:var(--b-acc);text-anchor:middle;}
       .fo-gline{fill:none;stroke:var(--kl);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round;}
-      .fo-gdot{fill:var(--kl);stroke:var(--b-card);stroke-width:2;}
+      .fo-gdot{fill:var(--kl);stroke:var(--b-bg);stroke-width:2;}
       .fo-ghalo{fill:var(--kl);opacity:.25;}
       .fo-gpt{cursor:pointer;}
       .fo-gleg{display:flex;flex-wrap:wrap;gap:6px 16px;padding:4px 10px 0;font-size:.76rem;color:var(--b-mut);}
@@ -8687,7 +8688,6 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-gl-band{height:10px;border-radius:3px;background:var(--kl);opacity:.3;}
       .fo-gl-mid{border-top:1.5px dashed var(--kl);opacity:.8;}
       .fo-wli{width:100%;border:none;border-bottom:1px solid var(--b-line);background:transparent;text-align:left;cursor:pointer;}
-      .fo-list .fo-wli:last-child{border-bottom:none;}
       .fo-wli em{font-style:normal;font-size:.72rem;font-weight:800;color:var(--b-acc);margin-left:8px;}
       .fo-more{display:block;margin:8px auto 0;border:none;background:transparent;color:var(--b-acc) !important;font-weight:700;font-size:.86rem;cursor:pointer;}
       .fo-quelle{font-size:.72rem;line-height:1.45;color:var(--b-faint);margin-top:12px;}
