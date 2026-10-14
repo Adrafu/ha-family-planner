@@ -117,7 +117,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card-beta v27 (auf schmalen Karten gedreht: Tage als Zeilen, Mahlzeiten als Spalten; Speichern-Knopf mit Theme-Textfarbe, vorher im hellen Modus kaum lesbar; Heute als Ring statt Einfaerbung, Knopfleiste im Theme-Ton, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header fuer die Uebersicht, Leistenfarbe via --fp-bar-bg; „Zum Rezept" springt ins eigene Kochbuch, wenn das Gericht dort steht; sonst Web-Suche) ===== */
+/* ===== meal-grid-card-beta v28 (Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche › statt der grünen Leiste, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht (Tage als Zeilen, Mahlzeiten als Spalten), Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header für die Übersicht, „Zum Rezept“ springt ins eigene Kochbuch, wenn das Gericht dort steht; sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -125,6 +125,8 @@ class MealGridCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
       title: "Wochenplan", mode: "week", week_offset: 0, nav_path: "",
+      layout: "list",                       // Wochenansicht: "list" (Liste nach Tagen), "today" (Heute groß, Woche kurz) oder "grid" (Tabelle)
+      days_ahead: 4,                        // nur layout "today": wie viele Tage nach heute in der kurzen Liste stehen
       show_emojis: true, meal_icons: true, background: "",
       ai_suggest: true, ai_entity: "", recipe_url: "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html",
       hide_header: false,                   // Wochenansicht ohne Kopfleiste und Wochennavigation (fuer die Uebersicht)
@@ -138,13 +140,26 @@ class MealGridCard extends HTMLElement {
       ],
     }, config || {});
     if (!this.config.entity) throw new Error("Bitte 'entity' (einen Kalender) angeben");
+    this._titleSet = !!(config && config.title); // „Essen heute“ nur, wenn kein eigener Titel gesetzt ist
     this._offset = this.config.week_offset || 0;
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
   }
   set hass(hass) { this._hass = hass; this._maybeFetch(); }
-  // Unter 560 px (Handy) wird das Raster gedreht: sieben Spalten wären dort zu schmal
-  // für die Gerichte. Neu zeichnen nur, wenn die Breite die Schwelle überschreitet.
-  _istSchmal() { return this.config.mode !== "compact" && this.clientWidth > 0 && this.clientWidth < 560; }
+  // Darstellung: compact (Heute/Morgen, Altbestand) ignoriert layout; sonst list (Vorgabe), today oder grid.
+  _layout() {
+    if (this.config.mode === "compact") return "compact";
+    const l = this.config.layout;
+    return l === "grid" || l === "today" ? l : "list";
+  }
+  // Grid: unter 560 px (Handy) wird das Raster gedreht, sieben Spalten wären dort zu schmal für die Gerichte.
+  // Today: unter ca. 110 px je Mahlzeit stehen die Mahlzeiten untereinander statt nebeneinander.
+  // Die Liste braucht keine Umstellung. Neu zeichnen nur, wenn die Breite die Schwelle überschreitet.
+  _istSchmal() {
+    const l = this._layout(), w = this.clientWidth;
+    if (!(w > 0) || (l !== "grid" && l !== "today")) return false;
+    return l === "today" ? w < 110 * Math.max(1, (this.config.meals || []).length) : w < 560;
+  }
+  _daysAhead() { const n = Number(this.config.days_ahead); return Number.isFinite(n) ? Math.max(0, Math.min(13, Math.floor(n))) : 4; }
   connectedCallback() {
     // Als Block, sonst ist das Element inline: Breite 0 und kein ResizeObserver-Signal.
     if (!this.style.display) this.style.display = "block";
@@ -160,6 +175,9 @@ class MealGridCard extends HTMLElement {
     let startDate, days;
     if (this.config.mode === "compact") {
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()); days = 2;
+    } else if (this._layout() === "today") {
+      // heute plus die nächsten Tage, dürfen in die nächste Woche reichen
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()); days = 1 + this._daysAhead();
     } else {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const dow = (d.getDay() + 6) % 7;
@@ -509,8 +527,10 @@ class MealGridCard extends HTMLElement {
     if (this._editing) return; // offenen Dialog nicht zerstören
     const { startDate, days } = this._range();
     const compact = this.config.mode === "compact";
+    const layout = this._layout();
     const meals = this.config.meals;
     const dn = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    const mn = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
     const cols = [];
     for (let i = 0; i < days; i++) { const d = new Date(startDate); d.setDate(d.getDate() + i); cols.push(d); }
     const cells = meals.map(() => cols.map(() => []));
@@ -528,80 +548,191 @@ class MealGridCard extends HTMLElement {
     this._cols = cols; this._cells = cells; this._meals = meals;
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const isToday = d => d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-    const colLabel = (d, i) => compact ? (i === 0 ? "Heute" : "Morgen") : dn[(d.getDay() + 6) % 7];
-
-    let head = "";
-    if (!compact && this.config.hide_header) {
-      head = "";
-    } else if (!compact) {
-      const a = cols[0], b = cols[cols.length - 1];
-      const range = `${a.getDate()}.${a.getMonth() + 1}. - ${b.getDate()}.${b.getMonth() + 1}.`;
-      const rel = this._offset === 0 ? "Diese Woche" : (this._offset === 1 ? "+1 Woche" : this._offset === -1 ? "Letzte Woche" : (this._offset > 0 ? "+" : "") + this._offset + " Wochen");
-      head = `<div class="mg-bar">
-        <button class="mg-nav" data-d="-1" title="Vorige Woche">${CP(0x2039)}</button>
-        <div class="mg-bar-mid"><div class="mg-bar-t">${this._esc(this.config.title)}</div><div class="mg-bar-s">${range} &middot; ${rel}</div></div>
-        <button class="mg-today-btn" data-d="0" title="Aktuelle Woche">${CP(0x1F3E0)}</button>
-        <button class="mg-nav" data-d="1" title="Nächste Woche">${CP(0x203A)}</button>
-      </div>`;
-    } else if (this.config.title) {
-      head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
-    }
-
+    const wd = d => dn[(d.getDay() + 6) % 7];
+    const colLabel = (d, i) => compact ? (i === 0 ? "Heute" : "Morgen") : wd(d);
     const quer = this._quer = this._istSchmal();
-    const kopfMahlzeit = (m, cls) => {
-      const ic = this.config.meal_icons ? `<div class="mg-meal-ic">${this._mealIcon(m.label)}</div>` : "";
-      const tx = this.config.meal_labels ? `<div class="mg-meal-tx">${this._esc(m.label)}</div>` : "";
-      return `<th class="${cls}">${ic}${tx}</th>`;
-    };
-    const kopfTag = (d, i, cls) => `<th class="${cls} ${isToday(d) ? "mg-today" : ""}"><div class="mg-day">${colLabel(d, i)}</div><div class="mg-date">${d.getDate()}.${d.getMonth() + 1}.</div></th>`;
-    const zelle = (mi, ci, d) => {
-      const items = cells[mi][ci].filter(o => o.summary).map(o => {
-        const em = this.config.show_emojis ? this._food(o.summary) : "";
-        return (em ? `<span class="mg-em">${em}</span>` : "") + this._esc(o.summary);
-      });
-      const inner = items.length ? `<span>${items.join("<br>")}</span>`
-        : `<span class="mg-plus">${this._esc(this.config.empty_text)}</span>`;
-      // mg-m<mi>: Feldfarbe je Mahlzeit, auch wenn die Mahlzeiten Spalten sind
-      return `<td class="mg-cell mg-m${mi} ${isToday(d) ? "mg-today" : ""}" data-mi="${mi}" data-ci="${ci}">${inner}</td>`;
-    };
-    let html = `<ha-card class="mg-card">${head}${(!compact && this.config.ai_suggest) ? `<div class="mg-fillrow"><button class="mg-fill">${CP(0x2728)} Woche f&uuml;llen</button><button class="mg-clear">${CP(0x1F5D1)} Woche leeren</button></div>` : ""}<div class="mg-wrap"><table class="mg${quer ? " mg-quer" : ""}"><thead><tr><th class="mg-corner"></th>`;
-    if (quer) {
-      meals.forEach(m => { html += kopfMahlzeit(m, "mg-meal-h"); });
-      html += "</tr></thead><tbody>";
-      cols.forEach((d, ci) => {
-        html += `<tr>${kopfTag(d, ci, "mg-dayh")}${meals.map((m, mi) => zelle(mi, ci, d)).join("")}</tr>`;
-      });
+
+    // ---------- Kopf ----------
+    // Woche füllen / Leeren sitzen als kleine Pillen im Kopf (nicht in „Heute groß“: dort ist keine ganze Woche geladen)
+    const aktionen = (!compact && layout !== "today" && this.config.ai_suggest)
+      ? `<div class="mg-acts"><button class="mg-fill">${CP(0x2728)} Woche füllen</button><button class="mg-clear">${CP(0x1F5D1)} Leeren</button></div>` : "";
+    let head = "";
+    if (compact) {
+      if (this.config.title) head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
+    } else if (this.config.hide_header) {
+      // ohne Kopf, aber die Aktionen gehen nicht verloren (vorher eigene Reihe unter dem Kopf)
+      head = aktionen ? `<div class="mg-head mg-head-a">${aktionen}</div>` : "";
+    } else if (layout === "today") {
+      const t = this._titleSet ? this.config.title : "Essen heute";
+      head = `<div class="mg-head"><div class="mg-title">${this._esc(t)}</div><span class="mg-dp">${wd(cols[0])}, ${cols[0].getDate()}. ${mn[cols[0].getMonth()]}</span></div>`;
     } else {
-      cols.forEach((d, i) => { html += kopfTag(d, i, ""); });
-      html += "</tr></thead><tbody>";
-      meals.forEach((m, mi) => {
-        // Zeilenklasse: jede Mahlzeit darf eine eigene Feldfarbe bekommen
-        html += `<tr class="mg-r${mi}">${kopfMahlzeit(m, "mg-meal")}${cols.map((d, ci) => zelle(mi, ci, d)).join("")}</tr>`;
-      });
+      const a = cols[0], b = cols[cols.length - 1];
+      const range = a.getMonth() === b.getMonth()
+        ? `${a.getDate()}.–${b.getDate()}. ${mn[b.getMonth()]}`
+        : `${a.getDate()}. ${mn[a.getMonth()]} – ${b.getDate()}. ${mn[b.getMonth()]}`;
+      const heute = this._offset !== 0 ? `<button class="mg-today-btn" data-d="0" title="Aktuelle Woche">Heute</button>` : "";
+      head = `<div class="mg-head"><div class="mg-title">${this._esc(this.config.title)}</div>
+        <div class="mg-hr">${heute}<div class="mg-wk">
+          <button class="mg-nav" data-d="-1" title="Vorige Woche" aria-label="Vorige Woche">${CP(0x2039)}</button>
+          <span class="mg-range">${range}</span>
+          <button class="mg-nav" data-d="1" title="Nächste Woche" aria-label="Nächste Woche">${CP(0x203A)}</button>
+        </div></div>${aktionen}</div>`;
     }
-    html += "</tbody></table></div></ha-card>";
+
+    // ---------- Bausteine ----------
+    // Gerichte einer Zelle (mit Emoji), mehrere Einträge getrennt durch sep
+    const gericht = (mi, ci, sep) => cells[mi][ci].filter(o => o.summary).map(o => {
+      const em = this.config.show_emojis ? this._food(o.summary) : "";
+      return (em ? `<span class="mg-em">${em}</span>` : "") + this._esc(o.summary);
+    }).join(sep);
+    const leer = this._esc(this.config.empty_text);
+    // Punktfarbe: fp-meal0..2, ab der vierten Mahlzeit wie die dritte
+    const dcls = mi => `mg-d${Math.min(mi, 2)}`;
+    const lblOn = this.config.meal_labels !== false;
+
+    // Tabelle (layout: grid und mode: compact)
+    const tabelle = () => {
+      const kopfMahlzeit = (m, cls) => {
+        const ic = this.config.meal_icons ? `<div class="mg-meal-ic">${this._mealIcon(m.label)}</div>` : "";
+        const tx = this.config.meal_labels ? `<div class="mg-meal-tx">${this._esc(m.label)}</div>` : "";
+        return `<th class="${cls}">${ic}${tx}</th>`;
+      };
+      const kopfTag = (d, i, cls) => `<th class="${cls} ${isToday(d) ? "mg-today" : ""}"><div class="mg-day">${colLabel(d, i)}</div><div class="mg-date">${d.getDate()}.${d.getMonth() + 1}.</div></th>`;
+      const zelle = (mi, ci, d) => {
+        const s = gericht(mi, ci, "<br>");
+        const inner = s ? `<span>${s}</span>` : `<span class="mg-plus">${leer}</span>`;
+        // mg-m<mi>: Feldfarbe je Mahlzeit, auch wenn die Mahlzeiten Spalten sind
+        return `<td class="mg-cell mg-m${mi} ${isToday(d) ? "mg-today" : ""}" data-mi="${mi}" data-ci="${ci}">${inner}</td>`;
+      };
+      let t = `<div class="mg-wrap${head && !compact ? " mg-wrap-w" : ""}"><table class="mg${quer ? " mg-quer" : ""}"><thead><tr><th class="mg-corner"></th>`;
+      if (quer) {
+        meals.forEach(m => { t += kopfMahlzeit(m, "mg-meal-h"); });
+        t += "</tr></thead><tbody>";
+        cols.forEach((d, ci) => {
+          t += `<tr>${kopfTag(d, ci, "mg-dayh")}${meals.map((m, mi) => zelle(mi, ci, d)).join("")}</tr>`;
+        });
+      } else {
+        cols.forEach((d, i) => { t += kopfTag(d, i, ""); });
+        t += "</tr></thead><tbody>";
+        meals.forEach((m, mi) => {
+          // Zeilenklasse: jede Mahlzeit darf eine eigene Feldfarbe bekommen
+          t += `<tr class="mg-r${mi}">${kopfMahlzeit(m, "mg-meal")}${cols.map((d, ci) => zelle(mi, ci, d)).join("")}</tr>`;
+        });
+      }
+      return t + "</tbody></table></div>";
+    };
+
+    // Liste nach Tagen (layout: list)
+    const liste = () => {
+      // feste Breite der Bezeichnung nach der längsten, damit die Gerichte bündig stehen
+      const maxL = Math.max(4, ...meals.map(m => String(m.label || "").length));
+      const zeile = (mi, ci) => {
+        const s = gericht(mi, ci, " &middot; ");
+        return `<button type="button" class="mg-cell mg-mr ${dcls(mi)}" data-mi="${mi}" data-ci="${ci}"><i class="mg-dot"></i>${lblOn ? `<span class="mg-lb">${this._esc(meals[mi].label)}</span>` : ""}<span class="mg-ds${s ? "" : " mg-e"}">${s || leer}</span></button>`;
+      };
+      return `<div class="mg-list" style="--mg-ll:${maxL}">` + cols.map((d, ci) => {
+        const t = isToday(d);
+        return `<div class="mg-dr${t ? " mg-today" : ""}"><div class="mg-dl"><div class="mg-dw">${t ? "Heute" : wd(d)}</div><div class="mg-dd">${d.getDate()}.${d.getMonth() + 1}.</div></div><div class="mg-dm">${meals.map((m, mi) => zeile(mi, ci)).join("")}</div></div>`;
+      }).join("") + `</div>`;
+    };
+
+    // Heute groß, Woche kurz (layout: today)
+    const heuteGross = () => {
+      const last = meals.length - 1;
+      let t = `<div class="mg-tbox${quer ? " mg-st" : ""}">` + meals.map((m, mi) => {
+        const s = gericht(mi, 0, "<br>");
+        return `<button type="button" class="mg-cell mg-tc ${dcls(mi)}" data-mi="${mi}" data-ci="0"><span class="mg-tl"><i class="mg-dot"></i>${this._esc(m.label)}</span><span class="mg-td${s ? "" : " mg-e"}">${s || leer}</span></button>`;
+      }).join("") + `</div>`;
+      if (cols.length > 1 && last >= 0) {
+        t += `<div class="mg-nt">Nächste Tage &middot; ${this._esc(meals[last].label)}</div><div class="mg-nx">`
+          + cols.slice(1).map((d, k) => {
+            const s = gericht(last, k + 1, " &middot; ");
+            return `<button type="button" class="mg-cell mg-nxr" data-mi="${last}" data-ci="${k + 1}"><span class="mg-nxw">${wd(d)}</span><span class="mg-ds${s ? "" : " mg-e"}">${s || leer}</span></button>`;
+          }).join("") + `</div>`;
+      }
+      return t;
+    };
+
+    const body = (compact || layout === "grid") ? tabelle() : (layout === "today" ? heuteGross() : liste());
+    const html = `<ha-card class="mg-card">${head}${body}</ha-card>`;
 
     let bgImg = "";
     if (this.config.background) {
       const _b = this.config.background;
       const _isImg = /^(https?:|\/|data:)/.test(_b) || /\.(jpe?g|png|webp|gif|avif)/i.test(_b);
       if (_isImg) {
-        bgImg = `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${_b}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);} .mg-card .mg-bar-t,.mg-card .mg-bar-s,.mg-card .mg-meal-tx{color:#fff;} .mg-card thead th,.mg-card thead .mg-day,.mg-card thead .mg-date{color:#fff !important;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;color:#fff !important;} .mg-card td.mg-cell span{color:#fff !important;} .mg-card .mg-plus{color:#fff !important;opacity:.65;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}`;
+        // Altbestand: Bild mit dunklem Overlay und weißer Schrift. Die Variablen färben auch Kopf, Liste und Heute-Kasten um.
+        bgImg = `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${_b}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);--primary-text-color:#fff;--secondary-text-color:rgba(255,255,255,.78);--divider-color:rgba(255,255,255,.28);--fp-surface:rgba(255,255,255,.16);--fp-surface-2:rgba(255,255,255,.26);--fp-accent:#fff;} .mg-card .mg-title,.mg-card .mg-range,.mg-card .mg-meal-tx{color:#fff;} .mg-card thead th,.mg-card thead .mg-day,.mg-card thead .mg-date{color:#fff !important;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;color:#fff !important;} .mg-card td.mg-cell span{color:#fff !important;} .mg-card .mg-plus{color:#fff !important;opacity:.65;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}`;
       } else {
         bgImg = `.mg-card{background:${_b};}`;
       }
     }
     const css = `
+      /* Farben kommen aus dem Theme (--fp-*, HA-Variablen); was nach dem Komma steht, ist der Rückfall. */
       .mg-card{overflow:hidden;}
       .mg-h{padding:12px 16px 4px;font-size:1.25rem;font-weight:600;}
-      /* Leistenfarbe ueber --fp-bar-bg aus dem Theme uebersteuerbar */
-      .mg-bar{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--fp-bar-bg,linear-gradient(135deg,rgba(var(--fp-tint-rgb,129,212,250),.70),rgba(var(--fp-accent-rgb,79,195,247),.70)));color:var(--fp-bar-fg,#fff);}
-      .mg-bar-mid{flex:1;text-align:center;line-height:1.15;}
-      .mg-bar-t{font-size:1.15rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.30);}
-      .mg-bar-s{font-size:.78rem;opacity:.95;text-shadow:0 1px 2px rgba(0,0,0,.25);}
-      .mg-nav,.mg-today-btn{border:none;background:rgba(255,255,255,.28);color:#fff;width:38px;height:38px;border-radius:50%;font-size:1.25rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;}
-      .mg-nav:hover,.mg-today-btn:hover{background:rgba(255,255,255,.45);}
+      /* Schlichter Kopf: Titel links, rechts die Wochen-Pille ‹ 13.–19. Okt ›, Aktionen als kleine Pillen; bricht am Handy um */
+      .mg-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:14px 16px 8px;}
+      .mg-head-a{padding:10px 16px 0;}
+      .mg-title{flex:1 1 auto;min-width:0;font-size:1.05rem;font-weight:900;letter-spacing:-.01em;line-height:1.2;overflow-wrap:anywhere;}
+      .mg-hr{flex:none;display:flex;align-items:center;gap:6px;}
+      .mg-wk{display:flex;align-items:center;gap:2px;padding:2px;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));}
+      .mg-range{min-width:76px;padding:0 2px;text-align:center;font-size:.82rem;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;}
+      .mg-nav{flex:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--primary-text-color);font-size:1.25rem;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-nav:active{background:var(--fp-surface-2,var(--divider-color));}
+      .mg-today-btn{flex:none;min-height:32px;padding:0 12px;border:none;border-radius:999px;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);color:var(--fp-accent,var(--primary-color));font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-acts{flex:none;display:flex;flex-wrap:wrap;gap:6px;}
+      .mg-fill,.mg-clear{flex:none;min-height:32px;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-fill:disabled,.mg-clear:disabled{opacity:.6;cursor:default;}
+      @media (hover:hover){
+        .mg-nav:hover{background:var(--fp-surface-2,var(--divider-color));}
+        .mg-fill:hover{color:var(--fp-accent,var(--primary-color));border-color:var(--fp-accent,var(--primary-color));}
+        .mg-clear:hover{color:var(--error-color,#db4437);border-color:var(--error-color,#db4437);}
+      }
+      /* Datum als kleine Pille im Kopf von „Heute groß“ */
+      .mg-dp{flex:none;padding:5px 12px;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));font-size:.78rem;font-weight:800;white-space:nowrap;}
+
+      /* Punkt je Mahlzeit: fp-meal0/1/2, ab der vierten wie die dritte */
+      .mg-d0{--mg-dot:var(--fp-meal0,var(--fp-accent,var(--primary-color)));}
+      .mg-d1{--mg-dot:var(--fp-meal1,var(--fp-accent,var(--primary-color)));}
+      .mg-d2{--mg-dot:var(--fp-meal2,var(--fp-accent,var(--primary-color)));}
+      .mg-dot{flex:none;display:block;width:8px;height:8px;border-radius:50%;background:var(--mg-dot);}
+      .mg-em{margin-right:3px;}
+      .mg-ds{flex:1 1 0;min-width:0;font-size:.9rem;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--primary-text-color);}
+      .mg-e{font-weight:400;color:var(--secondary-text-color);opacity:.6;}
+
+      /* Liste nach Tagen: Linien statt Kästen; Heute mit Strich am Kartenrand */
+      .mg-list{padding:0 0 6px;}
+      .mg-dr{position:relative;display:flex;align-items:flex-start;gap:12px;padding:6px 16px;box-sizing:border-box;}
+      .mg-dr+.mg-dr{border-top:1px solid var(--divider-color);}
+      .mg-dr.mg-today::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--fp-accent,var(--primary-color));}
+      .mg-dl{flex:none;width:56px;padding-top:8px;line-height:1.2;}
+      .mg-dw{font-size:.95rem;font-weight:800;}
+      .mg-dd{margin-top:1px;font-size:.68rem;color:var(--secondary-text-color);font-variant-numeric:tabular-nums;}
+      .mg-dr.mg-today .mg-dw,.mg-dr.mg-today .mg-dd{color:var(--fp-accent,var(--primary-color));}
+      .mg-dm{flex:1 1 0;min-width:0;display:flex;flex-direction:column;}
+      .mg-mr{display:flex;align-items:center;gap:8px;align-self:stretch;min-height:36px;box-sizing:border-box;margin:0 -8px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-lb{flex:none;width:calc(var(--mg-ll,6) * .82em);max-width:96px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+      /* Heute groß: Mahlzeiten von heute nebeneinander in einem Kasten, darunter die nächsten Tage als kurze Liste */
+      .mg-tbox{display:flex;margin:4px 16px 0;border:1px solid var(--divider-color);border-radius:var(--fp-radius-sm,12px);overflow:hidden;}
+      .mg-tc{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px;box-sizing:border-box;padding:12px;border:none;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-tc+.mg-tc{border-left:1px solid var(--divider-color);}
+      .mg-tbox.mg-st{flex-direction:column;}
+      .mg-tbox.mg-st .mg-tc+.mg-tc{border-left:none;border-top:1px solid var(--divider-color);}
+      .mg-tl{display:flex;align-items:center;gap:6px;max-width:100%;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);}
+      .mg-td{max-width:100%;font-size:1rem;font-weight:900;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;hyphens:auto;color:var(--primary-text-color);}
+      .mg-td.mg-e{font-weight:400;color:var(--secondary-text-color);}
+      .mg-nt{margin:16px 16px 2px;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
+      .mg-nx{display:flex;flex-direction:column;padding:0 16px 8px;}
+      .mg-nxr{display:flex;align-items:center;gap:12px;box-sizing:border-box;min-height:44px;margin:0 -8px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-nxw{flex:none;width:44px;font-size:.9rem;font-weight:800;}
+      .mg-tc:active,.mg-mr:active,.mg-nxr:active{background:var(--fp-surface,var(--secondary-background-color));}
+      @media (hover:hover){.mg-tc:hover,.mg-mr:hover,.mg-nxr:hover{background:var(--fp-surface,var(--secondary-background-color));}}
+
+      /* Tabelle (layout: grid, mode: compact) */
       .mg-wrap{padding:14px 16px 18px;overflow-x:auto;}
+      .mg-wrap.mg-wrap-w{padding-top:6px;}
       table.mg{width:100%;border-collapse:separate;border-spacing:7px;table-layout:fixed;}
       table.mg th,table.mg td{text-align:center;}
       table.mg thead th{font-size:.8rem;color:var(--secondary-text-color);padding:2px;}
@@ -618,40 +749,35 @@ class MealGridCard extends HTMLElement {
       .mg-meal-ic{font-size:1.15rem;line-height:1.2;}
       .mg-meal-tx{font-size:.6rem;color:var(--secondary-text-color);text-transform:uppercase;letter-spacing:.03em;}
       /* Feldfarbe je Mahlzeit: das Theme setzt fp-meal0/1/2-bg, ohne Theme
-         bleiben alle drei Zeilen wie bisher. */
-      tr.mg-r0,td.mg-m0{--mg-cell-bg:var(--fp-meal0-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
-      tr.mg-r1,td.mg-m1{--mg-cell-bg:var(--fp-meal1-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
-      tr.mg-r2,td.mg-m2{--mg-cell-bg:var(--fp-meal2-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
-      td.mg-cell{background:var(--mg-cell-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));border:1px solid var(--fp-meal-border,var(--divider-color));border-radius:var(--fp-meal-radius,14px);min-height:var(--fp-meal-h,48px);height:var(--fp-meal-h,48px);padding:6px;font-size:.82rem;line-height:1.2;color:var(--primary-text-color);cursor:pointer;vertical-align:middle;transition:background .15s,transform .1s;}
-      td.mg-cell:hover{background:var(--mg-cell-bg-hover,rgba(var(--fp-tint-rgb,129,212,250),0.20));transform:translateY(-1px);}
+         bleiben alle drei Zeilen gleich (Tönung des Akzents). */
+      tr.mg-r0,td.mg-m0{--mg-cell-bg:var(--fp-meal0-bg,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent));}
+      tr.mg-r1,td.mg-m1{--mg-cell-bg:var(--fp-meal1-bg,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent));}
+      tr.mg-r2,td.mg-m2{--mg-cell-bg:var(--fp-meal2-bg,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent));}
+      td.mg-cell{background:var(--mg-cell-bg,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent));border:1px solid var(--fp-meal-border,var(--divider-color));border-radius:var(--fp-meal-radius,14px);min-height:var(--fp-meal-h,48px);height:var(--fp-meal-h,48px);padding:6px;font-size:.82rem;line-height:1.2;color:var(--primary-text-color);cursor:pointer;vertical-align:middle;transition:background .15s,transform .1s;}
+      td.mg-cell:hover{background:var(--mg-cell-bg-hover,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 20%,transparent));transform:translateY(-1px);}
       td.mg-cell span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
       .mg-plus{color:var(--secondary-text-color);opacity:.38;font-size:.78rem;font-weight:400;}
-      .mg-em{margin-right:3px;}
       /* Heute nicht mehr einfaerben — das uebermalte die Farbe der Mahlzeit.
          Stattdessen ein Ring um die Zelle und ein hervorgehobenes Datum. */
       td.mg-cell.mg-today{box-shadow:inset 0 0 0 2px var(--fp-head,var(--primary-color));}
       thead th.mg-today .mg-day,thead th.mg-today .mg-date{color:var(--fp-head,var(--primary-color));}
       th.mg-corner{width:54px;}
+
+      /* Dialog */
       .mg-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9;}
       .mg-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(92vw,360px);border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);text-shadow:none;}
       .mg-modal-t{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
-      .mg-input{width:100%;box-sizing:border-box;padding:11px 12px;font-size:1rem;border:1px solid var(--divider-color,#ccc);border-radius:12px;background:var(--secondary-background-color,#f3f3f3);color:var(--primary-text-color);}
+      .mg-input{width:100%;box-sizing:border-box;padding:11px 12px;font-size:1rem;border:1px solid var(--divider-color);border-radius:12px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);}
       .mg-suggest-row{margin-top:10px;}
       .mg-cook-row{margin-top:10px;}
       .mg-recipe-row{margin-top:10px;}
-      .mg-recipe{width:100%;background:rgba(255,167,38,.18);color:#e65100;font-weight:600;}
-      .mg-suggest{width:100%;background:rgba(var(--fp-accent-rgb,79,195,247),.18);color:var(--fp-head,#0277bd);font-weight:600;}
-      .mg-tocook{width:100%;background:rgba(245,179,1,.18);color:#a86b00;font-weight:600;}
-      .mg-fillrow{display:flex;gap:8px;padding:10px 14px 0;}
-      .mg-fill{flex:1;border:none;border-radius:10px;padding:9px;font-size:.88rem;background:rgba(var(--fp-accent-rgb,79,195,247),.16);color:var(--fp-head,#014a73);font-weight:600;cursor:pointer;}
-      .mg-fill:hover{background:rgba(var(--fp-accent-rgb,79,195,247),.26);}
-      .mg-clear{flex:1;border:none;border-radius:10px;padding:9px;font-size:.88rem;background:transparent;border:1px solid var(--divider-color);color:var(--secondary-text-color);font-weight:600;cursor:pointer;}
-      .mg-clear:hover{color:var(--error-color);border-color:var(--error-color);}
+      .mg-recipe,.mg-tocook{width:100%;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-weight:600;}
+      .mg-suggest{width:100%;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);color:var(--fp-accent,var(--primary-color));font-weight:600;}
       .mg-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
       .mg-btn{border:none;border-radius:10px;padding:9px 14px;font-size:.9rem;cursor:pointer;}
-      .mg-cancel{background:var(--secondary-background-color,#eee);color:var(--primary-text-color);}
-      .mg-del{background:rgba(229,57,53,.15);color:#e53935;}
-      .mg-save{background:var(--fp-accent,#4fc3f7);color:var(--fp-accent-fg,#06354a);font-weight:700;}
+      .mg-cancel{background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);}
+      .mg-del{background:color-mix(in srgb,var(--error-color,#db4437) 15%,transparent);color:var(--error-color,#db4437);}
+      .mg-save{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:700;}
       ${bgImg}
     `;
     this.innerHTML = `<style>${css}</style>${html}`;
@@ -674,7 +800,13 @@ class MealGridCard extends HTMLElement {
       });
     });
   }
-  getCardSize() { return this.config.mode === "compact" ? 3 : 6; }
+  getCardSize() {
+    const l = this._layout(), n = (this.config.meals || []).length || 3;
+    if (l === "compact") return 3;
+    if (l === "today") return Math.ceil((60 + 90 + 40 + 44 * this._daysAhead()) / 50);
+    if (l === "list") return Math.ceil((60 + 7 * (36 * n + 12)) / 50);
+    return 6;
+  }
 }
 if (!customElements.get("meal-grid-card-beta")) {
   customElements.define("meal-grid-card-beta", MealGridCard);
