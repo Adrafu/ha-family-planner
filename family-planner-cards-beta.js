@@ -815,7 +815,7 @@ if (!customElements.get("meal-grid-card-beta")) {
 }
 })();
 
-/* ===== family-calendar-card-beta v2.9 (Tagesansicht day: Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Knopf + Termin in der Kopfleiste, Personenfilter als Chips mit Alle, Tippen auf freie Flaeche legt an; Woche mit grossen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
+/* ===== family-calendar-card-beta v2.10 (schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1035,7 +1035,7 @@ class FamilyCalendarCard extends HTMLElement {
     let h = '<div class="fcc-legend">';
     this.config.persons.forEach(p => {
       const off = this._hidden.has(p.name) ? " fcc-off" : "";
-      h += `<button class="fcc-chip${off}" data-person="${this._esc(p.name)}"><span class="fcc-dot" style="background:${p.color}"></span>${this._esc(p.name)}</button>`;
+      h += `<button class="fcc-chip${off}" data-person="${this._esc(p.name)}" aria-pressed="${!off}"><span class="fcc-dot" style="background:${p.color || "var(--secondary-text-color)"}"></span>${this._esc(p.name)}</button>`;
     });
     h += "</div>";
     return h;
@@ -1059,20 +1059,38 @@ class FamilyCalendarCard extends HTMLElement {
     this._openEvent({ dateIso, hour: dateIso === iso(heute) ? Math.min(22, n.getHours() + 1) : 9, personName: person || null });
   }
 
+  // Kurzer Zeitraum für die Datumspille: „12.–18. Okt“, am Tag „Mi, 14. Okt“;
+  // der Monat bleibt wie die Ansicht ihn liefert. Ein fremdes Jahr steht dabei.
+  _rangeKurz(label) {
+    const mn = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+    const wd = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    if (this._view === "month") return label;
+    const r = this._range();
+    const jahr = d => d.getFullYear() !== new Date().getFullYear() ? " " + d.getFullYear() : "";
+    if (this._view === "day") { const s = r.sel; return `${wd[s.getDay()]}, ${s.getDate()}. ${mn[s.getMonth()]}${jahr(s)}`; }
+    const a = r.start, b = new Date(r.end); b.setDate(b.getDate() - 1);
+    if (this._sameDay(a, b)) return `${a.getDate()}. ${mn[a.getMonth()]}${jahr(a)}`;
+    return a.getMonth() === b.getMonth()
+      ? `${a.getDate()}.–${b.getDate()}. ${mn[b.getMonth()]}${jahr(b)}`
+      : `${a.getDate()}. ${mn[a.getMonth()]} – ${b.getDate()}. ${mn[b.getMonth()]}${jahr(b)}`;
+  }
+
+  // Schlichter Kopf: Titel, Ansichten als Segment, Datum als Pille, „Heute“ nur abseits der aktuellen Periode, ＋ Termin rechts
   _headerHTML(label) {
+    const heute = this._offset !== 0 ? `<button class="fcc-btn fcc-today" data-d="0" title="Zur aktuellen Periode">Heute</button>` : "";
     return `<div class="fcc-bar">
       <div class="fcc-title">${this._esc(this.config.title)}</div>
-      <div class="fcc-nav">
-        <button class="fcc-btn fcc-nav-b" data-d="-1">${CP(0x2039)}</button>
-        <button class="fcc-btn fcc-today" data-d="0">Heute</button>
-        <button class="fcc-btn fcc-nav-b" data-d="1">${CP(0x203A)}</button>
-      </div>
-      <div class="fcc-range">${this._esc(label)}</div>
-      <div class="fcc-views">
+      <div class="fcc-views" role="group" aria-label="Ansicht">
         <button class="fcc-btn fcc-vw${this._view === "day" ? " fcc-vw-on" : ""}" data-v="day">Tag</button>
         <button class="fcc-btn fcc-vw${this._view === "week" ? " fcc-vw-on" : ""}" data-v="week">Woche</button>
         <button class="fcc-btn fcc-vw${this._view === "month" ? " fcc-vw-on" : ""}" data-v="month">Monat</button>
       </div>
+      <div class="fcc-nav">
+        <button class="fcc-btn fcc-nav-b" data-d="-1" aria-label="Zurück">${CP(0x2039)}</button>
+        <span class="fcc-range">${this._esc(this._rangeKurz(label))}</span>
+        <button class="fcc-btn fcc-nav-b" data-d="1" aria-label="Weiter">${CP(0x203A)}</button>
+      </div>
+      ${heute}
       ${this._addBtnHTML()}
     </div>`;
   }
@@ -1153,14 +1171,14 @@ class FamilyCalendarCard extends HTMLElement {
     return { label, html: `<div class="fcc-dy">${html}</div>` };
   }
 
-  // Personenfilter als Chips (Avatar + Name, gewaehlt mit Haken), dazu
-  // "Alle". Mehrfachauswahl; ohne Auswahl ist niemand ausgefiltert.
+  // Personenfilter als Chips (Punkt in der Personenfarbe + Name, gewählt = gefüllt),
+  // dazu "Alle". Mehrfachauswahl; ohne Auswahl ist niemand ausgefiltert.
   _chipsHTML(leute) {
     [...this._filter].forEach(n => { if (!leute.some(p => p.name === n)) this._filter.delete(n); });
     let h = `<div class="fcc-flt" role="group" aria-label="Personen filtern"><button class="fcc-fc fcc-fc-alle${this._filter.size ? "" : " fcc-fc-on"}" data-person="" aria-pressed="${!this._filter.size}">Alle</button>`;
     leute.forEach(p => {
       const on = this._filter.has(p.name);
-      h += `<button class="fcc-fc${on ? " fcc-fc-on" : ""}" data-person="${this._esc(p.name)}" aria-pressed="${on}">${this._avatar(p)}${on ? `<span class="fcc-fc-chk">${CP(0x2713)}</span>` : ""}<span>${this._esc(p.name)}</span></button>`;
+      h += `<button class="fcc-fc${on ? " fcc-fc-on" : ""}" data-person="${this._esc(p.name)}" aria-pressed="${on}"><span class="fcc-dot" style="background:${p.color || "var(--secondary-text-color)"}"></span><span>${this._esc(p.name)}</span></button>`;
     });
     if (this.config.hide_header) h += this._addBtnHTML();
     return h + "</div>";
@@ -1517,7 +1535,7 @@ class FamilyCalendarCard extends HTMLElement {
     // Tag und Woche filtern ueber die Personen-Chips statt ueber die Legende
     const legende = this.config.hide_legend || this._view === "day" || (this._view === "week" && !this.config.week_grid) ? "" : this._legendHTML();
     this.innerHTML = `<style>${css}</style><ha-card class="fcc-card${this._schmal ? " fcc-narrow" : ""}" lang="de">${kopf}${legende}${view.html}</ha-card>`;
-    this.querySelectorAll(".fcc-nav-b,.fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._go(); }));
+    this.querySelectorAll(".fcc-bar .fcc-nav-b,.fcc-bar .fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._go(); }));
     this.querySelectorAll(".fcc-vw").forEach(b => b.addEventListener("click", () => { const v = b.dataset.v; if (v !== this._view) { this._view = v; this._offset = 0; this._maybeFetch(true); } }));
     this.querySelectorAll(".fcc-chip").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; if (this._hidden.has(n)) this._hidden.delete(n); else this._hidden.add(n); this._saveHidden(); this._render(); }));
     this.querySelectorAll(".fcc-dy-d,.fcc-dy-arr").forEach(b => b.addEventListener("click", () => { this._offset = parseInt(b.dataset.o, 10) || 0; this._go(); }));
@@ -1559,35 +1577,46 @@ class FamilyCalendarCard extends HTMLElement {
   _css() {
     return `
     .fcc-card{overflow:hidden;padding-bottom:6px;}
-    .fcc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;background:var(--fp-bar-bg,linear-gradient(135deg,rgba(var(--fp-tint-rgb,129,212,250),.70),rgba(var(--fp-accent-rgb,79,195,247),.70)));color:var(--fp-bar-fg,#fff);}
-    .fcc-title{font-size:1.15rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.25);}
-    .fcc-range{flex:1;text-align:center;font-size:.92rem;font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.2);}
-    .fcc-nav,.fcc-views{display:flex;gap:6px;}
-    .fcc-btn{border:none;border-radius:9px;padding:7px 12px;font-size:.85rem;cursor:pointer;background:rgba(255,255,255,.25);color:inherit;}
-    .fcc-btn:hover{background:rgba(255,255,255,.42);}
-    .fcc-vw-on{background:#fff;color:var(--fp-head,#0277bd);font-weight:700;}
-    .fcc-add{display:inline-flex;align-items:center;gap:6px;background:var(--fp-accent,#039be5);color:var(--fp-accent-fg,#fff);font-weight:700;padding:7px 14px 7px 11px;box-shadow:0 2px 6px rgba(0,0,0,.22);white-space:nowrap;}
-    .fcc-add:hover{background:var(--fp-accent,#039be5);filter:brightness(1.08);}
-    .fcc-add-i{font-size:1.2rem;line-height:1;font-weight:600;}
-    .fcc-flt .fcc-add{margin-left:auto;height:36px;border-radius:18px;}
-    /* Handy: Titel + Termin, darunter Navigation + Zeitraum, darunter die Ansichten */
-    .fcc-narrow .fcc-bar{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"title title add" "nav range range" "views views views";gap:10px;}
-    .fcc-narrow .fcc-title{grid-area:title;align-self:center;}
-    .fcc-narrow .fcc-bar .fcc-add{grid-area:add;}
+    /* Schlichter Kopf wie beim Essensplan: Titel, Ansichten als Segment, Datum als Pille, Heute, ＋ Termin rechts; bricht um */
+    .fcc-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:14px 14px 6px;background:transparent;color:var(--primary-text-color);}
+    .fcc-bar .fcc-title{flex:0 1 auto;min-width:0;margin-right:2px;font-size:1.05rem;font-weight:900;letter-spacing:-.01em;line-height:1.2;overflow-wrap:anywhere;}
+    .fcc-in.fcc-title{font-weight:700;}
+    .fcc-btn{flex:none;margin:0;border:none;background:transparent;color:inherit;font:inherit;line-height:1.2;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .fcc-views{display:flex;align-items:center;gap:2px;padding:3px;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));}
+    .fcc-vw{min-height:30px;padding:0 13px;border-radius:999px;color:var(--secondary-text-color);font-size:.78rem;font-weight:800;white-space:nowrap;}
+    .fcc-vw-on{background:var(--card-background-color);color:var(--primary-text-color);box-shadow:0 1px 3px color-mix(in srgb,var(--primary-text-color) 20%,transparent);}
+    .fcc-nav{display:flex;align-items:center;gap:2px;padding:2px;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));}
+    .fcc-nav-b{display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border-radius:50%;color:var(--primary-text-color);font-size:1.25rem;line-height:1;}
+    .fcc-nav-b:active{background:var(--fp-surface-2,var(--divider-color));}
+    .fcc-range{min-width:76px;padding:0 2px;text-align:center;font-size:.82rem;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    .fcc-bar .fcc-today{min-height:32px;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;color:var(--primary-text-color);font-size:.76rem;font-weight:800;}
+    .fcc-add{display:inline-flex;align-items:center;gap:5px;margin-left:auto;min-height:36px;padding:0 15px 0 12px;border-radius:999px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-size:.82rem;font-weight:800;white-space:nowrap;}
+    .fcc-add-i{font-size:1.2rem;line-height:1;font-weight:700;}
+    .fcc-flt .fcc-add{min-height:32px;}
+    @media (hover:hover){
+      .fcc-nav-b:hover{background:var(--fp-surface-2,var(--divider-color));}
+      .fcc-bar .fcc-today:hover{background:var(--fp-surface,var(--secondary-background-color));}
+      .fcc-vw:not(.fcc-vw-on):hover{color:var(--primary-text-color);}
+      .fcc-add:hover{filter:brightness(1.08);}
+    }
+    /* Handy: Titel + Termin oben, darunter Datum + Heute, darunter die Ansichten */
+    .fcc-narrow .fcc-bar{display:grid;grid-template-columns:auto auto 1fr auto;grid-template-areas:"title title title add" "nav today . ." "views views views views";align-items:center;gap:8px 10px;}
+    .fcc-narrow .fcc-bar .fcc-title{grid-area:title;}
     .fcc-narrow .fcc-nav{grid-area:nav;}
-    .fcc-narrow .fcc-range{grid-area:range;text-align:right;align-self:center;}
+    .fcc-narrow .fcc-bar .fcc-today{grid-area:today;}
+    .fcc-narrow .fcc-bar .fcc-add{grid-area:add;margin-left:0;}
     .fcc-narrow .fcc-views{grid-area:views;}
-    .fcc-narrow .fcc-views .fcc-btn{flex:1;}
-    /* Personenfilter (Chips) */
-    .fcc-flt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 14px 10px;}
-    .fcc-fc{display:inline-flex;align-items:center;gap:6px;height:36px;box-sizing:border-box;padding:0 12px 0 4px;border-radius:18px;border:1px solid var(--divider-color,#ccc);background:none;color:var(--primary-text-color);font:inherit;font-size:.9rem;font-weight:500;cursor:pointer;}
-    .fcc-fc.fcc-fc-alle{padding:0 14px;}
-    .fcc-fc .fcc-dy-av{flex:0 0 28px;width:28px;height:28px;border-width:0;font-size:.8rem;}
-    .fcc-fc-on{background:rgba(var(--fp-accent-rgb,79,195,247),.2);border-color:transparent;color:var(--fp-head,var(--primary-color));font-weight:700;}
-    .fcc-fc-chk{font-size:.85rem;font-weight:700;}
-    .fcc-legend{display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px 4px;}
-    .fcc-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--divider-color,#ddd);background:var(--card-background-color);color:var(--primary-text-color);border-radius:999px;padding:4px 10px;font-size:.82rem;cursor:pointer;}
-    .fcc-chip.fcc-off{opacity:.4;text-decoration:line-through;}
+    .fcc-narrow .fcc-views .fcc-vw{flex:1;}
+    /* Personenfilter (Chips): Punkt in der Personenfarbe; „Alle“ und gewählte Personen gefüllt, ausgeblendete blass */
+    .fcc-flt{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:0 14px 10px;}
+    .fcc-fc,.fcc-chip{display:inline-flex;align-items:center;gap:6px;min-height:28px;box-sizing:border-box;padding:4px 11px;border:none;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font:inherit;font-size:.78rem;font-weight:800;line-height:1.2;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .fcc-fc .fcc-dot,.fcc-chip .fcc-dot{flex:none;width:8px;height:8px;}
+    .fcc-fc-on{background:var(--primary-text-color);color:var(--card-background-color);}
+    .fcc-fc-on .fcc-dot{box-shadow:0 0 0 1.5px var(--card-background-color);}
+    .fcc-legend{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px 6px;}
+    .fcc-bar + .fcc-legend{padding-top:2px;}
+    .fcc-chip.fcc-off{opacity:.4;}
+    @media (hover:hover){.fcc-fc:not(.fcc-fc-on):hover,.fcc-chip:hover{background:var(--fp-surface-2,var(--divider-color));}}
     .fcc-dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
     /* Mehrtagesansicht */
     .fcc-ag{display:grid;gap:10px;padding:12px 14px 14px;}
@@ -1614,10 +1643,10 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.5;}
     .fcc-dy-dot.fcc-dy-leer{visibility:hidden;}
     .fcc-dy-today .fcc-dy-n,.fcc-dy-today .fcc-dy-wd{color:var(--fp-head,var(--primary-color));}
-    .fcc-dy-d.fcc-dy-sel{background:var(--fp-accent,#039be5);}
-    .fcc-dy-d.fcc-dy-sel span{color:var(--fp-accent-fg,#fff);}
+    .fcc-dy-d.fcc-dy-sel{background:var(--fp-accent,var(--primary-color));}
+    .fcc-dy-d.fcc-dy-sel span{color:var(--fp-accent-fg,var(--text-primary-color,#fff));}
     .fcc-dy-title{display:flex;align-items:center;gap:8px;padding:0 16px 10px;font-size:1.15rem;font-weight:700;color:var(--primary-text-color);}
-    .fcc-dy-badge{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(var(--fp-accent-rgb,79,195,247),.2);color:var(--fp-head,var(--primary-color));}
+    .fcc-dy-badge{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 20%,transparent);color:var(--fp-head,var(--primary-color));}
     .fcc-dy-extra{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;}
     .fcc-dy-chip{display:inline-flex;align-items:center;gap:6px;font-size:.88rem;padding:4px 10px;border-radius:999px;background:var(--secondary-background-color,rgba(0,0,0,.05));color:var(--primary-text-color);cursor:pointer;}
     .fcc-dy-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px;padding:0 14px 4px;}
@@ -1646,8 +1675,8 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-meta{display:flex;align-items:center;gap:10px;margin-top:4px;font-size:.85rem;color:var(--primary-text-color);opacity:.8;}
     .fcc-dy-who1{display:inline-flex;align-items:center;gap:5px;}
     .fcc-dy-live{font-weight:700;}
-    .fcc-dy-jetzt{position:relative;height:0;border-top:2px solid #e53935;margin:4px 0 4px 62px;}
-    .fcc-dy-jetzt span{position:absolute;left:-58px;top:-10px;font-size:.75rem;font-weight:700;color:#e53935;width:52px;text-align:right;}
+    .fcc-dy-jetzt{position:relative;height:0;border-top:2px solid var(--error-color,#db4437);margin:4px 0 4px 62px;}
+    .fcc-dy-jetzt span{position:absolute;left:-58px;top:-10px;font-size:.75rem;font-weight:700;color:var(--error-color,#db4437);width:52px;text-align:right;}
     .fcc-dy-none{padding:24px 8px;text-align:center;font-size:.95rem;color:var(--secondary-text-color);}
     .fcc-wl{display:flex;flex-direction:column;gap:6px;}
     .fcc-wl-day{padding:4px 0 8px;}
@@ -1673,15 +1702,15 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-wt-day .fcc-dy-t{font-size:.85rem;margin-top:3px;}
     .fcc-wt-who{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:.8rem;color:var(--primary-text-color);opacity:.8;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
     .fcc-wt-day .fcc-dy-chip{align-self:flex-start;max-width:100%;font-size:.8rem;}
-    .fcc-wt-jetzt{position:relative;height:0;border-top:2px solid #e53935;margin:3px 0;}
-    .fcc-wt-jetzt span{position:absolute;right:0;top:-9px;font-size:.7rem;font-weight:700;color:#e53935;background:var(--card-background-color,#fff);padding-left:4px;}
+    .fcc-wt-jetzt{position:relative;height:0;border-top:2px solid var(--error-color,#db4437);margin:3px 0;}
+    .fcc-wt-jetzt span{position:absolute;right:0;top:-9px;font-size:.7rem;font-weight:700;color:var(--error-color,#db4437);background:var(--card-background-color,#fff);padding-left:4px;}
     .fcc-dy-free{font-size:.9rem;color:var(--secondary-text-color);opacity:.7;padding:6px 2px;}
     .fcc-gutter{width:48px;flex:0 0 48px;}
     .fcc-wk-head{display:flex;padding:6px 8px 0;}
     .fcc-dcol{flex:1;min-width:0;text-align:center;border-radius:8px 8px 0 0;padding:2px;}
     .fcc-dn{font-size:.72rem;color:var(--secondary-text-color);font-weight:700;}
     .fcc-dd{font-size:.7rem;color:var(--secondary-text-color);}
-    .fcc-dcol.fcc-today .fcc-dn,.fcc-dcol.fcc-today .fcc-dd{color:var(--fp-head,#039be5);}
+    .fcc-dcol.fcc-today .fcc-dn,.fcc-dcol.fcc-today .fcc-dd{color:var(--fp-head,var(--primary-color));}
     .fcc-allday{display:flex;padding:0 8px 4px;gap:0;align-items:stretch;}
     .fcc-allday-lbl{font-size:.6rem;color:var(--secondary-text-color);display:flex;align-items:center;justify-content:flex-end;padding-right:4px;}
     .fcc-ad-cell{flex:1;min-width:0;overflow:hidden;min-height:8px;padding:1px;}
@@ -1692,19 +1721,19 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-hr{position:relative;}
     .fcc-hr span{position:absolute;top:-7px;right:6px;font-size:.66rem;color:var(--secondary-text-color);}
     .fcc-col{position:relative;flex:1;min-width:0;border-left:1px solid var(--divider-color,#eee);background-image:linear-gradient(var(--divider-color,#eee) 1px,transparent 1px);}
-    .fcc-today-col{background-color:rgba(var(--fp-tint-rgb,129,212,250),.20);}
+    .fcc-today-col{background-color:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent);}
     .fcc-ev{position:absolute;border-radius:7px;color:#fff;padding:2px 5px;overflow:hidden;font-size:.72rem;line-height:1.05;box-shadow:0 1px 3px rgba(0,0,0,.25);cursor:pointer;box-sizing:border-box;}
     .fcc-ev-t{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .fcc-ev-h{font-size:.62rem;opacity:.9;}
     .fcc-past{position:absolute;left:0;right:0;top:0;background:rgba(0,0,0,.16);pointer-events:none;}
-    .fcc-now{position:absolute;left:0;right:0;height:0;border-top:2px solid #e53935;z-index:6;pointer-events:none;}
-    .fcc-now::before{content:"";position:absolute;left:-1px;top:-4px;width:8px;height:8px;border-radius:50%;background:#e53935;}
+    .fcc-now{position:absolute;left:0;right:0;height:0;border-top:2px solid var(--error-color,#db4437);z-index:6;pointer-events:none;}
+    .fcc-now::before{content:"";position:absolute;left:-1px;top:-4px;width:8px;height:8px;border-radius:50%;background:var(--error-color,#db4437);}
     .fcc-m-head{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));padding:6px 8px 0;}
     .fcc-m-head>div{text-align:center;font-size:.72rem;font-weight:700;color:var(--secondary-text-color);}
     .fcc-m-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;padding:6px 8px 8px;}
     .fcc-m-cell{min-width:0;overflow:hidden;min-height:84px;border-radius:8px;border:1px solid var(--divider-color);background:var(--secondary-background-color,rgba(0,0,0,.03));padding:3px;}
     .fcc-m-cell.fcc-dim{opacity:.45;}
-    .fcc-m-cell.fcc-today{outline:2px solid var(--fp-head,#039be5);}
+    .fcc-m-cell.fcc-today{outline:2px solid var(--fp-head,var(--primary-color));}
     .fcc-m-num{font-size:.72rem;font-weight:700;text-align:right;color:var(--primary-text-color);padding:0 2px;}
     .fcc-m-ev{border-left:3px solid #888;background:var(--card-background-color);border-radius:4px;margin:2px 0;padding:1px 4px;overflow:hidden;cursor:pointer;}
     .fcc-m-t{font-size:.66rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:var(--primary-text-color);}
@@ -1722,7 +1751,7 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
     .fcc-btn2{border:none;border-radius:10px;padding:9px 14px;font-size:.9rem;cursor:pointer;}
     .fcc-cancel{background:var(--secondary-background-color,#eee);color:var(--primary-text-color);}
-    .fcc-save{background:var(--fp-accent,#039be5);color:var(--fp-accent-fg,#fff);font-weight:700;}
+    .fcc-save{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:700;}
     .fcc-del{background:rgba(229,57,53,.15);color:#c62828;}
     .fcc-check{display:flex;align-items:center;gap:8px;font-size:.85rem;margin:10px 0 2px;color:var(--primary-text-color);}
     `;
