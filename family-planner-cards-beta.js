@@ -117,7 +117,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card-beta v28 (Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche › statt der grünen Leiste, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht (Tage als Zeilen, Mahlzeiten als Spalten), Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header für die Übersicht, „Zum Rezept“ springt ins eigene Kochbuch, wenn das Gericht dort steht; sonst Web-Suche) ===== */
+/* ===== meal-grid-card-beta v29 (Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -644,10 +644,15 @@ class MealGridCard extends HTMLElement {
         return `<button type="button" class="mg-cell mg-tc ${dcls(mi)}" data-mi="${mi}" data-ci="0"><span class="mg-tl"><i class="mg-dot"></i>${this._esc(m.label)}</span><span class="mg-td${s ? "" : " mg-e"}">${s || leer}</span></button>`;
       }).join("") + `</div>`;
       if (cols.length > 1 && last >= 0) {
-        t += `<div class="mg-nt">Nächste Tage &middot; ${this._esc(meals[last].label)}</div><div class="mg-nx">`
+        // alles Geplante je Tag: eingetragene Mahlzeiten nebeneinander (Punkt + Gericht), leere fallen weg
+        t += `<div class="mg-nt">Nächste Tage</div><div class="mg-nx">`
           + cols.slice(1).map((d, k) => {
-            const s = gericht(last, k + 1, " &middot; ");
-            return `<button type="button" class="mg-cell mg-nxr" data-mi="${last}" data-ci="${k + 1}"><span class="mg-nxw">${wd(d)}</span><span class="mg-ds${s ? "" : " mg-e"}">${s || leer}</span></button>`;
+            const ci = k + 1;
+            const geplant = meals.map((m, mi) => ({ mi, s: gericht(mi, ci, " &middot; ") })).filter(x => x.s);
+            const inhalt = geplant.length
+              ? geplant.map(x => `<button type="button" class="mg-cell mg-nxg ${dcls(x.mi)}" data-mi="${x.mi}" data-ci="${ci}"><i class="mg-dot"></i><span class="mg-nxs">${x.s}</span></button>`).join("")
+              : `<button type="button" class="mg-cell mg-nxg" data-mi="${last}" data-ci="${ci}"><span class="mg-nxs mg-e">noch nichts geplant</span></button>`;
+            return `<div class="mg-nxr"><span class="mg-nxw">${wd(d)}</span><div class="mg-nxm">${inhalt}</div></div>`;
           }).join("") + `</div>`;
       }
       return t;
@@ -693,9 +698,9 @@ class MealGridCard extends HTMLElement {
       .mg-dp{flex:none;padding:5px 12px;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));font-size:.78rem;font-weight:800;white-space:nowrap;}
 
       /* Punkt je Mahlzeit: fp-meal0/1/2, ab der vierten wie die dritte */
-      .mg-d0{--mg-dot:var(--fp-meal0,var(--fp-accent,var(--primary-color)));}
-      .mg-d1{--mg-dot:var(--fp-meal1,var(--fp-accent,var(--primary-color)));}
-      .mg-d2{--mg-dot:var(--fp-meal2,var(--fp-accent,var(--primary-color)));}
+      .mg-d0{--mg-dot:var(--fp-meal0,#C9A15A);}
+      .mg-d1{--mg-dot:var(--fp-meal1,#6E9A62);}
+      .mg-d2{--mg-dot:var(--fp-meal2,#C97A3D);}
       .mg-dot{flex:none;display:block;width:8px;height:8px;border-radius:50%;background:var(--mg-dot);}
       .mg-em{margin-right:3px;}
       .mg-ds{flex:1 1 0;min-width:0;font-size:.9rem;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--primary-text-color);}
@@ -725,10 +730,15 @@ class MealGridCard extends HTMLElement {
       .mg-td.mg-e{font-weight:400;color:var(--secondary-text-color);}
       .mg-nt{margin:16px 16px 2px;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
       .mg-nx{display:flex;flex-direction:column;padding:0 16px 8px;}
-      .mg-nxr{display:flex;align-items:center;gap:12px;box-sizing:border-box;min-height:44px;margin:0 -8px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-      .mg-nxw{flex:none;width:44px;font-size:.9rem;font-weight:800;}
-      .mg-tc:active,.mg-mr:active,.mg-nxr:active{background:var(--fp-surface,var(--secondary-background-color));}
-      @media (hover:hover){.mg-tc:hover,.mg-mr:hover,.mg-nxr:hover{background:var(--fp-surface,var(--secondary-background-color));}}
+      /* Nächste Tage: links der Wochentag, rechts alle eingetragenen Mahlzeiten nebeneinander, bei Platzmangel umbrechend */
+      .mg-nxr{display:flex;align-items:flex-start;gap:12px;box-sizing:border-box;padding:4px 0;}
+      .mg-nxw{flex:none;width:44px;min-height:36px;display:flex;align-items:center;font-size:.9rem;font-weight:800;}
+      .mg-nxm{flex:1 1 0;min-width:0;margin-left:-8px;display:flex;flex-wrap:wrap;gap:4px 12px;}
+      .mg-nxg{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-width:0;max-width:100%;min-height:36px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-nxs{min-width:0;font-size:.9rem;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--primary-text-color);}
+      .mg-nxs.mg-e{font-weight:400;color:var(--secondary-text-color);}
+      .mg-tc:active,.mg-mr:active,.mg-nxg:active{background:var(--fp-surface,var(--secondary-background-color));}
+      @media (hover:hover){.mg-tc:hover,.mg-mr:hover,.mg-nxg:hover{background:var(--fp-surface,var(--secondary-background-color));}}
 
       /* Tabelle (layout: grid, mode: compact) */
       .mg-wrap{padding:14px 16px 18px;overflow-x:auto;}
@@ -2498,7 +2508,7 @@ if (!customElements.get("nav-card-beta")) {
 }
 })();
 
-/* ===== fp-todo-card-beta v15 (zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe als eine Farbe für hell und dunkel, empty_text; Liste ohne Kachelflächen, Kreis in Personenfarbe; davor: Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+/* ===== fp-todo-card-beta v16 (Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; davor: Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
 // Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
 // selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
 // Hinzufügen über das Ereignis fp-todo-add bleiben.
@@ -2509,7 +2519,7 @@ class FpTodoCard extends HTMLElement {
   constructor() {
     super();
     this._items = null;        // null = noch nichts geladen
-    this._pending = [];        // gerade angelegt, noch nicht im Abo: { uid, summary, key, due, base, t }
+    this._pending = [];        // gerade angelegt, noch nicht im Abo: { uid, summary, description, key, due, base, t }
     this._ovr = new Map();     // abgehakt/wieder geöffnet, noch unbestätigt: uid -> { status, t }
     this._keep = new Map();    // gerade abgehakt, bleibt kurz sichtbar: uid -> { until, item }
     this._timers = new Set();
@@ -2517,7 +2527,7 @@ class FpTodoCard extends HTMLElement {
     this._unsub = null; this._subbing = false; this._built = false; this._sig = "";
     this._onAdd = e => {
       const d = e.detail || {};
-      if (this.config && d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary), d.due || null);
+      if (this.config && d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary), d.due || null, d.description);
     };
   }
   setConfig(config) {
@@ -2644,6 +2654,8 @@ class FpTodoCard extends HTMLElement {
     return this._dayNum(end);
   }
   _dm(d) { return d.getDate() + "." + (d.getMonth() + 1) + "."; }
+  // Beschreibung für die zweite Zeile: Zeilenumbrüche werden zu Leerzeichen, leer = keine Zeile
+  _descText(v) { return v == null ? "" : String(v).replace(/\s*[\r\n]+\s*/g, " ").trim(); }
   _chip(due, today) {
     const diff = due.day - today;
     if (diff < 0) return { c: "ov", t: diff === -1 ? "gestern" : diff >= -6 ? "seit " + WD[due.d.getDay()] : "seit " + this._dm(due.d) };
@@ -2658,8 +2670,9 @@ class FpTodoCard extends HTMLElement {
     const cfg = this.config, nowD = new Date(), nowMs = nowD.getTime(), today = this._dayNum(nowD);
     const hideDone = cfg.hide_completed !== false;
     const lim = this._limit(nowD);
+    const showDesc = cfg.show_description !== false;   // Vorgabe an: Beschreibung (z. B. Menge bei Einkaufslisten) als zweite Zeile
     const src = [];
-    for (const p of this._pending) src.push({ uid: p.uid, summary: p.summary, status: "needs_action", due: p.due, pend: true });
+    for (const p of this._pending) src.push({ uid: p.uid, summary: p.summary, description: p.description, status: "needs_action", due: p.due, pend: true });
     const seen = new Set();
     for (const it of (this._items || [])) { src.push(it); seen.add(it.uid); }
     // gerade abgehakt und aus der Liste schon verschwunden (z. B. Cloud-Listen): kurz noch zeigen
@@ -2677,7 +2690,7 @@ class FpTodoCard extends HTMLElement {
         if (!due || due.day > lim) return;
       }
       const grp = done && !kept ? "done" : !due ? "none" : due.day < today ? "ov" : due.day === today ? "td" : "nx";
-      rows.push({ u: it.uid, s: String(it.summary == null ? "" : it.summary), done, pend: !!it.pend, due, i, grp, chip: !done && due ? this._chip(due, today) : null });
+      rows.push({ u: it.uid, s: String(it.summary == null ? "" : it.summary), d: showDesc ? this._descText(it.description) : "", done, pend: !!it.pend, due, i, grp, chip: !done && due ? this._chip(due, today) : null });
     });
     const open = rows.filter(r => !r.done).length;
     const groups = [];
@@ -2711,7 +2724,7 @@ class FpTodoCard extends HTMLElement {
     // Farbe des Abhak-Kreises: die Personenfarbe der Pille, bei der alten Form (bg + color) und ohne Farbe der Akzent
     const pc = this.config.pill;
     const dot = pc && typeof pc === "object" && pc.color && !pc.bg ? String(pc.color) : "";
-    this.innerHTML = `<ha-card class="fpt-card"${dot ? ` style="${U.esc("--fpt-dot:" + dot)}"` : ""}><div class="fpt-head" hidden></div><div class="fpt-list"></div>${add}</ha-card>${this._styles()}`;
+    this.innerHTML = `<ha-card class="fpt-card"${dot ? ` style="${U.esc("--fpt-dot:" + dot)}"` : ""}><div class="fpt-body"><div class="fpt-head" hidden></div><div class="fpt-list" lang="de"></div>${add}</div></ha-card>${this._styles()}`;
     if (U.fill) U.fill(this);
     const card = this.querySelector(".fpt-card");
     this._head = card.querySelector(".fpt-head");
@@ -2750,7 +2763,7 @@ class FpTodoCard extends HTMLElement {
     const ed = this._edit && !r.pend;
     return `<div class="fpt-row${r.done ? " fpt-done" : ""}${r.pend ? " fpt-pend" : ""}">`
       + `<button type="button" class="fpt-chk" role="checkbox" aria-checked="${r.done ? "true" : "false"}" aria-label="${r.done ? "Wieder öffnen" : "Erledigt"}"${r.pend ? " disabled" : ` data-uid="${uid}"`}><span class="fpt-circ"></span></button>`
-      + `<div class="fpt-txt${ed ? " fpt-edit" : ""}"${ed ? ` data-uid="${uid}"` : ""}><span>${U.esc(r.s)}</span></div>`
+      + `<div class="fpt-txt${ed ? " fpt-edit" : ""}"${ed ? ` data-uid="${uid}"` : ""}><span>${U.esc(r.s)}</span>${r.d ? `<div class="fpt-desc">${U.esc(r.d)}</div>` : ""}</div>`
       + (r.chip ? `<span class="fpt-chip fpt-c-${r.chip.c}">${U.esc(r.chip.t)}</span>` : "")
       + `</div>`;
   }
@@ -2760,7 +2773,7 @@ class FpTodoCard extends HTMLElement {
     this._expire();
     const m = this._model();
     const state = this._items !== null ? "ok" : this._err ? "err" : "wait";
-    const sig = JSON.stringify([state, m.open, m.groups.map(g => [g.key, g.title, g.rows.map(r => [r.u, r.s, r.done, r.pend, r.chip ? r.chip.c + ":" + r.chip.t : ""])])]);
+    const sig = JSON.stringify([state, m.open, m.groups.map(g => [g.key, g.title, g.rows.map(r => [r.u, r.s, r.d, r.done, r.pend, r.chip ? r.chip.c + ":" + r.chip.t : ""])])]);
     if (sig === this._sig) return;
     this._sig = sig;
     this._nRows = m.groups.reduce((n, g) => n + g.rows.length, 0);
@@ -2788,15 +2801,16 @@ class FpTodoCard extends HTMLElement {
         --fpt-mut:var(--secondary-text-color);--fpt-acc:var(--fp-accent,var(--primary-color,#4F6B57));--fpt-dot:var(--fpt-acc);--fpt-err:var(--error-color,#db4437);
         --fpt-al:var(--fp-alert,var(--warning-color,#b97f06));--fpt-alb:var(--fp-alert-bg,color-mix(in srgb,var(--warning-color,#b97f06) 18%,transparent));
         --fpt-r:var(--fp-radius-sm,12px);
-        box-sizing:border-box;height:100%;padding:14px;display:flex;flex-direction:column;color:var(--primary-text-color);}
+        box-sizing:border-box;height:100%;display:flex;flex-direction:column;container-type:inline-size;color:var(--primary-text-color);}
+      .fpt-body{flex:1 1 auto;min-height:0;box-sizing:border-box;padding:14px;display:flex;flex-direction:column;}
       :where(.fpt-card) button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;}
       /* Kopf: Pille (oder Titel) links, Zahl der offenen Aufgaben rechts */
       .fpt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;min-height:30px;}
       .fpt-head[hidden]{display:none;}
-      .fpt-title{font-size:1.05rem;font-weight:800;letter-spacing:-.01em;min-width:0;overflow-wrap:anywhere;}
-      .fpt-pill{display:inline-block;min-width:0;max-width:100%;padding:4px 12px;border-radius:999px;font-size:.82rem;font-weight:800;letter-spacing:.01em;line-height:1.4;overflow-wrap:anywhere;
+      .fpt-title{font-size:1.05rem;font-weight:800;letter-spacing:-.01em;min-width:0;overflow-wrap:break-word;}
+      .fpt-pill{display:inline-block;min-width:0;max-width:100%;padding:4px 12px;border-radius:999px;font-size:.82rem;font-weight:800;letter-spacing:.01em;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
         background:var(--fpt-pbg,var(--fp-surface,var(--secondary-background-color)));color:var(--fpt-pfg,var(--primary-text-color));}
-      .fpt-cnt{display:flex;align-items:baseline;gap:5px;flex:none;margin-left:auto;}
+      .fpt-cnt{display:flex;align-items:baseline;gap:5px;flex:none;margin-left:auto;white-space:nowrap;}
       .fpt-cnt b{font-size:1.45rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;}
       .fpt-cnt small{font-size:.72rem;font-weight:600;color:var(--fpt-mut);}
       /* Liste */
@@ -2806,7 +2820,7 @@ class FpTodoCard extends HTMLElement {
       .fpt-sec-ov{color:var(--fpt-err);}
       .fpt-rows{display:flex;flex-direction:column;}
       /* Zeilen liegen ohne Fläche auf der Karte; eine Linie trennt sie innerhalb einer Gruppe (nicht über der ersten) */
-      .fpt-row{display:flex;align-items:center;gap:0;min-height:46px;box-sizing:border-box;padding:0;}
+      .fpt-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;min-height:46px;box-sizing:border-box;padding:0;}
       .fpt-row+.fpt-row{border-top:1px solid var(--divider-color);}
       .fpt-chk{flex:none;align-self:stretch;width:44px;min-height:44px;margin:0 0 0 -10px;padding:0;border:none;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;}
       .fpt-chk:disabled{cursor:default;}
@@ -2815,8 +2829,10 @@ class FpTodoCard extends HTMLElement {
       .fpt-chk:active .fpt-circ{transform:scale(.86);}
       .fpt-done .fpt-circ{background:color-mix(in srgb, var(--fpt-dot) 75%, var(--primary-text-color, #222));}
       .fpt-done .fpt-circ::after{content:"";position:absolute;left:6px;top:2px;width:6px;height:11px;border:solid var(--fp-accent-fg,#fff);border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
-      .fpt-txt{flex:1 1 0;min-width:0;align-self:stretch;display:flex;align-items:center;padding:8px 8px 8px 4px;font-size:.92rem;font-weight:700;line-height:1.3;overflow-wrap:anywhere;color:var(--primary-text-color);}
+      .fpt-txt{flex:1 1 0;min-width:0;align-self:stretch;display:flex;flex-direction:column;justify-content:center;padding:8px 8px 8px 4px;font-size:.92rem;font-weight:700;line-height:1.3;overflow-wrap:break-word;word-break:normal;hyphens:auto;color:var(--primary-text-color);}
       .fpt-txt.fpt-edit{cursor:pointer;}
+      /* Beschreibung: kleine zweite Zeile, höchstens zwei Zeilen */
+      .fpt-desc{margin-top:1px;font-size:.76rem;font-weight:600;line-height:1.3;color:var(--secondary-text-color);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;word-break:normal;hyphens:auto;}
       .fpt-done .fpt-txt{color:var(--fpt-mut);font-weight:600;opacity:.65;}
       .fpt-done .fpt-txt span{text-decoration:line-through;}
       .fpt-pend{opacity:.5;}
@@ -2835,6 +2851,19 @@ class FpTodoCard extends HTMLElement {
       .fpt-in:focus{outline:2px solid color-mix(in srgb,var(--fpt-acc) 55%,transparent);outline-offset:0;}
       .fpt-plus{flex:none;width:46px;min-height:46px;padding:0;border:none;border-radius:var(--fpt-r);background:var(--fpt-acc);color:var(--fp-accent-fg,#fff) !important;font-size:1.3rem;font-weight:700;line-height:1;cursor:pointer;}
       .fpt-plus:active{opacity:.8;}
+      /* schmale Karten (Handy-Spalten, ca. 120–140 px): Chip unter den Text, kleinere Tippfläche und Polster */
+      @container (max-width: 280px){
+        .fpt-body{padding:10px;}
+        .fpt-head{gap:6px;}
+        .fpt-row{min-height:40px;}
+        .fpt-chk{width:36px;min-height:36px;margin-left:-8px;}
+        .fpt-circ{width:20px;height:20px;}
+        .fpt-done .fpt-circ::after{left:5px;top:1.5px;width:5px;height:9px;border-width:0 2px 2px 0;}
+        .fpt-txt{padding:6px 4px;}
+        .fpt-chip{grid-column:2;grid-row:2;justify-self:start;margin:0 0 6px 4px;}
+        .fpt-in{min-height:40px;padding:0 10px;}
+        .fpt-plus{width:40px;min-height:40px;}
+      }
     </style>`;
   }
 
@@ -2893,12 +2922,12 @@ class FpTodoCard extends HTMLElement {
     });
   }
   // Neuer Eintrag sofort in der Liste (leicht ausgegraut), bis er im Abo auftaucht, höchstens 20 s.
-  _optimistic(summary, due) {
+  _optimistic(summary, due, description) {
     const text = String(summary).trim();
     if (!text) return null;
     const key = this._key(text);
     const base = (this._items || []).filter(i => i.status !== "completed" && this._key(i.summary) === key).length;
-    const p = { uid: "fpt-pend-" + (++this._pseq), summary: text, key, due: due || null, base, t: Date.now() };
+    const p = { uid: "fpt-pend-" + (++this._pseq), summary: text, description: description == null ? "" : String(description), key, due: due || null, base, t: Date.now() };
     this._pending.push(p);
     this._after(() => this._paint(), 20100);
     this._paint();
