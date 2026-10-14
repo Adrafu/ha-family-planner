@@ -2508,7 +2508,7 @@ if (!customElements.get("fp-todo-card-beta")) {
 }
 })();
 
-/* ===== fp-glance-card-beta v6 (fuellt die Rasterzelle aus, forecast_rows statt forecast_days (clock-weather-card v2), hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay = Touch+Maus zuverlaessig; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card; Tageszeit-Hintergrund via sun.sun) ===== */
+/* ===== fp-glance-card-beta v7 (Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2534,7 +2534,7 @@ class FpGlanceCard extends HTMLElement {
       nav_path: "",                         // (veraltet) Fallback fuer calendar_path
     }, config || {});
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
-    this._built = false; this._wc = null; this._curBg = ""; this._curLight = null;
+    this._built = false; this._wc = null; this._curBg = ""; this._curMode = ""; this._curFg = null;
     // Eingebettete Wetterkarte (transparent aufs Banner geblendet); volle Config ueberschreibbar via weather_card
     if (this.config.show_weather) {
       // Kopie: eine aus der Dashboard-Konfiguration gereichte weather_card ist eingefroren
@@ -2546,7 +2546,8 @@ class FpGlanceCard extends HTMLElement {
         hide_today_section: !!this.config.hide_today_section, hide_forecast_section: false,
         forecast_rows: this.config.forecast_rows,
       });
-      if (!base.card_mod) base.card_mod = { style: "ha-card{background:transparent!important;box-shadow:none!important;border:none!important;} :host{--primary-text-color:#fff;--secondary-text-color:rgba(255,255,255,.9);} img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));} svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));}" };
+      // Schriftfarben kommen nicht mehr von hier, sondern von .fpg-wc der Glance-Karte (erben hinein)
+      if (!base.card_mod) base.card_mod = { style: "ha-card{background:transparent!important;box-shadow:none!important;border:none!important;} img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));} svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));}" };
       this._wcConfig = base;
     }
   }
@@ -2650,14 +2651,22 @@ class FpGlanceCard extends HTMLElement {
   _daypart() { const h = new Date().getHours(); if (h >= 5 && h < 11) return "morning"; if (h >= 11 && h < 17) return "day"; if (h >= 17 && h < 22) return "evening"; return "night"; }
   _greet() { const p = this._daypart(); return p === "morning" ? "Guten Morgen" : p === "evening" ? "Guten Abend" : p === "night" ? "Gute Nacht" : "Hallo"; }
   _defaultBg(part) { return part === "morning" ? "linear-gradient(135deg,#5b9bd5,#89c4f4)" : part === "day" ? "linear-gradient(135deg,#2f80c4,#5aa9e6)" : part === "evening" ? "linear-gradient(135deg,#3a5a8c,#7b6ca8)" : "linear-gradient(135deg,#1b2a4a,#33415e)"; }
+  // Rückgabe: style + mode ("light" = weiße Schrift auf Bild/Vorgabe, "dark" = Theme-Schrift auf eigener Farbe,
+  // "theme" = Hintergrund und Schrift aus --fp-glance-*), bei "theme" zusätzlich fg = --fp-glance-fg gesetzt
   _bg() {
     const part = this._daypart();
     const bgs = this.config.backgrounds || {};
     const bRaw = bgs[part] || this.config.background || "";
     const isImg = bRaw && (/^(https?:|\/|data:)/.test(bRaw) || /\.(jpe?g|png|webp|gif|avif)/i.test(bRaw));
-    if (isImg) return { style: `background-image:linear-gradient(rgba(0,0,0,.42),rgba(0,0,0,.58)),url('${bRaw}');background-size:cover;background-position:center;`, light: true };
-    if (bRaw) return { style: `background:${bRaw};`, light: false };
-    return { style: `background:${this._defaultBg(part)};`, light: true };
+    if (isImg) return { style: `background-image:linear-gradient(rgba(0,0,0,.42),rgba(0,0,0,.58)),url('${bRaw}');background-size:cover;background-position:center;`, mode: "light" };
+    if (bRaw) return { style: `background:${bRaw};`, mode: "dark" };
+    // Theme-Variable der Tageszeit: var(...) in den Stil, nicht der gelesene Wert,
+    // damit der Hell/Dunkel-Wechsel des Themes ohne Neuzeichnen greift.
+    const cs = getComputedStyle(this);
+    if (cs.getPropertyValue("--fp-glance-" + part).trim()) {
+      return { style: `background:var(--fp-glance-${part});`, mode: "theme", fg: !!cs.getPropertyValue("--fp-glance-fg").trim() };
+    }
+    return { style: `background:${this._defaultBg(part)};`, mode: "light" };
   }
 
   async _build() {
@@ -2672,12 +2681,19 @@ class FpGlanceCard extends HTMLElement {
              drop-shadow schon. Wert fest statt var(--ha-card-box-shadow):
              dort steht je nach Theme "none", und drop-shadow(none) macht die
              ganze Filter-Regel ungueltig — dann faellt auch der Rueckfallwert weg.
-             Ueber die Karten-Option "shadow" ueberschreibbar. */
-          filter:drop-shadow(var(--fpg-shadow,0 4px 14px rgba(0,0,0,.16)));
+             Reihenfolge: Karten-Option "shadow" (--fpg-shadow), Theme-Variable
+             --fp-glance-shadow, fester Wert. Die Theme-Variable muss ein gueltiger
+             Schattenwert sein (z. B. "0 4px 14px rgba(0,0,0,.16)"), nicht "none". */
+          filter:drop-shadow(var(--fpg-shadow,var(--fp-glance-shadow,0 4px 14px rgba(0,0,0,.16))));
           border-width:var(--ha-card-border-width,0);border-style:solid;
-          border-color:var(--ha-card-border-color,var(--divider-color));}
+          border-color:var(--fp-glance-border,var(--ha-card-border-color,var(--divider-color)));}
         .fpg-light{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.55);}
         .fpg-dark{color:var(--primary-text-color);}
+        .fpg-theme{color:var(--fp-glance-fg,var(--primary-text-color));}
+        /* Schriftfarben der eingebetteten Wetterkarte kommen von hier (erben hinein);
+           bei "dark" bleiben die Theme-Werte, bei "theme" ohne --fp-glance-fg ebenso. */
+        .fpg-light .fpg-wc{--primary-text-color:#fff;--secondary-text-color:rgba(255,255,255,.9);}
+        .fpg-theme.fpg-fg .fpg-wc{--primary-text-color:var(--fp-glance-fg);--secondary-text-color:color-mix(in srgb, var(--fp-glance-fg) 80%, transparent);}
         .fpg-clk{cursor:pointer;}
         .fpg-date.fpg-clk:hover,.fpg-chip.fpg-clk:hover{text-decoration:underline;}
         .fpg-wc.fpg-clk{cursor:pointer;}
@@ -2686,6 +2702,7 @@ class FpGlanceCard extends HTMLElement {
         .fpg-hi{font-size:1.3rem;font-weight:700;margin-top:2px;}
         .fpg-info{display:flex;gap:16px;flex-wrap:wrap;margin-top:13px;padding-top:11px;border-top:1px solid rgba(255,255,255,.28);font-size:.9rem;}
         .fpg-dark .fpg-info{border-top-color:var(--divider-color);}
+        .fpg-theme .fpg-info{border-top-color:color-mix(in srgb, var(--fp-glance-fg, var(--primary-text-color)) 22%, transparent);}
         .fpg-chip{display:inline-flex;align-items:center;gap:6px;}
         .fpg-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
         .fpg-muted{opacity:.72;}
@@ -2738,10 +2755,13 @@ class FpGlanceCard extends HTMLElement {
     if (!this._hass || !this._built || !this._elCard) return;
     const bg = this._bg();
     if (bg.style !== this._curBg) { this._elCard.setAttribute("style", bg.style); this._curBg = bg.style; }
-    if (bg.light !== this._curLight) {
-      this._elCard.classList.toggle("fpg-light", bg.light);
-      this._elCard.classList.toggle("fpg-dark", !bg.light);
-      this._curLight = bg.light;
+    const fg = !!bg.fg;
+    if (bg.mode !== this._curMode || fg !== this._curFg) {
+      this._elCard.classList.toggle("fpg-light", bg.mode === "light");
+      this._elCard.classList.toggle("fpg-dark", bg.mode === "dark");
+      this._elCard.classList.toggle("fpg-theme", bg.mode === "theme");
+      this._elCard.classList.toggle("fpg-fg", bg.mode === "theme" && fg);
+      this._curMode = bg.mode; this._curFg = fg;
     }
     const now = new Date();
     this._elDate.textContent = now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
