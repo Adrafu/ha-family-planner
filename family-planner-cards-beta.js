@@ -7052,7 +7052,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v18 (am Handy klebt der Kopf mit der Kinderwahl beim Scrollen kompakt oben; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v18 (am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben und wird dabei weich kompakt; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7744,9 +7744,10 @@ class FpBabyOverviewCard extends HTMLElement {
   // Kopf wie in Buma: Foto, Name, Alter; rechts ⚙ (nur mit Helfern) und ✦ für „Frag nach“.
   // Bei mehreren Kindern steht statt des Namens ein Schalter mit einem großen Knopf je Kind (Foto, Name, Alter);
   // der gewählte ist in der Kinderfarbe gefüllt. Am Tablet stehen Zwillinge nebeneinander — dann zeigt der Kopf beide.
-  // Bei mehreren Kindern folgt noch eine zweite, kompakte Fassung (.fo-kompakt: kleines Foto, nur der Name, ohne Alter):
-  // Sie bleibt unsichtbar, bis der Kopf am Handy oben klebt (Klasse fo-stuck an der Karte, siehe _klebt). Sie liegt
-  // über der normalen Zeile und nimmt im Fluss keinen Platz ein; deshalb ändert sich die Höhe des Kopfes nie.
+  // Bei mehreren Kindern steckt die Zeile in .fo-krow, dazu kommt ein unsichtbares Abbild (.fo-geist). Am Handy klebt der Kopf
+  // beim Scrollen, und dieselbe Zeile schrumpft dann weich (Klasse fo-stuck an der Karte, siehe _klebt und das CSS). Damit sich
+  // dabei nichts im Seitenfluss verschiebt, liegt die echte Zeile absolut, und das Abbild hält im Fluss ihre volle Höhe. Es
+  // wächst von selbst mit Breite, Schrift und ein- oder zweizeiligem Alter mit, gemessen wird nichts. Am Tablet entfällt es.
   _kopf() {
     const kids = this.config.kids, k = this._kid(this._kind);
     const gleichAlt = kids.every(x => x.birth === kids[0].birth && x.ga === kids[0].ga);
@@ -7758,9 +7759,9 @@ class FpBabyOverviewCard extends HTMLElement {
     const c = this.config, gear = c.reminder_entity || c.reminder_night_entity || c.meal_pause_entity
       ? `<button class="fo-gear" type="button" aria-label="Einstellungen" title="Einstellungen">⚙\uFE0E</button>` : "";
     const spark = c.chat ? `<button class="fo-spark" type="button" aria-label="Frag nach" title="Frag nach">${SPARK}</button>` : "";
-    const kompakt = kids.length > 1
-      ? `<div class="fo-kompakt"><div class="fo-who fo-kseg">${kids.map(x => `<button type="button" class="fo-kb${x.key === k.key ? " fo-on" : ""}" data-kind-sel="${U.esc(x.key)}" style="--k:${U.esc(x.color)};--k2:${U.esc(this._tint(x.color, .22))}" aria-pressed="${x.key === k.key}">${this._avatar(x, 24)}<span class="fo-kbn"><b>${U.esc(x.name)}</b></span></button>`).join("")}</div>${gear}${spark}</div>` : "";
-    return einer + alle + gear + spark + kompakt;
+    const zeile = einer + alle + gear + spark;
+    if (kids.length < 2) return zeile;
+    return `<div class="fo-krow">${zeile}</div><div class="fo-geist" aria-hidden="true">${zeile.replace(/ data-kind-sel=/g, " data-geist=")}</div>`;   // im Abbild kein data-kind-sel, damit nichts es findet
   }
   _tagNav() {
     const d = this._mitternacht(new Date(), this._off);
@@ -8891,26 +8892,43 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-spark:active{background:var(--b-acc2);}
       .fo-gear{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-mut) !important;font-size:1.45rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
       .fo-gear:active{background:var(--b-acc2);}
-      /* Kopf klebt am Handy (nur mit mehreren Kindern) unter der festen HA-Kopfzeile und wird dabei kompakt.
-         Die normale Zeile bleibt im Fluss und behält ihre Höhe (sie wird nur unsichtbar), die kompakte Fassung .fo-kompakt
-         liegt absolut darüber und braucht keinen Platz. Beim Umschalten ändert sich also nichts an der Länge der Seite,
-         und die Grenze flackert nicht. Solange fo-stuck fehlt (Kopf ganz oben), sieht alles aus wie ohne Kleben.
-         Die Klasse setzt _klebt. Gestapelt wird nur innerhalb der Karte: über dem Inhalt, unter Dock (4) und Blättern (999). */
+      /* Kopf klebt am Handy (nur mit mehreren Kindern) unter der festen HA-Kopfzeile und schrumpft dabei weich: das Alter klappt
+         zu, Knöpfe und Foto werden flacher, ⚙ und ✦ kleiner, dahinter blenden Kartenfläche und Schatten ein. Die Klasse
+         fo-stuck setzt _klebt. Es ist immer dieselbe Zeile, nur ihre Maße ändern sich.
+         Damit sich dabei im Seitenfluss nichts verschiebt, liegt die echte Zeile (.fo-krow) absolut in .fo-top, und das
+         unsichtbare Abbild (.fo-geist) hält die volle Höhe. Die Seite wird beim Umschalten also nicht kürzer, und der Wächter
+         springt nicht hin und her. Der freie Streifen unter der geschrumpften Zeile ist durchsichtig und lässt Tipps durch.
+         Ganz oben (ohne fo-stuck) sieht alles aus wie ohne Kleben. Am Tablet und mit einem Kind gilt davon nichts:
+         dort ist .fo-krow unsichtbar im Layout (contents) und das Abbild aus. z-index 5 hält die Zeile über dem Inhalt der Karte. */
       .fo-wacht{height:1px;margin-top:-1px;pointer-events:none;}
-      .fo-kompakt{display:none;}
+      .fo-krow{display:contents;}
+      .fo-geist{display:none;}
       @container fo-card (max-width: 679px){
-        .fo-card.fo-multi .fo-top{position:sticky;top:calc(var(--header-height, 56px) + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));z-index:5;}
-        .fo-card.fo-multi .fo-top > *{transition:opacity .15s,visibility .15s;}
-        .fo-card.fo-multi .fo-kompakt{display:flex;align-items:center;gap:8px;position:absolute;top:0;left:-16px;right:-16px;box-sizing:border-box;padding:5px 16px;
-          background:var(--b-bg);box-shadow:0 8px 12px -8px var(--b-shadow);opacity:0;visibility:hidden;}
-        .fo-kompakt .fo-kb{min-height:36px;padding:2px 10px 2px 5px;gap:6px;}
-        .fo-kompakt .fo-kbn b{font-size:.9rem;}
-        .fo-kompakt .fo-gear,.fo-kompakt .fo-spark{width:36px;height:36px;}
-        .fo-card.fo-multi.fo-stuck .fo-top{pointer-events:none;}   /* der freie Streifen unter der kompakten Zeile soll den Inhalt nicht abdecken */
-        .fo-card.fo-multi.fo-stuck .fo-top > *{opacity:0;visibility:hidden;}
-        .fo-card.fo-multi.fo-stuck .fo-top > .fo-kompakt{opacity:1;visibility:visible;pointer-events:auto;}
+        .fo-card.fo-multi .fo-top{display:block;position:sticky;top:calc(var(--header-height, 56px) + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));z-index:5;pointer-events:none;}
+        .fo-card.fo-multi .fo-krow,.fo-card.fo-multi .fo-geist{display:flex;align-items:center;gap:10px;min-height:50px;box-sizing:border-box;}
+        .fo-card.fo-multi .fo-geist{visibility:hidden;}
+        .fo-card.fo-multi .fo-krow{position:absolute;top:0;left:0;right:0;pointer-events:auto;}
+        .fo-card.fo-multi .fo-kbn small{max-height:2.4em;}   /* zwei Zeilen Alter; von diesem Wert klappt es auf 0 zu */
+        /* Übergänge nur an der echten Zeile. Neu gezeichnete Teile (Kindwechsel) starten gleich im Endzustand, da läuft nichts. */
+        .fo-card.fo-multi .fo-krow{transition:padding .2s ease-out,min-height .2s ease-out;}
+        .fo-card.fo-multi .fo-krow::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:-16px;right:-16px;pointer-events:none;
+          background:var(--b-bg);box-shadow:0 8px 12px -8px var(--b-shadow);opacity:0;transition:opacity .2s ease-out;}
+        .fo-card.fo-multi .fo-krow .fo-kb{transition:min-height .2s ease-out,padding .2s ease-out;}
+        .fo-card.fo-multi .fo-krow .fo-kb .fo-av{transition:width .2s ease-out,height .2s ease-out,font-size .2s ease-out;}
+        .fo-card.fo-multi .fo-krow .fo-kbn b{transition:font-size .2s ease-out;}
+        .fo-card.fo-multi .fo-krow .fo-kbn small{transition:max-height .2s ease-out,opacity .2s ease-out;}
+        .fo-card.fo-multi .fo-krow .fo-gear,.fo-card.fo-multi .fo-krow .fo-spark{transition:width .2s ease-out,height .2s ease-out,font-size .2s ease-out;}
+        /* geklebt */
+        .fo-card.fo-multi.fo-stuck .fo-krow{padding:5px 0;min-height:0;}
+        .fo-card.fo-multi.fo-stuck .fo-krow::before{opacity:1;pointer-events:auto;}   /* die Fläche fängt Tipps ab, sonst griffe man durch die Zeile */
+        .fo-card.fo-multi.fo-stuck .fo-krow .fo-kb{min-height:36px;padding-top:2px;padding-bottom:2px;}
+        .fo-card.fo-multi.fo-stuck .fo-krow .fo-kb .fo-av{width:24px !important;height:24px !important;font-size:10px !important;}   /* sticht die festen Maße aus _avatar */
+        .fo-card.fo-multi.fo-stuck .fo-krow .fo-kbn b{font-size:.9rem;}
+        .fo-card.fo-multi.fo-stuck .fo-krow .fo-kbn small{max-height:0;opacity:0;}
+        .fo-card.fo-multi.fo-stuck .fo-krow .fo-gear,.fo-card.fo-multi.fo-stuck .fo-krow .fo-spark{width:36px;height:36px;}
+        .fo-card.fo-multi.fo-stuck .fo-krow .fo-gear{font-size:1.2rem;}
       }
-      @media (prefers-reduced-motion: reduce){ .fo-top > *{transition:none !important;} }
+      @media (prefers-reduced-motion: reduce){ .fo-krow,.fo-krow *,.fo-krow::before{transition:none !important;} }
 
       /* Tag blättern */
       .fo-daynav{display:flex;align-items:center;justify-content:center;gap:28px;margin:14px 0 12px;font-weight:700;font-size:1rem;}
