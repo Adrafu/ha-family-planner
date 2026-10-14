@@ -7049,7 +7049,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v16 („Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“: Kästen mit Linien statt beiger Flächen, Kennzahlen als Liste; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v17 (startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7098,8 +7098,7 @@ class FpBabyOverviewCard extends HTMLElement {
     this._pfx = `fp-overview:${this.config.kids.map(k => k.key).join(",")}`;
     this._kind = this._pref("kind", "");
     if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
-    const v = this._pref("view", "heute");
-    this._view = ["protokoll", "muster", "wachstum", "momente"].includes(v) ? v : "heute";
+    this._view = "heute";   // beim Öffnen des Tabs immer „Heute“; die Ansicht wird nicht gemerkt
     this._filter = this._pref("filter", "alle");
     this._spanne = this._pref("spanne", "7") === "14" ? 14 : 7;
     this._off = 0;   // 0 = heute, -1 = gestern …
@@ -7144,11 +7143,20 @@ class FpBabyOverviewCard extends HTMLElement {
     this._nachT = zeiten.map(ms => setTimeout(() => this._load(), ms));
   }
   connectedCallback() {
+    // Home Assistant hängt die Karte beim Tabwechsel ab und wieder an: wer zurückkehrt, landet auf „Heute“ am heutigen Tag.
+    // Kind, Muster-Spanne, eingebettete Karten und Daten bleiben.
+    if (this._abgehaengt) {
+      this._abgehaengt = false;
+      this._closeSheet();
+      this._view = "heute"; this._off = 0; this._eAlle = false;
+      if (this._built) this._paint(true);
+    }
     if (!this._timer) this._timer = setInterval(() => this._tick(), 1000);
     // Die Wachstumskurve wird für ihre echte Breite gezeichnet, sonst schrumpft am Handy die Schrift mit.
     if (!this._ro && window.ResizeObserver) { this._ro = new ResizeObserver(() => { if (this._view === "wachstum") this._zeichne(); }); this._ro.observe(this); }
   }
   disconnectedCallback() {
+    this._abgehaengt = true;
     clearInterval(this._timer); this._timer = null; (this._nachT || []).forEach(clearTimeout);
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
   }
@@ -7616,7 +7624,7 @@ class FpBabyOverviewCard extends HTMLElement {
     if ((b = z("[data-off]"))) { this._off = Math.min(0, Math.max(-(LADETAGE - 1), this._off + Number(b.dataset.off))); this._eAlle = false; this._paint(true); return; }
     if ((b = z("[data-view]"))) {
       const vorher = this._view;
-      this._view = b.dataset.view; this._setPref("view", this._view); this._off = 0; this._paint(true);
+      this._view = b.dataset.view; this._off = 0; this._paint(true);
       if (vorher === "protokoll" && this._view !== vorher) this._load();   // was dort eingetragen wurde, soll gleich in den anderen Ansichten stehen
       window.scrollTo && this._card.scrollIntoView({ block: "start", behavior: "smooth" }); return;
     }
