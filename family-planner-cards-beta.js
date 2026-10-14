@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.0.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
+/* Family Planner custom cards v3.0.1 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -7052,7 +7052,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v17 (startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v18 (am Handy klebt der Kopf mit der Kinderwahl beim Scrollen kompakt oben; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7157,11 +7157,13 @@ class FpBabyOverviewCard extends HTMLElement {
     if (!this._timer) this._timer = setInterval(() => this._tick(), 1000);
     // Die Wachstumskurve wird für ihre echte Breite gezeichnet, sonst schrumpft am Handy die Schrift mit.
     if (!this._ro && window.ResizeObserver) { this._ro = new ResizeObserver(() => { if (this._view === "wachstum") this._zeichne(); }); this._ro.observe(this); }
+    if (this._built) this._klebt();   // nach dem Wiederanhängen den Beobachter für den klebenden Kopf neu anlegen
   }
   disconnectedCallback() {
     this._abgehaengt = true;
     clearInterval(this._timer); this._timer = null; (this._nachT || []).forEach(clearTimeout);
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
+    this._klebtEnde();   // die Beobachter hängen an Wächter und Karte im Gerüst; beim Wiederanhängen legt connectedCallback sie neu an
   }
   // Jede Sekunde nur die laufenden Uhren; jede halbe Minute die „her“-Zeiten, jede Minute die Kalender.
   _tick() {
@@ -7571,9 +7573,11 @@ class FpBabyOverviewCard extends HTMLElement {
   // ---------- Aufbau ----------
   _build() {
     this._built = true;
+    this._klebtEnde();   // Gerüst wird neu gebaut (z. B. nach setConfig): alte Beobachter hängen an Elementen, die es nicht mehr gibt
     this.innerHTML = `
       <ha-card class="fo-card">
         <div class="fo-sky"></div>
+        <div class="fo-wacht" aria-hidden="true"></div>
         <div class="fo-top"></div>
         <div class="fo-body"><div class="fo-laden">Einträge werden geladen …</div></div>
         <div class="fo-dock"><div class="fo-act"></div><nav class="fo-tabbar"></nav></div>
@@ -7582,6 +7586,41 @@ class FpBabyOverviewCard extends HTMLElement {
     this._card.classList.toggle("fo-dark", this._dunkel());
     this._card.addEventListener("click", ev => this._klick(ev));
     this._wischen(this.querySelector(".fo-body"));
+  }
+  // Der Kopf klebt am Handy (mehrere Kinder) unter der festen HA-Kopfzeile und wird dabei kompakt. Ob er gerade klebt,
+  // sagt der Wächter (.fo-wacht): ein 1-px-Streifen direkt vor .fo-top, der mit dem Inhalt scrollt. Verlässt er den
+  // Bildschirm oben — der Rand ist der aufgelöste top-Wert der Kopfzeile —, klebt sie, und die Karte bekommt fo-stuck.
+  // Das geht mit jedem Scroll-Container und ohne Scroll-Ereignisse. Den Rand liest die Funktion aus dem CSS; am Tablet
+  // und mit einem Kind ist die Kopfzeile nicht sticky, dann gibt es keinen Beobachter. Eine zweite Beobachtung der
+  // Kartenbreite stößt die Prüfung neu an, wenn Drehen oder Fensterbreite die Container-Query umschalten.
+  _klebt() {
+    const card = this._card, top = this.querySelector(".fo-top"), wacht = this.querySelector(".fo-wacht");
+    if (!this._built || !card || !top || !wacht || !this.isConnected || !window.IntersectionObserver) return;
+    if (!this._roK && window.ResizeObserver) {
+      this._roK = new ResizeObserver(() => { if (card.clientWidth !== this._klebtW) { this._klebtW = card.clientWidth; this._klebt(); } });
+      this._roK.observe(card);
+    }
+    const cs = getComputedStyle(top), px = cs.position === "sticky" ? parseFloat(cs.top) : NaN;
+    const rand = isFinite(px) ? Math.max(0, Math.round(px)) : -1;
+    if (rand === this._klebtRand && (rand < 0 || this._io)) return;   // nichts geändert, nicht doppelt anlegen
+    this._klebtAus();
+    this._klebtRand = rand;
+    if (rand < 0) return;
+    this._io = new IntersectionObserver(es => {
+      const e = es[es.length - 1], oben = e.rootBounds ? e.rootBounds.top : rand;
+      this._card.classList.toggle("fo-stuck", !e.isIntersecting && e.boundingClientRect.top < oben);   // oben hinausgescrollt, nicht unten
+    }, { rootMargin: `-${rand}px 0px 0px 0px`, threshold: 0 });
+    this._io.observe(wacht);
+  }
+  _klebtAus() {
+    if (this._io) { this._io.disconnect(); this._io = null; }
+    this._klebtRand = null;
+    if (this._card) this._card.classList.remove("fo-stuck");
+  }
+  _klebtEnde() {
+    this._klebtAus();
+    if (this._roK) { this._roK.disconnect(); this._roK = null; }
+    this._klebtW = 0;
   }
   // Kind wählen (Schalter im Kopf, Wischen) — die Ansichten zeichnen sich danach für das neue Kind.
   _kindWahl(key) {
@@ -7629,6 +7668,9 @@ class FpBabyOverviewCard extends HTMLElement {
       const vorher = this._view;
       this._view = b.dataset.view; this._off = 0; this._paint(true);
       if (vorher === "protokoll" && this._view !== vorher) this._load();   // was dort eingetragen wurde, soll gleich in den anderen Ansichten stehen
+      // Am Handy mit mehreren Kindern klebt der Kopf unter der HA-Kopfzeile: den Kartenanfang dorthin scrollen, nicht darunter,
+      // sonst verdeckt die klebende Zeile den Tagesschalter.
+      this._card.style.scrollMarginTop = this._eineSpalte() ? "calc(var(--header-height, 56px) + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))" : "";
       window.scrollTo && this._card.scrollIntoView({ block: "start", behavior: "smooth" }); return;
     }
     if ((b = z("[data-nav]"))) { const p = this.config[b.dataset.nav]; if (p) { history.pushState(null, "", p); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); } return; }
@@ -7695,12 +7737,16 @@ class FpBabyOverviewCard extends HTMLElement {
     if (!this.config.milestone_calendar && this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
     this.querySelector(".fo-tabbar").innerHTML = tabs.join("");
     this.querySelector(".fo-act").innerHTML = this._aktionsleiste();   // in jeder Ansicht; am Tablet per CSS aus
+    this._klebt();   // fo-multi ist gesetzt: jetzt steht fest, ob die Kopfzeile klebt
     if (this._view === "wachstum") this._zeichne();
   }
 
   // Kopf wie in Buma: Foto, Name, Alter; rechts ⚙ (nur mit Helfern) und ✦ für „Frag nach“.
   // Bei mehreren Kindern steht statt des Namens ein Schalter mit einem großen Knopf je Kind (Foto, Name, Alter);
   // der gewählte ist in der Kinderfarbe gefüllt. Am Tablet stehen Zwillinge nebeneinander — dann zeigt der Kopf beide.
+  // Bei mehreren Kindern folgt noch eine zweite, kompakte Fassung (.fo-kompakt: kleines Foto, nur der Name, ohne Alter):
+  // Sie bleibt unsichtbar, bis der Kopf am Handy oben klebt (Klasse fo-stuck an der Karte, siehe _klebt). Sie liegt
+  // über der normalen Zeile und nimmt im Fluss keinen Platz ein; deshalb ändert sich die Höhe des Kopfes nie.
   _kopf() {
     const kids = this.config.kids, k = this._kid(this._kind);
     const gleichAlt = kids.every(x => x.birth === kids[0].birth && x.ga === kids[0].ga);
@@ -7711,7 +7757,10 @@ class FpBabyOverviewCard extends HTMLElement {
       <span class="fo-wn"><b>${kids.map(x => U.esc(x.name)).join(" & ")}</b><small>${gleichAlt ? this._alterZeile(kids[0]) : ""}</small></span></div>` : "";
     const c = this.config, gear = c.reminder_entity || c.reminder_night_entity || c.meal_pause_entity
       ? `<button class="fo-gear" type="button" aria-label="Einstellungen" title="Einstellungen">⚙\uFE0E</button>` : "";
-    return einer + alle + gear + (c.chat ? `<button class="fo-spark" type="button" aria-label="Frag nach" title="Frag nach">${SPARK}</button>` : "");
+    const spark = c.chat ? `<button class="fo-spark" type="button" aria-label="Frag nach" title="Frag nach">${SPARK}</button>` : "";
+    const kompakt = kids.length > 1
+      ? `<div class="fo-kompakt"><div class="fo-who fo-kseg">${kids.map(x => `<button type="button" class="fo-kb${x.key === k.key ? " fo-on" : ""}" data-kind-sel="${U.esc(x.key)}" style="--k:${U.esc(x.color)};--k2:${U.esc(this._tint(x.color, .22))}" aria-pressed="${x.key === k.key}">${this._avatar(x, 24)}<span class="fo-kbn"><b>${U.esc(x.name)}</b></span></button>`).join("")}</div>${gear}${spark}</div>` : "";
+    return einer + alle + gear + spark + kompakt;
   }
   _tagNav() {
     const d = this._mitternacht(new Date(), this._off);
@@ -7720,27 +7769,19 @@ class FpBabyOverviewCard extends HTMLElement {
       <span>${name}</span><button type="button" data-off="1" aria-label="Tag vor" ${this._off >= 0 ? "disabled" : ""}>›</button></div>`;
   }
 
-  // Schlaf wie bei Napper und Buma per Knopf: „Beide schlafen“ und je Kind, über den Spalten.
+  // Schlaf wie bei Napper und Buma per Knopf: „Beide schlafen“ und je Kind, über den Spalten — nur am Tablet.
   // Schläft ein Kind, ist sein Knopf gefüllt und zeigt die Dauer; die kleine Zeile sagt, was der nächste Tipp tut.
-  // Am Handy bleibt oben nur „Beide schlafen“ mit dem Zustand der nicht gewählten Kinder; das gewählte Kind
-  // schaltet die Aktionsleiste unten (_aktionsleiste).
+  // Am Handy ist die ganze Leiste per CSS aus: Das gewählte Kind und „Beide“ schaltet die Aktionsleiste unten
+  // (_aktionsleiste), Schlaf nachtragen geht dort über „＋ Nachtragen“ bei den Einträgen.
   _schlafLeiste() {
     const kids = this.config.kids.filter(k => k.sleep_switch);
     if (!kids.length) return "";
     const jetzt = Date.now(), an = kids.filter(k => this._schlaeft(k)), alle = an.length === kids.length;
-    const knopf = (key, emoji, text, sub, aktiv, subCls) => `<button type="button" class="fo-sl${aktiv ? " fo-sl-an" : ""}" data-schlaf="${U.esc(key)}">
-      <span class="fo-sle">${emoji}</span><span class="fo-slx"><span class="fo-slt">${text}</span>${sub ? `<span class="fo-sls${subCls ? ` ${subCls}` : ""}">${sub}</span>` : ""}</span></button>`;
+    const knopf = (key, emoji, text, sub, aktiv) => `<button type="button" class="fo-sl${aktiv ? " fo-sl-an" : ""}" data-schlaf="${U.esc(key)}">
+      <span class="fo-sle">${emoji}</span><span class="fo-slx"><span class="fo-slt">${text}</span>${sub ? `<span class="fo-sls">${sub}</span>` : ""}</span></button>`;
     const zwei = kids.length === 2, beideText = zwei ? "Beide schlafen" : "Alle schlafen";
-    // Die kleine Zeile unter „Beide schlafen“ hat zwei Fassungen, die das CSS umschaltet: am Tablet wie bisher,
-    // am Handy der Zustand der nicht gewählten Kinder. Schlafen alle, gilt für beide derselbe Text.
     const tablet = alle ? `☀️ ${zwei ? "Beide" : "Alle"} aufgewacht` : an.length ? `${an.map(k => U.esc(k.name)).join(", ")} schläft schon` : "";
-    const handy = alle ? "" : kids.filter(k => k.key !== this._kind).map(k => {
-      if (this._schlaeft(k)) { const ab = this._schlafBeginn(k); return `${U.esc(k.name)} schläft · <span class="fo-dauer" data-ab="${ab}">${this._hDauer(jetzt - ab)}</span>`; }
-      const w = this._wachSeit(k, jetzt);
-      return `${U.esc(k.name)} wach${w ? ` seit ${w}` : ""}`;
-    }).join(" · ");
-    const beide = kids.length > 1 ? knopf("*", alle ? "💤" : "😴", beideText,
-      alle ? tablet : `<span class="fo-vt">${tablet}</span><span class="fo-vh">${handy}</span>`, alle, !alle && !tablet ? "fo-sls-h" : "") : "";
+    const beide = kids.length > 1 ? knopf("*", alle ? "💤" : "😴", beideText, tablet, alle) : "";
     const einzeln = kids.map(k => {
       if (this._schlaeft(k)) {
         const ab = this._schlafBeginn(k);
@@ -7750,10 +7791,8 @@ class FpBabyOverviewCard extends HTMLElement {
       return knopf(k.key, "😴", `${U.esc(k.name)} schläft`, wach, false);
     }).join("");
     const plus = this.config.kids.some(k => k.sleep_calendar) ? `<button type="button" class="fo-sl-plus" data-schlaf-neu aria-label="Schlaf nachtragen" title="Schlaf nachtragen">＋</button>` : "";
-    // Zwei Reihen (oben „Beide schlafen“, darunter je Kind; am Handy blendet das CSS die zweite aus), am Tablet eine.
-    // Gibt es nur ein Kind, steht Schlaf am Handy in der Aktionsleiste: dort entfällt die ganze Leiste.
-    const solo = !beide && this.config.kids.length === 1;
-    return `<div class="fo-sleep${solo ? " fo-sleep-solo" : ""}">${beide ? `<div class="fo-sl-row">${beide}${plus}</div><div class="fo-sl-row">${einzeln}</div>` : `<div class="fo-sl-row">${einzeln}${plus}</div>`}</div>`;
+    // Zwei Reihen (oben „Beide schlafen“, darunter je Kind), am Tablet macht das CSS daraus eine.
+    return `<div class="fo-sleep">${beide ? `<div class="fo-sl-row">${beide}${plus}</div><div class="fo-sl-row">${einzeln}</div>` : `<div class="fo-sl-row">${einzeln}${plus}</div>`}</div>`;
   }
   // Wie lange das Kind schon wach ist („H:MM h“), solange die letzte Schlafphase weniger als einen Tag zurückliegt; sonst leer.
   _wachSeit(kid, jetzt) {
@@ -7761,12 +7800,15 @@ class FpBabyOverviewCard extends HTMLElement {
     return l && jetzt - l.end < TAG ? this._hDauer(jetzt - l.end) : "";
   }
 
-  // Aktionsleiste unten am Handy, in jeder Ansicht: Schlaf, Stillen, Windel und Fläschchen für das gewählte Kind,
-  // nur was konfiguriert ist. Die Knöpfe tragen dieselben data-Attribute wie Schnellknöpfe und Schlafleiste,
-  // _klick behandelt sie also mit. Am Tablet ist die Leiste per CSS aus (dort stehen die Schnellknöpfe in der Spalte).
+  // Aktionsleiste unten am Handy, in jeder Ansicht: Schlaf, „Beide“ (bzw. „Alle“), Stillen, Windel und Fläschchen,
+  // nur was konfiguriert ist. Schlaf, Stillen, Windel und Fläschchen gelten für das gewählte Kind; „Beide“ schaltet
+  // wie „Beide schlafen“ am Tablet alle Kinder mit Schlafschalter (data-schlaf="*"), es steht nur da, wo es mindestens zwei sind.
+  // Die Knöpfe tragen dieselben data-Attribute wie Schnellknöpfe und Schlafleiste, _klick behandelt sie also mit.
+  // Am Tablet ist die Leiste per CSS aus (dort stehen die Schnellknöpfe in der Spalte). Gezeichnet wird sie bei jedem
+  // _paint; dessen Signatur enthält Laufen und Schlafen aller Kinder, „Beide“ folgt also auch dem Schalter des anderen Kindes.
   _aktionsleiste() {
     const k = this._kid(this._kind), jetzt = Date.now(), key = U.esc(k.key), name = U.esc(k.name), out = [];
-    const knopf = (farbe, attr, cls, label, emoji, text, sub) => `<button type="button" class="fo-q fo-qa${cls ? ` ${cls}` : ""}" style="--q:${farbe}" ${attr} data-kind="${key}" aria-label="${label} · ${name}">
+    const knopf = (farbe, attr, cls, label, emoji, text, sub, fuerAlle) => `<button type="button" class="fo-q fo-qa${cls ? ` ${cls}` : ""}" style="--q:${farbe}" ${attr}${fuerAlle ? "" : ` data-kind="${key}"`} aria-label="${label}${fuerAlle ? "" : ` · ${name}`}">
       <span class="fo-qe">${emoji}</span><span class="fo-qt">${text}</span>${sub ? `<span class="fo-qs">${sub}</span>` : ""}</button>`;
     if (k.sleep_switch) {
       if (this._schlaeft(k)) {
@@ -7776,6 +7818,12 @@ class FpBabyOverviewCard extends HTMLElement {
         const wach = this._wachSeit(k, jetzt);
         out.push(knopf("var(--c-sleep)", `data-schlaf="${key}"`, "", "Schlaf", "😴", "Schläft", wach ? `wach ${wach}` : ""));
       }
+    }
+    const schlafKids = this.config.kids.filter(x => x.sleep_switch);
+    if (schlafKids.length > 1) {
+      const wer = schlafKids.length === 2 ? "Beide" : "Alle", alleAn = schlafKids.every(x => this._schlaeft(x));
+      out.push(alleAn ? knopf("var(--c-sleep)", `data-schlaf="*"`, "fo-qa-an", `${wer} aufwecken`, "☀️", `${wer} wach`, "", true)
+        : knopf("var(--c-sleep)", `data-schlaf="*"`, "", `${wer} schlafen`, "😴", wer, "", true));
     }
     if (k.switch) {
       const lauf = this._laeuft(k);
@@ -8843,6 +8891,26 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-spark:active{background:var(--b-acc2);}
       .fo-gear{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-mut) !important;font-size:1.45rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
       .fo-gear:active{background:var(--b-acc2);}
+      /* Kopf klebt am Handy (nur mit mehreren Kindern) unter der festen HA-Kopfzeile und wird dabei kompakt.
+         Die normale Zeile bleibt im Fluss und behält ihre Höhe (sie wird nur unsichtbar), die kompakte Fassung .fo-kompakt
+         liegt absolut darüber und braucht keinen Platz. Beim Umschalten ändert sich also nichts an der Länge der Seite,
+         und die Grenze flackert nicht. Solange fo-stuck fehlt (Kopf ganz oben), sieht alles aus wie ohne Kleben.
+         Die Klasse setzt _klebt. Gestapelt wird nur innerhalb der Karte: über dem Inhalt, unter Dock (4) und Blättern (999). */
+      .fo-wacht{height:1px;margin-top:-1px;pointer-events:none;}
+      .fo-kompakt{display:none;}
+      @container fo-card (max-width: 679px){
+        .fo-card.fo-multi .fo-top{position:sticky;top:calc(var(--header-height, 56px) + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)));z-index:5;}
+        .fo-card.fo-multi .fo-top > *{transition:opacity .15s,visibility .15s;}
+        .fo-card.fo-multi .fo-kompakt{display:flex;align-items:center;gap:8px;position:absolute;top:0;left:-16px;right:-16px;box-sizing:border-box;padding:5px 16px;
+          background:var(--b-bg);box-shadow:0 8px 12px -8px var(--b-shadow);opacity:0;visibility:hidden;}
+        .fo-kompakt .fo-kb{min-height:36px;padding:2px 10px 2px 5px;gap:6px;}
+        .fo-kompakt .fo-kbn b{font-size:.9rem;}
+        .fo-kompakt .fo-gear,.fo-kompakt .fo-spark{width:36px;height:36px;}
+        .fo-card.fo-multi.fo-stuck .fo-top{pointer-events:none;}   /* der freie Streifen unter der kompakten Zeile soll den Inhalt nicht abdecken */
+        .fo-card.fo-multi.fo-stuck .fo-top > *{opacity:0;visibility:hidden;}
+        .fo-card.fo-multi.fo-stuck .fo-top > .fo-kompakt{opacity:1;visibility:visible;pointer-events:auto;}
+      }
+      @media (prefers-reduced-motion: reduce){ .fo-top > *{transition:none !important;} }
 
       /* Tag blättern */
       .fo-daynav{display:flex;align-items:center;justify-content:center;gap:28px;margin:14px 0 12px;font-weight:700;font-size:1rem;}
@@ -8879,12 +8947,9 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-slt{font-weight:800;font-size:1.08rem;line-height:1.2;font-variant-numeric:tabular-nums;}
       .fo-sls{font-size:.84rem;opacity:.8;font-variant-numeric:tabular-nums;margin-top:2px;}
       .fo-sl-an .fo-sls{color:var(--c-sleep);opacity:1;font-weight:700;}
-      /* Kleine Zeile unter „Beide schlafen“: zwei Fassungen, am Tablet die bisherige, am Handy der Zustand der anderen Kinder */
-      .fo-vh,.fo-sls-h{display:none;}
-      /* Handy: nur „Beide schlafen“ (mit ＋), die Knöpfe je Kind entfallen — das gewählte Kind schaltet die Aktionsleiste unten.
-         Mit nur einem Kind entfällt die ganze Leiste. */
-      @container fo-card (max-width: 679px){ .fo-sl-row + .fo-sl-row{display:none;} .fo-sleep-solo{display:none;}
-        .fo-vt{display:none;} .fo-vh{display:inline;} .fo-sls-h{display:block;} }
+      /* Handy: die ganze Schlafleiste entfällt. Das gewählte Kind und „Beide“ stehen in der Aktionsleiste unten,
+         nachgetragen wird über „＋ Nachtragen“ bei den Einträgen. */
+      @container fo-card (max-width: 679px){ .fo-sleep{display:none;} }
       .fo-sl-plus{flex:none;width:56px;min-height:76px;border:none;border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);color:var(--b-mut) !important;font-size:1.5rem;cursor:pointer;}
       .fo-s{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--c-sleep);opacity:.4;}
       .fo-s.fo-s1{opacity:.9;}
@@ -8901,7 +8966,8 @@ class FpBabyOverviewCard extends HTMLElement {
       /* Handy: die Schnellknöpfe entfallen, Schlaf, Stillen, Windel und Fläschchen stehen in der Aktionsleiste unten */
       @container fo-card (max-width: 679px){ .fo-quick{display:none;} }
       /* Knöpfe der Aktionsleiste: wie .fo-q, aber niedriger (mindestens 52 px) und ohne eigenen Schatten, den trägt die Leiste.
-         Der Schlafknopf zeigt wach seit … bzw. die Dauer; schläft das Kind, ist er gefüllt wie .fo-sl-an. */
+         Der Schlafknopf zeigt wach seit … bzw. die Dauer; schläft das Kind, ist er gefüllt wie .fo-sl-an.
+         „Beide“ daneben ist gefüllt, wenn alle schlafen. */
       .fo-qa{height:auto;min-height:52px;padding:5px 2px;gap:2px;box-shadow:none;}
       .fo-qa .fo-qe{font-size:1.25rem;}
       .fo-qt{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums;}
@@ -9059,7 +9125,14 @@ class FpBabyOverviewCard extends HTMLElement {
         .fo-act{display:flex;align-self:stretch;gap:8px;box-sizing:border-box;padding:8px;border-radius:var(--fp-radius, 16px);
           background:var(--b-bar);box-shadow:0 10px 30px var(--b-shadow);border:1px solid var(--b-line);}
         .fo-act:empty{display:none;}
+        /* Fünf Knöpfe (mit „Beide“): Abstand und Rand enger. Jeder Knopf bleibt mindestens so breit wie sein längster Text
+           (Fläschchen, „wach 1:23 h“), die übrige Breite teilen sich alle gleich — so wird nichts abgeschnitten, ohne die Schrift
+           zu verkleinern. Bei 359 px Kartenbreite bleiben knapp 60 px je Knopf, bei 320 px reicht es gerade noch. */
+        .fo-act:has(> :nth-child(5)){gap:5px;padding:6px;}
+        .fo-act:has(> :nth-child(5)) .fo-qa{min-width:max-content;}
       }
+      /* ab etwa 320-px-Handys reicht selbst das nicht: bei fünf Knöpfen die Schrift eine Stufe kleiner */
+      @container fo-card (max-width: 300px){ .fo-act:has(> :nth-child(5)) .fo-qa{font-size:.62rem;} .fo-act:has(> :nth-child(5)) .fo-qs{font-size:.6rem;} }
       .fo-tabbar{display:flex;gap:4px;width:max-content;max-width:100%;padding:6px;border-radius:999px;
         background:var(--b-bar);box-shadow:0 10px 30px var(--b-shadow);border:1px solid var(--b-line);}
       .fo-tabbar:empty{display:none;}
