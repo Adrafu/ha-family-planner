@@ -3367,7 +3367,7 @@ if (!customElements.get("fp-glance-card-beta")) {
 }
 })();
 
-/* ===== fp-cookbook-card-beta v21 (Bilder zu den Rezepten: in Kacheln und Rezeptansicht, eigenes Foto hochladen, freie Fotos ueber Openverse suchen, KI-Bild, Bildadresse; Mengen mit Dezimalkomma; Zutaten → Einkauf fasst Mengen mit offenen Eintraegen gleichen Namens zusammen, g/kg und ml/l umgerechnet; Dialogknoepfe in Theme-Farben statt festem Hellblau, Abbrechen zurueckhaltend; Import per Link: Rezeptseiten und Videos, Naehrwerte je Portion, Filter „proteinreich" aus dem Eiweisswert, Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Naehrwerte, Zutaten, Schritte) ===== */
+/* ===== fp-cookbook-card-beta v22 (ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -3912,6 +3912,11 @@ class FpCookbookCard extends HTMLElement {
     const n = this._nutriTxt(d); if (n) bits.push(`${CP(0x1F525)} ${this._esc(n)}${perPortion ? " pro Portion" : ""}`);
     return bits.length ? `<div class="${cls}">${bits.join(" &nbsp;·&nbsp; ")}</div>` : "";
   }
+  // Kachelzeile: nur Gesamtzeit und kcal je Portion, z. B. „55 Min · 520 kcal"; leer, wenn beides fehlt
+  _tileMetaTxt(d) {
+    const t = Number(d.total_min) || 0, k = Number(d.kcal) || 0;
+    return [t ? `${t} Min` : "", k ? `${k} kcal` : ""].filter(Boolean).join(" · ");
+  }
   _filtered() {
     const q = U.norm(this._search);
     return (this._dishes || []).filter(d => {
@@ -3940,9 +3945,10 @@ class FpCookbookCard extends HTMLElement {
     const cats = ["Alle", "Frühstück", "Mittag", "Abend", "vegetarisch", "kinderliebling", "schnell", "proteinreich"];
     const chips = cats.map(c => `<button class="cb-chip${this._filter === c ? " cb-chip-on" : ""}" data-f="${this._esc(c)}">${this._esc(c)}</button>`).join("");
     const nNoTime = (this._dishes || []).filter(d => !Number(d.total_min)).length;
-    const timeBar = nNoTime ? `<button class="cb-fixtimes">${CP(0x23F1)} Zubereitungszeit für ${nNoTime} Rezept${nNoTime === 1 ? "" : "e"} nachrechnen</button>` : "";
+    // Hinweise als kleine Pillen im Kopf (volle Wörter stehen im Tooltip)
+    const timeBar = nNoTime ? `<button class="cb-fixtimes" title="Zubereitungszeit für ${nNoTime} Rezept${nNoTime === 1 ? "" : "e"} nachrechnen">${CP(0x23F1)} Zeiten für ${nNoTime} nachrechnen</button>` : "";
     const nNoNutri = (this._dishes || []).filter(d => this._nutriMissing(d)).length;
-    const nutriBar = nNoNutri ? `<button class="cb-fixnutri">${CP(0x1F525)} Nährwerte für ${nNoNutri} Rezept${nNoNutri === 1 ? "" : "e"} berechnen</button>` : "";
+    const nutriBar = nNoNutri ? `<button class="cb-fixnutri" title="Nährwerte für ${nNoNutri} Rezept${nNoNutri === 1 ? "" : "e"} berechnen">${CP(0x1F525)} Nährwerte für ${nNoNutri} berechnen</button>` : "";
     const cards = dishes.length ? dishes.map(d => `
 ${this._tileHTML(d)}`).join("")
       : `<div class="cb-empty">Noch keine Rezepte. Tippe auf „＋ Neu", um eins per KI zu erzeugen.</div>`;
@@ -3951,11 +3957,11 @@ ${this._tileHTML(d)}`).join("")
       <ha-card class="cb-card">
         <div class="cb-bar">
           <div class="cb-title">${CP(0x1F4D6)} ${this._esc(this.config.title)}</div>
+          <input class="cb-search" type="text" placeholder="Suchen …" aria-label="Suchen" value="${this._esc(this._search)}">
+          ${timeBar}
+          ${nutriBar}
           <button class="cb-add">＋ Neu</button>
         </div>
-        ${timeBar}
-        ${nutriBar}
-        <input class="cb-search" type="text" placeholder="Suchen …" value="${this._esc(this._search)}">
         <div class="cb-chips">${chips}</div>
         <div class="cb-grid">${cards}</div>
       </ha-card>
@@ -3972,15 +3978,14 @@ ${this._tileHTML(d)}`).join("")
     this.querySelectorAll(".cb-dish").forEach(b => b.addEventListener("click", () => { const d = this._dishes.find(x => x.uid === b.dataset.uid); if (d) this._openDetail(d); }));
     this._fillImgs(this.querySelector(".cb-grid"));
   }
+  // Ruhige Bildkachel: Foto, darunter Name und eine Zeile mit Zeit und kcal; alles Weitere steht auf der Rezeptseite
   _tileHTML(d) {
+    const meta = this._tileMetaTxt(d);
     return `<button class="cb-dish" data-uid="${this._esc(d.uid)}">
         ${this._imgTag(d, "cb-d-img")}
         <div class="cb-d-body">
           <div class="cb-d-name">${this._esc(d.name)}</div>
-          <div class="cb-d-meta">${d.category && d.category !== "egal" ? this._esc(d.category) + " · " : ""}${this._esc(this._sinceTxt(d.last_cooked))}</div>
-          ${this._metaRow(d, "cb-d-time")}
-          <div class="cb-d-tags">${(d.tags || []).slice(0, 3).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
-          <div class="cb-d-stars">${d.rating ? this._stars(d.rating) : ""}</div>
+          ${meta ? `<div class="cb-d-meta">${this._esc(meta)}</div>` : ""}
         </div>
       </button>`;
   }
@@ -4002,8 +4007,12 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
 
   _openDetail(d) {
     let portions = d.portions_base || this.config.base_portions;
+    // Mahlzeit (außer „egal") und „zuletzt gekocht" gibt es nur noch hier, nicht mehr auf der Kachel
+    const since = this._sinceTxt(d.last_cooked);
+    const subTxt = [d.category && d.category !== "egal" ? d.category : "", /^vor /.test(since) ? `zuletzt gekocht ${since}` : since].filter(Boolean).join(" · ");
     const ov = this._overlay(`
       <div class="cb-m-head"><span>${this._esc(d.name)}</span><button class="cb-x">${CP(0x2715)}</button></div>
+      <div class="cb-m-sub">${this._esc(subTxt)}</div>
       ${this._imgSrc(d)
         ? `<div class="cb-hero">${this._imgTag(d, "cb-hero-img")}<button class="cb-hero-btn">${CP(0x1F4F7)} Bild ändern</button></div>`
           + (d.image && (d.image.credit || d.image.temp) ? `<div class="cb-credit">${d.image.temp ? '<span class="cb-temp">Vorläufiges Foto</span>' : ""}${d.image.credit ? (d.image.link ? `<a href="${this._esc(d.image.link)}" target="_blank" rel="noopener">${this._esc(d.image.credit)}</a>` : this._esc(d.image.credit)) : ""}</div>` : "")
@@ -4247,27 +4256,52 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
 
   _styles() {
     return `<style>
-      .cb-card{padding:12px 14px;}
-      .cb-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
-      .cb-title{font-weight:700;font-size:1.05rem;}
-      .cb-add{border:none;border-radius:10px;padding:8px 12px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;}
-      .cb-search{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);margin-bottom:8px;}
-      .cb-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
-      .cb-chip{border:1px solid var(--divider-color);border-radius:16px;padding:5px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.82rem;cursor:pointer;}
-      .cb-chip-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
+      .cb-card{padding:14px;container-type:inline-size;}
+      /* Kopf in einer Zeile: Titel, Suche als Pille, Hinweis-Pillen, ＋ Neu rechts; bricht um */
+      .cb-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin-bottom:10px;}
+      .cb-title{flex:0 1 auto;min-width:0;font-size:1.05rem;font-weight:900;letter-spacing:-.01em;line-height:1.2;overflow-wrap:anywhere;}
+      .cb-search{flex:1 1 140px;min-width:140px;box-sizing:border-box;margin:0;padding:7px 12px;border:none;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font:inherit;font-size:.9rem;line-height:1.3;-webkit-appearance:none;appearance:none;}
+      .cb-search::placeholder{color:var(--secondary-text-color);opacity:1;}
+      .cb-search:focus{outline:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--fp-accent,var(--primary-color)) 55%,transparent);}
+      @media (pointer:coarse){.cb-search{font-size:1rem;}}
+      .cb-fixtimes,.cb-fixnutri{flex:none;box-sizing:border-box;min-height:28px;padding:4px 11px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font:inherit;font-size:.74rem;font-weight:800;line-height:1.2;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .cb-fixtimes:disabled,.cb-fixnutri:disabled{opacity:.7;cursor:default;}
+      .cb-add{flex:none;margin-left:auto;box-sizing:border-box;min-height:32px;padding:0 14px;border:none;border-radius:999px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color));font:inherit;font-size:.82rem;font-weight:800;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      @media (hover:hover){
+        .cb-fixtimes:not(:disabled):hover,.cb-fixnutri:not(:disabled):hover{background:var(--fp-surface,var(--secondary-background-color));}
+        .cb-add:hover{filter:brightness(1.08);}
+      }
+      /* Handy: Titel und ＋ Neu oben, darunter die Suche über die volle Breite, dann die Hinweise */
+      @container (max-width:560px){
+        .cb-title{order:1;}
+        .cb-add{order:2;}
+        .cb-search{order:3;flex:1 1 100%;}
+        .cb-fixtimes,.cb-fixnutri{order:4;}
+      }
+      /* Filter: eine Zeile, waagrecht wischbar, Scrollleiste ausgeblendet */
+      .cb-chips{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin:0 -14px 14px;padding:0 14px;}
+      .cb-chips::-webkit-scrollbar{display:none;}
+      .cb-chip{flex:none;display:inline-flex;align-items:center;min-height:28px;box-sizing:border-box;padding:4px 11px;border:none;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font:inherit;font-size:.78rem;font-weight:800;line-height:1.2;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .cb-chip-on{background:var(--primary-text-color);color:var(--card-background-color);}
+      @media (hover:hover){.cb-chip:not(.cb-chip-on):hover{background:var(--fp-surface-2,var(--divider-color));}}
       .cb-src{margin-top:12px;font-size:.85rem;}
-      .cb-src a{color:var(--primary-color,var(--fp-head,#0277bd));}
-      .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;}
-      .cb-dish{text-align:left;border:1px solid var(--divider-color);border-radius:12px;padding:0;overflow:hidden;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;display:flex;flex-direction:column;min-height:70px;font:inherit;}
-      .cb-d-img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:rgba(var(--fp-tint-rgb,129,212,250),.18);}
-      .cb-noimg{display:flex;align-items:center;justify-content:center;font-size:2rem;opacity:.55;background:linear-gradient(135deg,rgba(var(--fp-tint-rgb,129,212,250),.22),rgba(var(--fp-accent-rgb,79,195,247),.12));}
+      .cb-src a{color:var(--primary-color,currentColor);}
+      /* Ruhige Bildkacheln: keine Fläche, kein Rand; das Foto ist der Inhalt */
+      .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px 12px;}
+      .cb-dish{display:flex;flex-direction:column;gap:8px;min-width:0;padding:0;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;color:var(--primary-text-color);text-align:left;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .cb-d-img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--fp-radius-sm,12px);background:var(--fp-surface,var(--secondary-background-color));transition:filter .15s;}
+      .cb-noimg{display:flex;align-items:center;justify-content:center;font-size:2rem;background:var(--fp-surface,var(--secondary-background-color));}
       .cb-d-img.cb-noimg{aspect-ratio:4/3;}
-      .cb-d-body{display:flex;flex-direction:column;gap:4px;padding:9px 10px 10px;}
+      .cb-d-body{display:flex;flex-direction:column;gap:2px;min-width:0;padding:0 2px;}
+      .cb-d-name{font-size:.92rem;font-weight:800;line-height:1.2;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;}
+      .cb-d-meta{font-size:.76rem;font-weight:700;line-height:1.2;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .cb-dish:focus-visible{outline:2px solid color-mix(in srgb,var(--fp-accent,var(--primary-color)) 70%,transparent);outline-offset:3px;}
+      @media (hover:hover){.cb-dish:hover .cb-d-img{filter:brightness(1.06);}}
       .cb-hero{position:relative;display:block;width:100%;margin:0 0 8px;border-radius:12px;overflow:hidden;}
       .cb-hero-img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;}
       .cb-hero-img.cb-noimg{aspect-ratio:16/10;}
       .cb-hero-btn{position:absolute;right:8px;bottom:8px;border:none;border-radius:999px;padding:6px 11px;font-size:.8rem;font-weight:600;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;}
-      .cb-hero-add{border:1.5px dashed var(--divider-color);background:var(--secondary-background-color);color:var(--secondary-text-color);padding:16px;font:inherit;font-weight:600;cursor:pointer;}
+      .cb-hero-add{border:1.5px dashed var(--divider-color);background:var(--fp-surface,var(--secondary-background-color));color:var(--secondary-text-color);padding:16px;font:inherit;font-weight:600;cursor:pointer;}
       .cb-credit{font-size:.7rem;color:var(--secondary-text-color);margin:-4px 0 8px;}
       .cb-credit a{color:inherit;}
       .cb-temp{font-weight:700;margin-right:6px;}
@@ -4279,31 +4313,20 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
       .cb-busy{opacity:.7;pointer-events:none;}
       .cb-im-search{margin-top:10px;}
       .cb-im-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px;}
-      .cb-im-hit{border:none;padding:0;border-radius:8px;overflow:hidden;cursor:pointer;background:var(--secondary-background-color);aspect-ratio:1;}
+      .cb-im-hit{border:none;padding:0;border-radius:8px;overflow:hidden;cursor:pointer;background:var(--fp-surface,var(--secondary-background-color));aspect-ratio:1;}
       .cb-im-hit img{width:100%;height:100%;object-fit:cover;display:block;}
-      .cb-im-hit:hover{outline:3px solid var(--fp-accent,#039be5);}
-      .cb-dish:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.18);}
-      .cb-d-name{font-weight:700;font-size:.95rem;line-height:1.15;}
-      .cb-d-meta{font-size:.75rem;color:var(--secondary-text-color);}
-      .cb-d-time{font-size:.72rem;color:var(--secondary-text-color);}
+      .cb-im-hit:hover{outline:3px solid var(--fp-accent,var(--primary-color));}
       .cb-time{font-size:.9rem;color:var(--secondary-text-color);margin:4px 0 2px;}
-      .cb-fixtimes{width:100%;box-sizing:border-box;border:1px solid rgba(255,167,38,.5);background:rgba(255,167,38,.14);color:#e65100;font-weight:600;border-radius:12px;padding:9px 12px;margin-bottom:8px;cursor:pointer;text-align:left;font-size:.86rem;}
-      .cb-fixtimes:hover{background:rgba(255,167,38,.24);}
-      .cb-fixtimes:disabled{opacity:.7;cursor:default;}
-      .cb-fixnutri{width:100%;box-sizing:border-box;border:1px solid rgba(var(--fp-tint-rgb,125,155,132),.55);background:rgba(var(--fp-tint-rgb,125,155,132),.14);color:var(--fp-head,#3C5343);font-weight:600;border-radius:12px;padding:9px 12px;margin-bottom:8px;cursor:pointer;text-align:left;font-size:.86rem;}
-      .cb-fixnutri:hover{background:rgba(var(--fp-tint-rgb,125,155,132),.24);}
-      .cb-fixnutri:disabled{opacity:.7;cursor:default;}
       .cb-imp-row{display:flex;gap:8px;align-items:stretch;}
       .cb-imp-row .cb-in{flex:1;margin:0;}
       .cb-imp-go{white-space:nowrap;}
       .cb-imp-go:disabled{opacity:.7;cursor:default;}
-      .cb-d-tags{display:flex;gap:4px;flex-wrap:wrap;}
-      .cb-tag{font-size:.68rem;background:rgba(var(--fp-tint-rgb,129,212,250),.25);color:var(--fp-head,#0277bd);border-radius:8px;padding:1px 6px;}
-      .cb-d-stars{color:#f5b301;font-size:.8rem;}
+      .cb-tag{font-size:.68rem;font-weight:700;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);color:var(--fp-head,var(--primary-text-color));border-radius:8px;padding:1px 6px;}
       .cb-empty{grid-column:1/-1;color:var(--secondary-text-color);text-align:center;padding:18px;}
       .cb-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
       .cb-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(94vw,460px);max-height:86vh;overflow:auto;border-radius:16px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
       .cb-m-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:1.1rem;margin-bottom:8px;}
+      .cb-m-sub{font-size:.82rem;font-weight:700;color:var(--secondary-text-color);margin:-4px 0 8px;}
       .cb-x{border:none;background:transparent;font-size:1.1rem;cursor:pointer;color:var(--secondary-text-color);}
       .cb-m-tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;}
       .cb-rate{font-size:.85rem;color:var(--secondary-text-color);margin:6px 0;}
@@ -4314,16 +4337,16 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
       .cb-ing{margin:0;padding-left:18px;} .cb-ing li{margin:2px 0;}
       .cb-steps{margin:0;padding-left:20px;} .cb-steps li{margin:5px 0;line-height:1.35;}
       .cb-m-foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
-      .cb-btn{flex:1;border:none;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;background:rgba(var(--fp-accent-rgb,179,229,252),.95);color:var(--fp-accent-fg,#014a73);}
-      .cb-btn.cb-e-cancel{background:var(--secondary-background-color);color:var(--primary-text-color);}
-      .cb-btn.cb-del{flex:none;background:rgba(229,57,53,.15);color:#e53935;}
+      .cb-btn{flex:1;border:none;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color));}
+      .cb-btn.cb-e-cancel{background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);}
+      .cb-btn.cb-del{flex:none;background:color-mix(in srgb,var(--error-color,#db4437) 15%,transparent);color:var(--error-color,#db4437);}
       .cb-in{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);margin-bottom:8px;font-size:1rem;}
       textarea.cb-free{min-height:70px;resize:vertical;}
       .cb-ck-tools{display:flex;gap:14px;margin:2px 0 8px;}
-      .cb-linkbtn{border:none;background:transparent;color:var(--primary-color,var(--fp-head,#0277bd));cursor:pointer;font-size:.85rem;padding:2px 0;text-decoration:underline;}
+      .cb-linkbtn{border:none;background:transparent;color:var(--primary-color,currentColor);cursor:pointer;font-size:.85rem;padding:2px 0;text-decoration:underline;}
       .cb-cklist{max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:2px;}
       .cb-ck{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;cursor:pointer;}
-      .cb-ck:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.12);}
+      .cb-ck:hover{background:var(--fp-surface,var(--secondary-background-color));}
       .cb-ck input{width:18px;height:18px;flex:none;}
       .cb-e-cats,.cb-e-tags{display:flex;gap:6px;flex-wrap:wrap;}
       .cb-e-hint{font-size:.75rem;color:var(--secondary-text-color);margin-top:6px;}
@@ -4333,13 +4356,13 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
       .cb-e-in{padding:8px 9px;border:1px solid var(--divider-color);border-radius:9px;background:var(--card-background-color);color:var(--primary-text-color);font-size:.95rem;box-sizing:border-box;width:100%;}
       .cb-e-row{display:flex;gap:5px;margin-bottom:5px;align-items:center;}
       .cb-e-q{flex:0 0 68px;} .cb-e-u{flex:0 0 74px;} .cb-e-i{flex:1;min-width:0;}
-      .cb-e-x{flex:none;border:none;background:rgba(229,57,53,.12);color:#e53935;border-radius:8px;width:30px;height:34px;cursor:pointer;font-size:.85rem;}
+      .cb-e-x{flex:none;border:none;background:color-mix(in srgb,var(--error-color,#db4437) 12%,transparent);color:var(--error-color,#db4437);border-radius:8px;width:30px;height:34px;cursor:pointer;font-size:.85rem;}
       textarea.cb-e-steps{min-height:150px;resize:vertical;line-height:1.45;font-family:inherit;}
       .cb-btn.cb-edit,.cb-btn.cb-del{flex:none;}
-      .cb-btn.cb-edit{background:rgba(255,213,79,.30);color:#8a6100;}
+      .cb-btn.cb-edit{background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);}
       .cb-days,.cb-meals{display:flex;gap:6px;flex-wrap:wrap;}
-      .cb-day,.cb-meal{border:1px solid var(--divider-color);border-radius:10px;padding:9px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;}
-      .cb-day.cb-on,.cb-meal.cb-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
+      .cb-day,.cb-meal{border:1px solid var(--divider-color);border-radius:10px;padding:9px 11px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);cursor:pointer;}
+      .cb-day.cb-on,.cb-meal.cb-on{background:var(--primary-text-color);color:var(--card-background-color);border-color:transparent;}
     </style>`;
   }
   getCardSize() { return 8; }
@@ -4350,7 +4373,7 @@ if (!customElements.get("fp-cookbook-card-beta")) {
   window.customCards.push({ type: "fp-cookbook-card-beta", name: "FP Cookbook Card", description: "Kochbuch mit Rezepten, KI-Generierung, in Essensplan legen, Zutaten -> Einkauf" });
 }
 
-/* ===== dobby-clock-card-beta v9 (neutrale Vorgabe-Spieler, echte Namen gehoeren in die Dashboard-Config; Bestenliste mit den drei laengsten Verstecken samt Zeitraum) ===== */
+/* ===== dobby-clock-card-beta v10 (ruhiger: Uhrenfelder ohne Fläche, nur die laufende Seite in Akzent getönt, Pause als Pille, feste Farben durch Theme ersetzt; davor: neutrale Vorgabe-Spieler, Bestenliste mit den drei längsten Verstecken samt Zeitraum) ===== */
 class DobbyClockCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
@@ -4582,21 +4605,22 @@ class DobbyClockCard extends HTMLElement {
          andere und der Balken bekäme einen Knick am Scharnier. */
       .dc-paddle{flex:1 1 0;border-radius:11px;background:var(--secondary-background-color);
         transition:background .3s,box-shadow .3s;}
-      .dc-paddle.dc-up{background:rgba(var(--fp-accent-rgb,79,195,247),.9);
-        box-shadow:0 6px 14px rgba(var(--fp-accent-rgb,79,195,247),.32);}
+      .dc-paddle.dc-up{background:var(--fp-accent,var(--primary-color));
+        box-shadow:0 6px 14px color-mix(in srgb,var(--fp-accent,var(--primary-color)) 32%,transparent);}
       /* Das Scharnier dreht nicht mit — daran hängt der Balken. */
       .dc-hinge{position:absolute;left:50%;top:26px;transform:translateX(-50%);
         width:34px;height:4px;border-radius:2px;background:var(--divider-color);}
 
-      /* --- Gehäuse: eine Fläche, zwei Anzeigen, ein Haarstrich dazwischen --- */
+      /* --- Gehäuse: keine eigene Fläche, zwei Anzeigen, ein Haarstrich dazwischen.
+         Nur die laufende Seite ist in Akzent getönt. --- */
       .dc-body{display:flex;align-items:stretch;border-radius:20px;overflow:hidden;
-        background:var(--secondary-background-color);}
+        background:transparent;}
       .dc-hair{width:1px;background:var(--divider-color);opacity:.6;flex:none;margin:14px 0;}
-      .dc-side{flex:1 1 0;min-width:0;border:none;background:transparent;cursor:pointer;
+      .dc-side{flex:1 1 0;min-width:0;border:none;border-radius:var(--fp-radius-sm,14px);background:transparent;cursor:pointer;
         display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 12px 18px;
         color:var(--primary-text-color);transition:background .3s;}
-      .dc-side:active{background:rgba(0,0,0,.04);}
-      .dc-side.dc-on{background:rgba(var(--fp-accent-rgb,79,195,247),.10);}
+      .dc-side:active{background:color-mix(in srgb,var(--primary-text-color) 5%,transparent);}
+      .dc-side.dc-on{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 12%,transparent);}
       .dc-name{font-size:.8rem;font-weight:590;letter-spacing:.04em;text-transform:uppercase;
         color:var(--secondary-text-color);opacity:.75;}
       .dc-time{display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;
@@ -4606,17 +4630,17 @@ class DobbyClockCard extends HTMLElement {
       .dc-sec{font-size:1.4rem;font-weight:500;letter-spacing:-.005em;margin-left:2px;opacity:.85;}
       .dc-rest{font-size:.92rem;font-weight:590;color:var(--secondary-text-color);
         opacity:.6;min-height:1.2em;transition:color .3s,opacity .3s;}
-      .dc-side.dc-on .dc-rest{color:var(--fp-head,var(--primary-color));opacity:.9;}
-      .dc-side.dc-on .dc-time{color:var(--fp-head,var(--primary-color));opacity:1;}
+      .dc-side.dc-on .dc-rest{color:var(--fp-accent,var(--primary-color));opacity:.9;}
+      .dc-side.dc-on .dc-time{color:var(--fp-accent,var(--primary-color));opacity:1;}
       .dc-total{font-size:.76rem;color:var(--secondary-text-color);opacity:.7;min-height:1.1em;}
 
       .dc-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;
         margin-top:14px;padding:0 4px;}
       .dc-state{font-size:.82rem;color:var(--secondary-text-color);opacity:.8;}
-      .dc-pause{border:none;border-radius:999px;padding:8px 16px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);
-        cursor:pointer;font-size:.82rem;font-weight:590;transition:background .2s;}
-      .dc-pause:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.22);}
+      .dc-pause{border:1px solid var(--divider-color);border-radius:999px;padding:8px 16px;min-height:36px;
+        background:transparent;color:var(--secondary-text-color);
+        cursor:pointer;font-size:.78rem;font-weight:800;transition:background .2s;}
+      .dc-pause:hover{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 12%,transparent);}
 
       /* --- Bestenliste --- */
       .dc-hs{margin-top:16px;padding-top:14px;border-top:1px solid var(--divider-color);}
@@ -4629,7 +4653,7 @@ class DobbyClockCard extends HTMLElement {
         align-items:center;justify-content:center;font-size:.72rem;font-weight:700;
         background:var(--secondary-background-color);color:var(--secondary-text-color);}
       /* Nur der erste Platz bekommt Farbe — drei bunte Medaillen waeren Laerm. */
-      .dc-hs-rang.dc-hs-r0{background:rgba(var(--fp-accent-rgb,79,195,247),.9);color:var(--fp-accent-fg,#013);}
+      .dc-hs-rang.dc-hs-r0{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));}
       .dc-hs-name{grid-area:n;font-size:.92rem;font-weight:600;}
       .dc-hs-datum{grid-area:z;font-size:.72rem;color:var(--secondary-text-color);opacity:.7;
         font-variant-numeric:tabular-nums;}
