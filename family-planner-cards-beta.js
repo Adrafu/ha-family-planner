@@ -2205,104 +2205,410 @@ if (!customElements.get("nav-card-beta")) {
 }
 })();
 
-/* ===== fp-todo-card-beta v14 (Datumsfeld passt aufs iPhone; Datumsfeld als Knopf in der Bis-wann-Reihe, Namens-Pille als Kartenkopf, Farben ueber Theme-Variablen, Änderungsdialog: eigene Wiederholungs-Intervalle) ===== */
+/* ===== fp-todo-card-beta v15 (zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe als eine Farbe für hell und dunkel, empty_text; Liste ohne Kachelflächen, Kreis in Personenfarbe; davor: Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+// Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
+// selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
+// Hinzufügen über das Ereignis fp-todo-add bleiben.
 (() => {
 const U = window.__fpUtils;
+const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];   // Date.getDay(): 0 = Sonntag
 class FpTodoCard extends HTMLElement {
+  constructor() {
+    super();
+    this._items = null;        // null = noch nichts geladen
+    this._pending = [];        // gerade angelegt, noch nicht im Abo: { uid, summary, key, due, base, t }
+    this._ovr = new Map();     // abgehakt/wieder geöffnet, noch unbestätigt: uid -> { status, t }
+    this._keep = new Map();    // gerade abgehakt, bleibt kurz sichtbar: uid -> { until, item }
+    this._timers = new Set();
+    this._gen = 0; this._pseq = 0; this._failAt = 0;
+    this._unsub = null; this._subbing = false; this._built = false; this._sig = "";
+    this._onAdd = e => {
+      const d = e.detail || {};
+      if (this.config && d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary), d.due || null);
+    };
+  }
   setConfig(config) {
     if (!config || !config.entity) throw new Error("entity erforderlich");
+    this._unsubscribe();
     this.config = config;
     // Eigener Änderungsdialog statt des nativen: erlaubt Verschieben in eine
     // andere Liste, Datum-Schnellauswahl und Serien (letztere nur bei Todoist).
     this._edit = !!config.edit_dialog;
     this._targets = config.edit_targets || config.targets || [];
     this._repeats = config.repeat_options || [];
-    this._pending = [];
+    this._items = null; this._err = false; this._errShown = false; this._loadedOnce = false; this._failAt = 0;
+    this._pending = []; this._ovr.clear(); this._keep.clear();
     this._built = false;
-    this._onAdd = e => { const d = e.detail || {}; if (d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary)); };
-    this._onInlineKey = e => { if (e.key === "Enter") this._maybeInline(e); };
-    this._onInlineClick = e => { this._maybeRowTap(e); if (!e.defaultPrevented) this._maybeInline(e); };
+    if (this.isConnected) { this._build(); this._subscribe(); this._paint(); }
   }
   connectedCallback() {
     window.addEventListener("fp-todo-add", this._onAdd);
-    this.addEventListener("keydown", this._onInlineKey, true);
-    this.addEventListener("click", this._onInlineClick, true);
-    this._build();
+    if (!this._tick) this._tick = setInterval(() => this._paint(), 60000);   // „heute/morgen“ wandert mit dem Tag
+    if (!this._built && this.config) this._build();
+    if (U.fill) U.fill(this);   // jetzt hängt die Karte im DOM, hui-card ist erreichbar
+    this._subscribe();
+    this._paint();
   }
   disconnectedCallback() {
     window.removeEventListener("fp-todo-add", this._onAdd);
-    this.removeEventListener("keydown", this._onInlineKey, true);
-    this.removeEventListener("click", this._onInlineClick, true);
-    if (this._poll) { clearInterval(this._poll); this._poll = null; }
+    if (this._tick) { clearInterval(this._tick); this._tick = null; }
+    this._timers.forEach(t => clearTimeout(t)); this._timers.clear();
+    this._unsubscribe();
     this._closeEdit();
   }
-  // Tipp auf eine Aufgabe abfangen, bevor der native Bearbeiten-Dialog aufgeht.
-  // Die Checkbox bleibt unangetastet — Abhaken muss weiter direkt funktionieren.
-  _maybeRowTap(e) {
-    if (!this._edit || this._ov) return;
-    const path = e.composedPath ? e.composedPath() : [];
-    if (path.some(el => el && el.localName && /checkbox/.test(el.localName))) return;
-    const row = path.find(el => el && el.localName === "ha-check-list-item");
-    if (!row) return;
-    const uid = row.itemId;
-    if (!uid) return;
-    e.stopPropagation(); e.preventDefault();
-    this._openEdit(uid);
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._built && this.config) this._build();
+    this._subscribe();
   }
-  _maybeInline(e) {
-    const path = e.composedPath ? e.composedPath() : [];
-    if (!path.some(el => el && el.classList && el.classList.contains("addRow"))) return;
-    if (e.type === "click" && !path.some(el => el && el.classList && el.classList.contains("addButton"))) return;
-    const inp = path.find(el => el && el.localName === "ha-input");
-    const val = inp && inp.value != null ? String(inp.value).trim() : "";
-    if (val) this._optimistic(val);
+  _after(fn, ms) {
+    const t = setTimeout(() => { this._timers.delete(t); fn(); }, ms);
+    this._timers.add(t);
   }
-  set hass(hass) { this._hass = hass; if (this._child) { this._child.hass = hass; this._placePill(); } else this._build(); }
-  async _build() {
-    if (this._built || !this._hass || !this.isConnected) return;
-    this._built = true;
-    let el;
-    try {
-      const helpers = await window.loadCardHelpers();
-      const cfg = Object.assign({}, this.config);
-      cfg.type = "todo-list";
-      // Statt der nativen Ueberschrift eine farbige Pille: die native muss weg,
-      // sonst steht der Name zweimal da.
-      if (this.config.pill) delete cfg.title;
-      el = helpers.createCardElement(cfg);
-    } catch (e) { this._built = false; return; }
-    el.hass = this._hass;
-    this._child = el;
-    this.innerHTML = "";
-    this.appendChild(el);
-    this._pillTries = 0;
-    this._placePill();
+
+  // ---------- Daten (Abo) ----------
+  _subscribe() {
+    if (this._unsub || this._subbing || !this._hass || !this.isConnected || !this.config) return;
+    if (Date.now() - this._failAt < 30000) return;   // nach einem Fehler nicht bei jedem hass-Update neu versuchen
+    const conn = this._hass.connection;
+    if (!conn || !conn.subscribeMessage) return;
+    const gen = this._gen, ent = this.config.entity;
+    this._subbing = true;
+    let p;
+    try { p = conn.subscribeMessage(msg => { if (gen === this._gen) this._onItems(msg); }, { type: "todo/item/subscribe", entity_id: ent }); }
+    catch (e) { p = Promise.reject(e); }
+    p.then(unsub => {
+      if (gen !== this._gen) { try { const r = unsub(); if (r && r.catch) r.catch(() => {}); } catch (e) {} return; }   // inzwischen abgehängt oder umkonfiguriert
+      this._subbing = false; this._unsub = unsub;
+    }).catch(err => {
+      if (gen !== this._gen) return;
+      this._subbing = false; this._failAt = Date.now();
+      console.warn("[fp-todo-card-beta] Abo fehlgeschlagen:", ent, err);
+      if (this._items === null) this._err = true;
+      // allerersten Ladefehler (Startup-Flackern) nicht melden, danach nur einmal je Störung
+      if (this._loadedOnce && !this._errShown) U.toast(this, "Aufgabenliste konnte nicht geladen werden");
+      this._errShown = true; this._loadedOnce = true;
+      this._paint();
+    });
   }
-  // Die Pille gehoert optisch in die Karte, die native Karte hat aber ein
-  // eigenes Shadow-DOM. Also hineinsetzen — und bei jedem Zustandswechsel
-  // nachsehen, ob Lit sie beim Neuzeichnen entfernt hat.
-  _placePill() {
-    const p = this.config && this.config.pill;
-    if (!p) return;
-    const root = this._child && this._child.shadowRoot;
-    const card = root && root.querySelector("ha-card");
-    if (!card) {
-      if ((this._pillTries = (this._pillTries || 0) + 1) < 30) setTimeout(() => this._placePill(), 100);
-      return;
+  _unsubscribe() {
+    this._gen++; this._subbing = false;
+    const u = this._unsub; this._unsub = null;
+    if (u) { try { const r = u(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
+  _key(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+  _onItems(msg) {
+    this._items = Array.isArray(msg && msg.items) ? msg.items : [];
+    this._err = false; this._errShown = false; this._loadedOnce = true;
+    const byUid = new Map(this._items.map(i => [i.uid, i]));
+    // bestätigte (oder verschwundene) Zeilen brauchen die Vorab-Anzeige nicht mehr
+    for (const [uid, o] of this._ovr) { const it = byUid.get(uid); if (!it || it.status === o.status) this._ovr.delete(uid); }
+    // „ausstehend“: weg, sobald mehr offene Einträge gleichen Namens da sind als beim Anlegen
+    const open = {};
+    for (const i of this._items) if (i.status !== "completed") { const k = this._key(i.summary); open[k] = (open[k] || 0) + 1; }
+    this._pending = this._pending.filter(p => (open[p.key] || 0) <= p.base);
+    this._paint();
+  }
+  _expire() {
+    const now = Date.now();
+    this._pending = this._pending.filter(p => now - p.t < 20000);
+    for (const [uid, o] of this._ovr) if (now - o.t >= 20000) this._ovr.delete(uid);
+    for (const [uid, k] of this._keep) if (k.until <= now) this._keep.delete(uid);
+  }
+
+  // ---------- Fälligkeit ----------
+  _dayNum(d) { return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5); }
+  // due: "YYYY-MM-DD" oder ISO mit Uhrzeit -> { d: Date, day: Tageszahl, t: ms, time: "HH:MM" | "" }
+  _parseDue(s) {
+    if (!s) return null;
+    s = String(s);
+    let d, hasTime = false;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (m) d = new Date(+m[1], +m[2] - 1, +m[3]);
+    else {
+      d = new Date(s.replace(" ", "T")); hasTime = true;
+      if (isNaN(d)) {
+        const m2 = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+        if (!m2) return null;
+        d = new Date(+m2[1], +m2[2] - 1, +m2[3]); hasTime = false;
+      }
     }
-    if (card.querySelector(".fpt-pill")) return;
-    const el = document.createElement("div");
-    el.className = "fpt-pill";
-    el.textContent = p.label || this.config.title || "";
-    el.setAttribute("style",
-      "display:inline-block;margin:12px 0 2px 16px;padding:3px 11px;border-radius:99px;"
-      + "font-size:12px;font-weight:600;line-height:1.55;letter-spacing:.01em;"
-      + "background:" + (p.bg || "var(--secondary-background-color)") + ";"
-      + "color:" + (p.color || "var(--primary-text-color)") + ";");
-    card.insertBefore(el, card.firstChild);
+    const time = hasTime && (d.getHours() || d.getMinutes()) ? U.pad(d.getHours()) + ":" + U.pad(d.getMinutes()) : "";
+    return { d, day: this._dayNum(d), t: d.getTime(), time };
   }
-  _list() {
-    try { return this._child && this._child.shadowRoot && this._child.shadowRoot.querySelector("ha-list"); } catch (e) { return null; }
+  // due_date_period: Tageszahl, bis zu der Aufgaben gezeigt werden (Überfälliges eingeschlossen); null = kein Filter
+  _limit(now) {
+    const per = this.config.due_date_period;
+    const c = per && per.calendar;
+    if (!c) return null;
+    const off = parseInt(c.offset, 10) || 0;
+    const y = now.getFullYear(), mo = now.getMonth(), da = now.getDate();
+    let end;
+    if (c.period === "week") end = new Date(y, mo, da - ((now.getDay() + 6) % 7) + (off + 1) * 7 - 1);   // Woche beginnt am Montag, endet Sonntag
+    else if (c.period === "month") end = new Date(y, mo + off + 1, 0);
+    else if (c.period === "year") end = new Date(y + off + 1, 0, 0);
+    else end = new Date(y, mo, da + off);
+    return this._dayNum(end);
+  }
+  _dm(d) { return d.getDate() + "." + (d.getMonth() + 1) + "."; }
+  _chip(due, today) {
+    const diff = due.day - today;
+    if (diff < 0) return { c: "ov", t: diff === -1 ? "gestern" : diff >= -6 ? "seit " + WD[due.d.getDay()] : "seit " + this._dm(due.d) };
+    if (diff === 0) return { c: "td", t: due.time ? "heute " + due.time : "heute" };
+    if (diff === 1) return { c: "nx", t: "morgen" };
+    return { c: "nx", t: diff <= 6 ? WD[due.d.getDay()] : this._dm(due.d) };
+  }
+
+  // ---------- Aufbereiten ----------
+  // Aus Abo-Daten, Vorab-Anzeigen und Einstellungen die Zeilen samt Gruppen bauen.
+  _model() {
+    const cfg = this.config, nowD = new Date(), nowMs = nowD.getTime(), today = this._dayNum(nowD);
+    const hideDone = cfg.hide_completed !== false;
+    const lim = this._limit(nowD);
+    const src = [];
+    for (const p of this._pending) src.push({ uid: p.uid, summary: p.summary, status: "needs_action", due: p.due, pend: true });
+    const seen = new Set();
+    for (const it of (this._items || [])) { src.push(it); seen.add(it.uid); }
+    // gerade abgehakt und aus der Liste schon verschwunden (z. B. Cloud-Listen): kurz noch zeigen
+    for (const [uid, k] of this._keep) if (!seen.has(uid) && k.until > nowMs) src.push(k.item);
+    const rows = [];
+    src.forEach((it, i) => {
+      const ov = this._ovr.get(it.uid);
+      const done = (ov ? ov.status : it.status) === "completed";
+      const k = this._keep.get(it.uid);
+      const kept = !it.pend && !!k && k.until > nowMs;
+      if (done && hideDone && !kept) return;
+      const due = this._parseDue(it.due);
+      if (lim !== null && !it.pend) {   // Filter: nur Offenes bis Zeitraumende, ohne Datum fällt weg (frisch Angelegtes bleibt kurz als Rückmeldung)
+        if (done && !kept) return;
+        if (!due || due.day > lim) return;
+      }
+      const grp = done && !kept ? "done" : !due ? "none" : due.day < today ? "ov" : due.day === today ? "td" : "nx";
+      rows.push({ u: it.uid, s: String(it.summary == null ? "" : it.summary), done, pend: !!it.pend, due, i, grp, chip: !done && due ? this._chip(due, today) : null });
+    });
+    const open = rows.filter(r => !r.done).length;
+    const groups = [];
+    if (cfg.display_order === "duedate_asc") {
+      const byDue = (a, b) => (a.due.t - b.due.t) || (a.i - b.i);
+      const add = (key, title, list, sort) => { if (list.length) groups.push({ key, title, rows: sort ? list.sort(byDue) : list }); };
+      const pick = g => rows.filter(r => r.grp === g);
+      add("ov", "Überfällig", pick("ov"), true);
+      add("td", "Heute", pick("td"), true);
+      add("nx", "Demnächst", pick("nx"), true);
+      add("none", "Ohne Datum", pick("none"), false);
+      add("done", "Erledigt", pick("done"), false);
+    } else {
+      const act = rows.filter(r => r.grp !== "done"), dn = rows.filter(r => r.grp === "done");
+      if (cfg.display_order === "alpha_asc") {
+        const byName = (a, b) => a.s.localeCompare(b.s, "de") || (a.i - b.i);
+        act.sort(byName); dn.sort(byName);
+      }
+      if (act.length) groups.push({ key: "all", title: "", rows: act });
+      if (dn.length) groups.push({ key: "done", title: "Erledigt", rows: dn });
+    }
+    return { groups, open };
+  }
+
+  // ---------- Zeichnen ----------
+  _build() {
+    this._closeEdit();
+    this._built = true; this._sig = "";
+    const add = this.config.hide_create === true ? "" :
+      `<div class="fpt-add"><input class="fpt-in" type="text" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe" enterkeyhint="done" autocomplete="off"><button type="button" class="fpt-plus" aria-label="Aufgabe hinzufügen">＋</button></div>`;
+    // Farbe des Abhak-Kreises: die Personenfarbe der Pille, bei der alten Form (bg + color) und ohne Farbe der Akzent
+    const pc = this.config.pill;
+    const dot = pc && typeof pc === "object" && pc.color && !pc.bg ? String(pc.color) : "";
+    this.innerHTML = `<ha-card class="fpt-card"${dot ? ` style="${U.esc("--fpt-dot:" + dot)}"` : ""}><div class="fpt-head" hidden></div><div class="fpt-list"></div>${add}</ha-card>${this._styles()}`;
+    if (U.fill) U.fill(this);
+    const card = this.querySelector(".fpt-card");
+    this._head = card.querySelector(".fpt-head");
+    this._list = card.querySelector(".fpt-list");
+    card.addEventListener("click", e => this._onClick(e));
+    const inp = card.querySelector(".fpt-in");
+    if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); this._add(); } });
+    this._paint();
+  }
+  _pillStyle(p) {
+    const bg = p.bg ? String(p.bg) : "", col = p.color ? String(p.color) : "";
+    let b, f;
+    if (bg && col) { b = bg; f = col; }   // alte Form: Hintergrund plus Schriftfarbe, genau diese beiden Werte
+    else if (col) {                        // eine Farbe je Person: Grund und Schrift daraus, passt hell und dunkel
+      b = `color-mix(in srgb, ${col} 22%, var(--ha-card-background, var(--card-background-color, #fff)))`;
+      f = `color-mix(in srgb, ${col} 65%, var(--primary-text-color, #222))`;
+    } else if (bg) { b = bg; f = "var(--primary-text-color)"; }
+    else return "";                        // neutrale Pille über das CSS
+    return U.esc(`--fpt-pbg:${b};--fpt-pfg:${f}`);
+  }
+  _headHtml(open) {
+    const c = this.config;
+    let p = c.pill;
+    if (typeof p === "string") p = { label: p };
+    let left = "";
+    if (p) {
+      const label = p.label || c.title || "";
+      const st = this._pillStyle(p);
+      if (label) left = `<span class="fpt-pill"${st ? ` style="${st}"` : ""}>${U.esc(label)}</span>`;
+    } else if (c.title) left = `<div class="fpt-title">${U.esc(c.title)}</div>`;
+    const right = open > 0 ? `<div class="fpt-cnt"><b>${open}</b><small>offen</small></div>` : "";
+    return left + right;
+  }
+  _rowHtml(r) {
+    const uid = U.esc(r.u);
+    const ed = this._edit && !r.pend;
+    return `<div class="fpt-row${r.done ? " fpt-done" : ""}${r.pend ? " fpt-pend" : ""}">`
+      + `<button type="button" class="fpt-chk" role="checkbox" aria-checked="${r.done ? "true" : "false"}" aria-label="${r.done ? "Wieder öffnen" : "Erledigt"}"${r.pend ? " disabled" : ` data-uid="${uid}"`}><span class="fpt-circ"></span></button>`
+      + `<div class="fpt-txt${ed ? " fpt-edit" : ""}"${ed ? ` data-uid="${uid}"` : ""}><span>${U.esc(r.s)}</span></div>`
+      + (r.chip ? `<span class="fpt-chip fpt-c-${r.chip.c}">${U.esc(r.chip.t)}</span>` : "")
+      + `</div>`;
+  }
+  // Neu zeichnen nur, wenn sich etwas Sichtbares ändert (Signatur): Daten, Vorab-Anzeigen oder der Tag.
+  _paint() {
+    if (!this._built || !this.config) return;
+    this._expire();
+    const m = this._model();
+    const state = this._items !== null ? "ok" : this._err ? "err" : "wait";
+    const sig = JSON.stringify([state, m.open, m.groups.map(g => [g.key, g.title, g.rows.map(r => [r.u, r.s, r.done, r.pend, r.chip ? r.chip.c + ":" + r.chip.t : ""])])]);
+    if (sig === this._sig) return;
+    this._sig = sig;
+    this._nRows = m.groups.reduce((n, g) => n + g.rows.length, 0);
+    const head = this._headHtml(m.open);
+    this._head.innerHTML = head;
+    this._head.hidden = !head;
+    let html = "";
+    if (m.groups.length) {
+      html = m.groups.map(g =>
+        (g.title ? `<div class="fpt-sec${g.key === "ov" ? " fpt-sec-ov" : ""}">${g.title}</div>` : "")
+        + `<div class="fpt-rows">${g.rows.map(r => this._rowHtml(r)).join("")}</div>`).join("");
+    } else if (state === "ok") {
+      const t = this.config.empty_text != null ? String(this.config.empty_text) : "Alles erledigt";
+      html = `<div class="fpt-empty"><div class="fpt-empty-i">✓</div>${t ? `<div>${U.esc(t)}</div>` : ""}</div>`;
+    } else if (state === "err") {
+      html = `<div class="fpt-empty"><div>Liste konnte nicht geladen werden</div></div>`;
+    }
+    this._list.innerHTML = html;
+  }
+  _styles() {
+    return `<style>
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fpt-card{--fpt-s:var(--fp-surface,var(--secondary-background-color));--fpt-s2:var(--fp-surface-2,var(--divider-color));
+        --fpt-mut:var(--secondary-text-color);--fpt-acc:var(--fp-accent,var(--primary-color,#4F6B57));--fpt-dot:var(--fpt-acc);--fpt-err:var(--error-color,#db4437);
+        --fpt-al:var(--fp-alert,var(--warning-color,#b97f06));--fpt-alb:var(--fp-alert-bg,color-mix(in srgb,var(--warning-color,#b97f06) 18%,transparent));
+        --fpt-r:var(--fp-radius-sm,12px);
+        box-sizing:border-box;height:100%;padding:14px;display:flex;flex-direction:column;color:var(--primary-text-color);}
+      :where(.fpt-card) button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;}
+      /* Kopf: Pille (oder Titel) links, Zahl der offenen Aufgaben rechts */
+      .fpt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;min-height:30px;}
+      .fpt-head[hidden]{display:none;}
+      .fpt-title{font-size:1.05rem;font-weight:800;letter-spacing:-.01em;min-width:0;overflow-wrap:anywhere;}
+      .fpt-pill{display:inline-block;min-width:0;max-width:100%;padding:4px 12px;border-radius:999px;font-size:.82rem;font-weight:800;letter-spacing:.01em;line-height:1.4;overflow-wrap:anywhere;
+        background:var(--fpt-pbg,var(--fp-surface,var(--secondary-background-color)));color:var(--fpt-pfg,var(--primary-text-color));}
+      .fpt-cnt{display:flex;align-items:baseline;gap:5px;flex:none;margin-left:auto;}
+      .fpt-cnt b{font-size:1.45rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;}
+      .fpt-cnt small{font-size:.72rem;font-weight:600;color:var(--fpt-mut);}
+      /* Liste */
+      .fpt-list{flex:1 1 auto;min-height:0;}
+      .fpt-sec{margin:12px 0 0;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--fpt-mut);}
+      .fpt-list>.fpt-sec:first-child{margin-top:0;}
+      .fpt-sec-ov{color:var(--fpt-err);}
+      .fpt-rows{display:flex;flex-direction:column;}
+      /* Zeilen liegen ohne Fläche auf der Karte; eine Linie trennt sie innerhalb einer Gruppe (nicht über der ersten) */
+      .fpt-row{display:flex;align-items:center;gap:0;min-height:46px;box-sizing:border-box;padding:0;}
+      .fpt-row+.fpt-row{border-top:1px solid var(--divider-color);}
+      .fpt-chk{flex:none;align-self:stretch;width:44px;min-height:44px;margin:0 0 0 -10px;padding:0;border:none;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+      .fpt-chk:disabled{cursor:default;}
+      .fpt-circ{position:relative;display:block;box-sizing:border-box;width:24px;height:24px;border-radius:50%;border:2px solid var(--fpt-dot);transition:background .15s,border-color .15s,transform .1s;}
+      .fpt-chk:active .fpt-circ{transform:scale(.86);}
+      .fpt-done .fpt-circ{background:var(--fpt-dot);}
+      .fpt-done .fpt-circ::after{content:"";position:absolute;left:6px;top:2px;width:6px;height:11px;border:solid var(--fp-accent-fg,#fff);border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
+      .fpt-txt{flex:1 1 0;min-width:0;align-self:stretch;display:flex;align-items:center;padding:8px 8px 8px 4px;font-size:.92rem;font-weight:700;line-height:1.3;overflow-wrap:anywhere;color:var(--primary-text-color);}
+      .fpt-txt.fpt-edit{cursor:pointer;}
+      .fpt-done .fpt-txt{color:var(--fpt-mut);font-weight:600;opacity:.65;}
+      .fpt-done .fpt-txt span{text-decoration:line-through;}
+      .fpt-pend{opacity:.5;}
+      /* Fälligkeit */
+      .fpt-chip{flex:none;margin-left:4px;padding:3px 10px;border-radius:999px;font-size:.72rem;font-weight:800;line-height:1.4;white-space:nowrap;}
+      .fpt-c-ov{background:color-mix(in srgb,var(--fpt-err) 16%,transparent);color:color-mix(in srgb,var(--fpt-err) 75%,var(--primary-text-color));}
+      .fpt-c-td{background:var(--fpt-alb);color:color-mix(in srgb,var(--fpt-al) 75%,var(--primary-text-color));}
+      .fpt-c-nx{background:var(--fpt-s2);color:var(--fpt-mut);}
+      /* leer / Fehler */
+      .fpt-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px 8px;text-align:center;font-size:.9rem;font-weight:600;color:var(--fpt-mut);}
+      .fpt-empty-i{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--fpt-s);color:var(--fpt-acc);font-size:1.1rem;font-weight:800;}
+      /* Eingabezeile */
+      .fpt-add{display:flex;gap:8px;margin-top:12px;}
+      .fpt-in{flex:1 1 auto;min-width:0;box-sizing:border-box;min-height:46px;padding:0 14px;border:none;border-radius:var(--fpt-r);background:var(--fpt-s);color:var(--primary-text-color);font-size:1rem;font-weight:600;}
+      .fpt-in::placeholder{color:var(--fpt-mut);font-weight:600;opacity:1;}
+      .fpt-in:focus{outline:2px solid color-mix(in srgb,var(--fpt-acc) 55%,transparent);outline-offset:0;}
+      .fpt-plus{flex:none;width:46px;min-height:46px;padding:0;border:none;border-radius:var(--fpt-r);background:var(--fpt-acc);color:var(--fp-accent-fg,#fff) !important;font-size:1.3rem;font-weight:700;line-height:1;cursor:pointer;}
+      .fpt-plus:active{opacity:.8;}
+    </style>`;
+  }
+
+  // ---------- Bedienung ----------
+  _onClick(e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const chk = t.closest(".fpt-chk[data-uid]");
+    if (chk) { this._toggle(chk.dataset.uid); return; }
+    if (t.closest(".fpt-plus")) { this._add(); return; }
+    const txt = t.closest(".fpt-txt[data-uid]");
+    if (txt && this._edit && !this._ov && !this._opening) {
+      this._opening = true;
+      this._openEdit(txt.dataset.uid).finally(() => { this._opening = false; });
+    }
+  }
+  _byUid(uid) {
+    const it = (this._items || []).find(i => i.uid === uid);
+    if (it) return it;
+    const k = this._keep.get(uid);
+    return k ? k.item : null;
+  }
+  _toggle(uid) {
+    const it = this._byUid(uid);
+    if (!it || !this._hass) return;
+    const ov = this._ovr.get(uid);
+    const cur = ov ? ov.status : it.status;
+    this._setStatus(uid, it, cur === "completed" ? "needs_action" : "completed", true);
+  }
+  // Sofort zeigen, dann beim Dienst melden. Schlägt er fehl: Zeile zurück und Fehler-Toast.
+  _setStatus(uid, it, status, withUndo) {
+    const now = Date.now();
+    this._ovr.set(uid, { status, t: now });
+    if (status === "completed") {
+      this._keep.set(uid, { until: now + 1400, item: Object.assign({}, it, { status: "completed" }) });   // kurz sichtbar, dann ausgeblendet
+      this._after(() => this._paint(), 1450);
+    } else this._keep.delete(uid);
+    this._paint();
+    this._hass.callService("todo", "update_item", { entity_id: this.config.entity, item: uid, status }).catch(err => {
+      console.warn("[fp-todo-card-beta] Status setzen fehlgeschlagen:", this.config.entity, uid, err);
+      this._ovr.delete(uid); this._keep.delete(uid); this._paint();
+      U.toast(this, status === "completed" ? "Abhaken fehlgeschlagen" : "Wieder öffnen fehlgeschlagen");
+    });
+    if (withUndo) U.undo(this, `„${it.summary || ""}“ erledigt`, () => this._setStatus(uid, it, "needs_action", false));
+  }
+  _add() {
+    const inp = this.querySelector(".fpt-in");
+    const v = inp ? inp.value.trim() : "";
+    if (!v || !this._hass) return;
+    inp.value = "";
+    const p = this._optimistic(v, null);
+    this._hass.callService("todo", "add_item", { entity_id: this.config.entity, item: v }).catch(err => {
+      console.warn("[fp-todo-card-beta] Anlegen fehlgeschlagen:", this.config.entity, err);
+      this._pending = this._pending.filter(x => x !== p); this._paint();
+      U.toast(this, "Aufgabe konnte nicht angelegt werden");
+    });
+  }
+  // Neuer Eintrag sofort in der Liste (leicht ausgegraut), bis er im Abo auftaucht, höchstens 20 s.
+  _optimistic(summary, due) {
+    const text = String(summary).trim();
+    if (!text) return null;
+    const key = this._key(text);
+    const base = (this._items || []).filter(i => i.status !== "completed" && this._key(i.summary) === key).length;
+    const p = { uid: "fpt-pend-" + (++this._pseq), summary: text, key, due: due || null, base, t: Date.now() };
+    this._pending.push(p);
+    this._after(() => this._paint(), 20100);
+    this._paint();
+    return p;
   }
 
   // ---------- Änderungsdialog ----------
@@ -2474,37 +2780,12 @@ class FpTodoCard extends HTMLElement {
     </style>`;
   }
 
-  _optimistic(summary) {
-    const list = this._list();
-    if (!list) return;
-    const node = document.createElement("ha-check-list-item");
-    node.setAttribute("left", "");
-    node.className = "editRow";
-    node.style.opacity = "0.5";
-    const col = document.createElement("div"); col.className = "column";
-    const span = document.createElement("span"); span.className = "summary"; span.textContent = summary;
-    col.appendChild(span); node.appendChild(col);
-    list.insertBefore(node, list.firstChild);
-    this._pending.push({ key: summary.toLowerCase(), node: node, t: Date.now() });
-    if (!this._poll) this._poll = setInterval(() => this._reconcile(), 400);
-  }
-  _reconcile() {
-    const items = (this._child && this._child._items) || [];
-    const active = items.filter(i => i && i.status !== "completed");
-    this._pending = this._pending.filter(p => {
-      const found = active.some(i => (i.summary || "").toLowerCase() === p.key);
-      const old = Date.now() - p.t > 12000;
-      if (found || old) { if (p.node && p.node.parentNode) p.node.parentNode.removeChild(p.node); return false; }
-      return true;
-    });
-    if (!this._pending.length && this._poll) { clearInterval(this._poll); this._poll = null; }
-  }
-  getCardSize() { return (this._child && this._child.getCardSize) ? this._child.getCardSize() : 3; }
+  getCardSize() { return 2 + Math.max(1, this._nRows || 1); }
 }
 if (!customElements.get("fp-todo-card-beta")) {
   customElements.define("fp-todo-card-beta", FpTodoCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "fp-todo-card-beta", name: "FP Todo Card", description: "Wraps native todo-list with optimistic instant add" });
+  window.customCards.push({ type: "fp-todo-card-beta", name: "FP Todo Card", description: "Eigene Aufgabenliste: Gruppen nach Fälligkeit, Abhaken mit Rückgängig, sofortiges Hinzufügen" });
 }
 })();
 
