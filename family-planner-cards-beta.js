@@ -7052,7 +7052,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v18 (am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v18 (ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7163,6 +7163,7 @@ class FpBabyOverviewCard extends HTMLElement {
     this._abgehaengt = true;
     clearInterval(this._timer); this._timer = null; (this._nachT || []).forEach(clearTimeout);
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
+    this._zielEnde();
     this._klebtEnde();   // die Beobachter hängen an Wächter und Karte im Gerüst; beim Wiederanhängen legt connectedCallback sie neu an
   }
   // Jede Sekunde nur die laufenden Uhren; jede halbe Minute die „her“-Zeiten, jede Minute die Kalender.
@@ -7664,8 +7665,15 @@ class FpBabyOverviewCard extends HTMLElement {
     if ((b = z(".fo-gear"))) { this._sheetEinst(); return; }
     if ((b = z("[data-kind-sel]"))) { this._kindWahl(b.dataset.kindSel); return; }
     if ((b = z("[data-off]"))) { this._off = Math.min(0, Math.max(-(LADETAGE - 1), this._off + Number(b.dataset.off))); this._eAlle = false; this._paint(true); return; }
+    // Hauptkarte und Jetzt-Zeilen in „Heute“ führen ins Protokoll dieses Kindes. Sie stehen vor [data-view], und ein Knopf darin
+    // (■ Stoppen) gehört weiter sich selbst: Trifft der Tipp ein [data-act] innerhalb, geht es unten bei den Aktionen weiter.
+    if ((b = z("[data-proto]"))) {
+      const knopf = z("[data-act]");
+      if (!(knopf && b.contains(knopf))) { this._zumProtokoll(b.dataset.kind, b.dataset.proto); return; }
+    }
     if ((b = z("[data-view]"))) {
       const vorher = this._view;
+      this._zielEnde();   // eine Ansicht per Leiste oder Chip ist ein eigener Wunsch: kein Nachführen mehr
       this._view = b.dataset.view; this._off = 0; this._paint(true);
       if (vorher === "protokoll" && this._view !== vorher) this._load();   // was dort eingetragen wurde, soll gleich in den anderen Ansichten stehen
       // Am Handy mit mehreren Kindern klebt der Kopf unter der HA-Kopfzeile: den Kartenanfang dorthin scrollen, nicht darunter,
@@ -7866,23 +7874,25 @@ class FpBabyOverviewCard extends HTMLElement {
   }
 
   // Die hervorgehobene Karte — bei Buma „Next sleep“, hier die nächste Mahlzeit.
+  // Ein Tipp auf die Karte (außer auf „■ Stoppen“) öffnet das Protokoll dieses Kindes bei der Stillkarte, ohne sichtbaren Hinweis.
   _naechsteKarte(vm, lauf, ab) {
     const jetzt = Date.now(), l = vm.letzte, p = vm.prog, k = vm.kid;
+    const ziel = this._protoZiel(k, "still");
     const zuletzt = l ? `${l.evs.map(e => e.typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""}` : `Stillen${e.seite ? ` ${e.seite}` : ""} ${this._minText(e.end - e.start)}`).join(" + ")} um ${l.geschaetzt ? "ca. " : ""}${this._wann(l.start)}` : "";
     if (lauf) {
       const s = this._seite(k);
-      return `<div class="fo-next fo-next-run"><div class="fo-nl"><i class="fo-puls"></i>Stillt gerade</div>
+      return `<div class="fo-next fo-next-run"${ziel}><div class="fo-nl"><i class="fo-puls"></i>Stillt gerade</div>
         <div class="fo-nb fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</div>
         <div class="fo-ns">${s ? `${U.esc(s)} · ` : ""}seit ${this._hm(new Date(ab))}</div>
         <button class="fo-nbtn" type="button" data-act="still" data-kind="${U.esc(k.key)}">■ Stoppen</button></div>`;
     }
-    if (!l) return `<div class="fo-next"><div class="fo-nl">Mahlzeiten</div><div class="fo-nb">–</div><div class="fo-ns">Noch nichts eingetragen</div></div>`;
+    if (!l) return `<div class="fo-next"${ziel}><div class="fo-nl">Mahlzeiten</div><div class="fo-nb">–</div><div class="fo-ns">Noch nichts eingetragen</div></div>`;
     const seit = jetzt - l.start;
     if (!p || seit > 8 * STD) {
-      return `<div class="fo-next"><div class="fo-nl">Letzte Mahlzeit</div><div class="fo-nb">${this._her(seit)}</div><div class="fo-nf">${U.esc(zuletzt)}</div></div>`;
+      return `<div class="fo-next"${ziel}><div class="fo-nl">Letzte Mahlzeit</div><div class="fo-nb">${this._her(seit)}</div><div class="fo-nf">${U.esc(zuletzt)}</div></div>`;
     }
     const big = jetzt < p.lo ? `${this._hm(new Date(p.lo))} – ${this._hm(new Date(p.hi))}` : jetzt <= p.hi ? `jetzt – ${this._hm(new Date(p.hi))}` : "Fällig";
-    return `<div class="fo-next${jetzt > p.hi ? " fo-next-due" : ""}"><div class="fo-nl">Nächste Mahlzeit</div>
+    return `<div class="fo-next${jetzt > p.hi ? " fo-next-due" : ""}"${ziel}><div class="fo-nl">Nächste Mahlzeit</div>
       <div class="fo-nb">${big}</div>
       <div class="fo-ns">satt seit ${this._hDauer(seit)} · Abstand ${p.teil ? `${p.teil} ` : ""}meist ~${this._hDauer(p.med)}</div></div>`;
   }
@@ -7892,10 +7902,11 @@ class FpBabyOverviewCard extends HTMLElement {
   _jetztKarten(vm, lauf, ab) {
     const k = vm.kid, jetzt = Date.now(), zeilen = [];
     // Welche Zeilen es gibt, hängt nur an der Konfiguration — so stehen sie bei Zwillingen auf einer Linie.
-    // Stillen und Fläschchen führen per Tipp ins Stillprotokoll (Ansicht „Protokoll“).
-    const proto = this._hatProtokoll() ? ` data-view="protokoll"` : "";
-    // alarm: Wert in Alarmfarbe; rechts: HTML der rechten Spalte (oder leer)
-    const zeile = (farbe, emoji, wert, unter, rechts, link, alarm) => `<div class="fo-nr"${link ? proto : ""} style="--nr:${farbe}">
+    // Stillen und Fläschchen führen per Tipp zur Stillkarte dieses Kindes im Protokoll, die Windelzeile zur Windelkarte.
+    // Ohne Stillkarte (kein Schalter) bleibt für Stillen und Fläschchen der alte Weg in die Ansicht „Protokoll“.
+    const still = this._protoZiel(k, "still") || (this._hatProtokoll() ? ` data-view="protokoll"` : ""), windel = this._protoZiel(k, "windel");
+    // alarm: Wert in Alarmfarbe; rechts: HTML der rechten Spalte (oder leer); link: "still" oder "windel" = antippbar
+    const zeile = (farbe, emoji, wert, unter, rechts, link, alarm) => `<div class="fo-nr"${link === "still" ? still : link === "windel" ? windel : ""} style="--nr:${farbe}">
       <span class="fo-nrk">${emoji}</span><div class="fo-nrm"><b${alarm ? ` class="fo-nr-due"` : ""}>${wert}</b><small>${unter}</small></div>${rechts ? `<div class="fo-nrr">${rechts}</div>` : ""}</div>`;
     const faellig = `<span class="fo-nr-due">Fällig</span>`;
     // Unter einem Tag nur „1:47 h“, sonst Wochentag und Uhrzeit statt „2 T. 11 h“, dazu „vor n Tagen“
@@ -7921,17 +7932,17 @@ class FpBabyOverviewCard extends HTMLElement {
       if (lauf) {
         // Die laufende Uhr steht nur in der Hauptkarte. Die Zeile nennt die Seite und den Beginn.
         const sd = this._seite(k);
-        zeilen.push(zeile("var(--c-nurse)", "🤱", sd ? U.esc(sd.charAt(0).toUpperCase() + sd.slice(1)) : "läuft", `Stillen · seit ${this._hm(new Date(ab))}`, "", true));
+        zeilen.push(zeile("var(--c-nurse)", "🤱", sd ? U.esc(sd.charAt(0).toUpperCase() + sd.slice(1)) : "läuft", `Stillen · seit ${this._hm(new Date(ab))}`, "", "still"));
       } else if (st) {
         // Die Spanne der nächsten Mahlzeit steht nur in der Hauptkarte. Unter einem Tag: Seite und Dauer des letzten Stillens.
         const [w, u] = her(+st.start), davon = U.esc([st.seite, this._minText(+st.end - +st.start)].filter(Boolean).join(" "));
-        zeilen.push(zeile("var(--c-nurse)", "🤱", w, `Stillen${jetzt - st.start < TAG ? (davon ? ` · ${davon}` : "") : ` · ${u}`}`, due ? faellig : "", true));
-      } else zeilen.push(leer("var(--c-nurse)", "🤱", "Stillen · noch nichts eingetragen", true));
+        zeilen.push(zeile("var(--c-nurse)", "🤱", w, `Stillen${jetzt - st.start < TAG ? (davon ? ` · ${davon}` : "") : ` · ${u}`}`, due ? faellig : "", "still"));
+      } else zeilen.push(leer("var(--c-nurse)", "🤱", "Stillen · noch nichts eingetragen", "still"));
     }
     if (k.feeding_calendar) {
       const fl = vm.raw.feeds.filter(e => e.typ === "flasche").pop();
-      if (fl) { const [w, u] = her(+fl.start); zeilen.push(zeile("var(--c-bottle)", "🍼", w, ["Fläschchen", u, fl.ml ? `${fl.ml} ml` : ""].filter(Boolean).join(" · "), "", true)); }
-      else zeilen.push(leer("var(--c-bottle)", "🍼", "Fläschchen · noch keins", true));
+      if (fl) { const [w, u] = her(+fl.start); zeilen.push(zeile("var(--c-bottle)", "🍼", w, ["Fläschchen", u, fl.ml ? `${fl.ml} ml` : ""].filter(Boolean).join(" · "), "", "still")); }
+      else zeilen.push(leer("var(--c-bottle)", "🍼", "Fläschchen · noch keins", "still"));
     }
     if (k.diaper_calendar) {
       if (vm.windel) {
@@ -7939,8 +7950,8 @@ class FpBabyOverviewCard extends HTMLElement {
         // Stuhl als Zusatz in der Windelzeile statt als eigene Zeile
         const stuhl = !vm.stuhl ? "noch kein Stuhl" : vm.stuhl === vm.windel ? "mit Stuhl" : `Stuhl ${jetzt - vm.stuhl.start < TAG ? `vor ${this._her(jetzt - vm.stuhl.start)}` : her(+vm.stuhl.start)[0]}`;
         zeilen.push(zeile("var(--c-diaper)", "💩", w, ["Windel", u, stuhl].filter(Boolean).join(" · "),
-          due ? faellig : p ? `<span>Nächste</span><span>~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}</span>` : ""));
-      } else zeilen.push(leer("var(--c-diaper)", "💩", "Windel · noch nichts eingetragen"));
+          due ? faellig : p ? `<span>Nächste</span><span>~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}</span>` : "", "windel"));
+      } else zeilen.push(leer("var(--c-diaper)", "💩", "Windel · noch nichts eingetragen", "windel"));
     }
     return zeilen.length ? `<div class="fo-sec">Jetzt</div><div class="fo-box fo-now">${zeilen.join("")}</div>` : "";
   }
@@ -8065,10 +8076,17 @@ class FpBabyOverviewCard extends HTMLElement {
   // (mit Bericht) und die fp-diaper-card-beta, eingebettet wie die Meilensteinkarte und einmal angelegt. Ihre Konfiguration
   // ergibt sich aus der der Übersicht; die Karten bringen Ändern, Nachtragen und Bericht selbst mit.
   _hatProtokoll() { return this.config.kids.some(k => k.feeding_calendar || k.diaper_calendar); }
+  // Eine Stillkarte bekommt, wer Stillkalender und Schalter hat; die Windelkarte, wer einen Windelkalender hat.
+  _hatStillkarte(kid) { return !!(kid.feeding_calendar && kid.switch); }
+  // Attribute für ein antippbares Stück in „Heute“ (data-proto, siehe _zumProtokoll); leer, wenn das Kind diese Karte nicht hat.
+  _protoZiel(kid, art) {
+    const da = art === "windel" ? kid.diaper_calendar : this._hatStillkarte(kid);
+    return this._hatProtokoll() && da ? ` data-proto="${art}" data-kind="${U.esc(kid.key)}"` : "";
+  }
   _protokollKarten(kid) {
     const c = this.config, e = this._emb[kid.key] = this._emb[kid.key] || {};
     const rein = o => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v != null));   // leere Werte nicht übergeben, die Karte hat eigene Vorgaben
-    if (!e.feed && kid.feeding_calendar && kid.switch && customElements.get("fp-feeding-card-beta")) {
+    if (!e.feed && this._hatStillkarte(kid) && customElements.get("fp-feeding-card-beta")) {
       e.feed = document.createElement("fp-feeding-card-beta");
       e.feed.setConfig(rein({ name: kid.name, color: kid.color, calendar: kid.feeding_calendar, switch: kid.switch, side: kid.side, start: kid.start,
         diaper_calendar: kid.diaper_calendar, weight_calendar: c.weight_calendar, weight_key: kid.weight_key || kid.key,
@@ -8096,13 +8114,52 @@ class FpBabyOverviewCard extends HTMLElement {
         // Beim Zurückkehren stehen die schon vorhandenen Karten noch mit altem Stand da — gleich neu lesen.
         bestand.forEach(c => { if (c && c._load) c._load(); });
         if (e.feed) stillen.appendChild(e.feed);
-        else if (k.feeding_calendar && k.switch) stillen.innerHTML = `<div class="fo-leer">Die Stillkarte ist nicht geladen.</div>`;
+        else if (this._hatStillkarte(k)) stillen.innerHTML = `<div class="fo-leer">Die Stillkarte ist nicht geladen.</div>`;
         if (e.diaper) windeln.appendChild(e.diaper);
         else if (k.diaper_calendar) windeln.innerHTML = `<div class="fo-leer">Die Windelkarte ist nicht geladen.</div>`;
         if (!stillen.firstChild && !windeln.firstChild) stillen.innerHTML = `<div class="fo-leer">Für ${U.esc(k.name)} ist kein Protokoll eingerichtet.</div>`;
       });
     }
     Array.from(grid.children).forEach((col, i) => col.classList.toggle("fo-sel", kids[i].key === this._kind));
+  }
+  // Tipp in „Heute“ auf Hauptkarte oder Jetzt-Zeile: das Kind der Spalte wählen, ins Protokoll wechseln und dort zur Still- (art
+  // „still“) oder Windelkarte (art „windel“) dieses Kindes scrollen. Genau ein Neuzeichnen; am Tablet stehen weiter beide Spalten da.
+  _zumProtokoll(key, art) {
+    if (this.config.kids.some(k => k.key === key)) { this._kind = key; this._setPref("kind", key); }
+    this._view = "protokoll"; this._off = 0; this._paint(true);
+    this._zielHalten(key, art);
+  }
+  // Das Ziel ansteuern und kurz nachführen: Die eingebetteten Karten laden erst jetzt und werden dabei höher, die Windelkarte rutscht
+  // nach unten, und anfangs ist die Seite zu kurz, um bis dorthin zu scrollen. Darum wird das Ziel nach jeder Änderung der Rasterhöhe
+  // neu angesteuert, aber nur 4 s lang und nur, bis der Nutzer selbst eingreift (Rad, Tippen, Taste; Scroll-Ereignisse zählen nicht,
+  // das Ansteuern löst selbst welche aus). Der Baustein bekommt als Rand unter der festen HA-Kopfzeile die klebende Kopfzeile (.fo-top
+  // samt der Fläche, die 6 px darüber und darunter reicht) und etwas Luft.
+  _zielHalten(key, art) {
+    this._zielEnde();
+    const grid = this.querySelector(".fo-pgrid"), top = this.querySelector(".fo-top"), i = this.config.kids.findIndex(k => k.key === key);
+    const blk = grid && top && i >= 0 && grid.children[i] && grid.children[i].children[art === "windel" ? 1 : 0];
+    if (!blk) return;
+    const gehe = () => {
+      if (this._view !== "protokoll" || !blk.isConnected) { this._zielEnde(); return; }
+      const px = getComputedStyle(top).position === "sticky" ? 6 + top.getBoundingClientRect().height + 6 + 8 : 8;
+      blk.style.scrollMarginTop = `calc(var(--header-height, 56px) + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) + ${Math.ceil(px)}px)`;
+      if (window.scrollTo) blk.scrollIntoView({ block: "start", behavior: "smooth" });
+    };
+    const z = this._ziel = { evs: ["wheel", "touchstart", "pointerdown", "keydown"], stop: () => this._zielEnde(), ro: null, timer: setTimeout(() => this._zielEnde(), 4000) };
+    z.evs.forEach(t => window.addEventListener(t, z.stop, { capture: true, passive: true }));
+    if (window.ResizeObserver) {
+      let h = grid.offsetHeight;
+      z.ro = new ResizeObserver(() => { if (Math.abs(grid.offsetHeight - h) >= 1) { h = grid.offsetHeight; gehe(); } });
+      z.ro.observe(grid);
+    }
+    gehe();
+  }
+  _zielEnde() {
+    const z = this._ziel; if (!z) return;
+    this._ziel = null;
+    clearTimeout(z.timer);
+    if (z.ro) z.ro.disconnect();
+    z.evs.forEach(t => window.removeEventListener(t, z.stop, true));
   }
 
   // ---------- Wachstum ----------
@@ -8987,7 +9044,7 @@ class FpBabyOverviewCard extends HTMLElement {
       /* Jetzt als Liste: runder Kreis in der Tätigkeitsfarbe mit Symbol, Wert groß, „Tätigkeit · Detail“ klein, rechts Ausblick oder „Fällig“ */
       .fo-nr{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--b-line);min-width:0;}
       .fo-nr:first-child{border-top:none;}
-      .fo-nr[data-view]{cursor:pointer;}
+      .fo-nr[data-view],.fo-nr[data-proto],.fo-next[data-proto]{cursor:pointer;}
       .fo-nrk{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.05rem;line-height:1;background:color-mix(in srgb,var(--nr) 22%,var(--b-bg));}
       .fo-nrm{flex:1;min-width:0;display:flex;flex-direction:column;}
       .fo-nrm b{font-size:1rem;font-weight:900;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
