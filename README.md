@@ -171,6 +171,7 @@ due_date_period:            # optional: nur bald Fälliges zeigen
   calendar:
     period: day             # day | week | month | year
     offset: 4               # 0 = aktuelle Periode
+# hide_undated: true      # optional: Aufgaben ohne Datum ausblenden (Vorgabe false)
 edit_dialog: true           # optional: Tipp auf den Text öffnet den eigenen Änderungsdialog
 edit_targets:               # Ziele zum Verschieben (project_id nur für Todoist)
   - { label: Allgemein, entity: todo.allgemein, project_id: "PROJEKT-ID" }
@@ -185,7 +186,7 @@ todoist_service: rest_command.todoist_add_task
 - **Beschreibung:** Mit `show_description` (Vorgabe `true`) steht die Beschreibung einer Aufgabe als kleine zweite Zeile unter dem Text, höchstens zwei Zeilen lang. Bei Einkaufslisten (z. B. Bring) steckt dort die Info zum Artikel wie „Natur, 450 g". Für Listen mit internen Notizen, etwa Sync-Markierungen, setzt man `show_description: false`.
 - **Abhaken:** Ein Tipp auf den Kreis erledigt die Aufgabe sofort und zeigt kurz „Rückgängig". Mit `hide_completed: false` bringt ein Tipp auf den gefüllten Kreis eine erledigte Aufgabe zurück.
 - **Personenfarbe:** `pill: { label, color }` genügt: Hintergrund und Schrift der Pille werden aus der einen Farbe gemischt und passen so zu hellem und dunklem Theme. Die alte Form `{ label, bg, color }` bleibt gültig, wenn `bg` und `color` beide gesetzt sind; dann gelten genau diese beiden Werte. Ohne Farbe bleibt die Pille neutral.
-- **`due_date_period`:** `week` läuft von Montag bis Sonntag, `offset: 0` ist der aktuelle Zeitraum. Gezeigt werden nur offene Aufgaben, die bis zum Ende des Zeitraums fällig sind (Überfälliges eingeschlossen); Aufgaben ohne Fälligkeitsdatum fallen dabei weg. `period: day, offset: 4` ist praktisch für kompakte Übersichtsseiten.
+- **`due_date_period`:** `week` läuft von Montag bis Sonntag, `offset: 0` ist der aktuelle Zeitraum. Gezeigt werden nur offene Aufgaben, die bis zum Ende des Zeitraums fällig sind (Überfälliges eingeschlossen). Der Filter betrifft nur Aufgaben **mit** Datum; Aufgaben ohne Datum bleiben sichtbar und stehen unter „Ohne Datum“. Mit `hide_undated: true` werden sie ausgeblendet. `period: day, offset: 4` ist praktisch für kompakte Übersichtsseiten.
 - **Neu anlegen:** Die Eingabezeile „Neue Aufgabe" (Enter oder ＋) zeigt den Eintrag sofort leicht ausgegraut; er wird ersetzt, sobald das Backend nachzieht (spätestens nach 20 Sekunden). Dasselbe gilt für Aufgaben, die die `shopping-fav-card` über das Event `fp-todo-add` anlegt.
 - **Nicht mehr dabei:** Weil die Karte nicht mehr die native Liste einbettet, greifen `card_mod`-Regeln für deren Innereien nicht mehr, auch `hide_section_headers` hat keine Wirkung. Ziehen zum Umsortieren gibt es nicht.
 

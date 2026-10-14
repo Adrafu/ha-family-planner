@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.0.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
+/* Family Planner custom cards v3.0.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -2508,7 +2508,7 @@ if (!customElements.get("nav-card")) {
 }
 })();
 
-/* ===== fp-todo-card v16 (Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; davor: Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+/* ===== fp-todo-card v17 (Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
 // Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
 // selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
 // Hinzufügen über das Ereignis fp-todo-add bleiben.
@@ -2639,7 +2639,8 @@ class FpTodoCard extends HTMLElement {
     const time = hasTime && (d.getHours() || d.getMinutes()) ? U.pad(d.getHours()) + ":" + U.pad(d.getMinutes()) : "";
     return { d, day: this._dayNum(d), t: d.getTime(), time };
   }
-  // due_date_period: Tageszahl, bis zu der Aufgaben gezeigt werden (Überfälliges eingeschlossen); null = kein Filter
+  // due_date_period: Tageszahl, bis zu der Aufgaben mit Datum gezeigt werden (Überfälliges eingeschlossen); null = kein Filter.
+  // Aufgaben ohne Datum betrifft der Filter nicht (die blendet hide_undated aus).
   _limit(now) {
     const per = this.config.due_date_period;
     const c = per && per.calendar;
@@ -2670,6 +2671,7 @@ class FpTodoCard extends HTMLElement {
     const cfg = this.config, nowD = new Date(), nowMs = nowD.getTime(), today = this._dayNum(nowD);
     const hideDone = cfg.hide_completed !== false;
     const lim = this._limit(nowD);
+    const hideUndated = cfg.hide_undated === true;   // Vorgabe aus: Aufgaben ohne Datum bleiben sichtbar
     const showDesc = cfg.show_description !== false;   // Vorgabe an: Beschreibung (z. B. Menge bei Einkaufslisten) als zweite Zeile
     const src = [];
     for (const p of this._pending) src.push({ uid: p.uid, summary: p.summary, description: p.description, status: "needs_action", due: p.due, pend: true });
@@ -2685,10 +2687,11 @@ class FpTodoCard extends HTMLElement {
       const kept = !it.pend && !!k && k.until > nowMs;
       if (done && hideDone && !kept) return;
       const due = this._parseDue(it.due);
-      if (lim !== null && !it.pend) {   // Filter: nur Offenes bis Zeitraumende, ohne Datum fällt weg (frisch Angelegtes bleibt kurz als Rückmeldung)
+      if (lim !== null && !it.pend) {   // Filter: nur Offenes, mit Datum nur bis Zeitraumende; ohne Datum bleibt (frisch Angelegtes bleibt kurz als Rückmeldung)
         if (done && !kept) return;
-        if (!due || due.day > lim) return;
+        if (due && due.day > lim) return;
       }
+      if (hideUndated && !due && !it.pend) return;   // hide_undated: Aufgaben ohne Datum ausblenden
       const grp = done && !kept ? "done" : !due ? "none" : due.day < today ? "ov" : due.day === today ? "td" : "nx";
       rows.push({ u: it.uid, s: String(it.summary == null ? "" : it.summary), d: showDesc ? this._descText(it.description) : "", done, pend: !!it.pend, due, i, grp, chip: !done && due ? this._chip(due, today) : null });
     });
