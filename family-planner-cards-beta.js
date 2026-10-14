@@ -1708,13 +1708,24 @@ if (!customElements.get("kids-routine-card-beta")) {
 }
 })();
 
-/* ===== shopping-fav-card-beta v21 (Datumsfeld passt aufs iPhone; Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Farben ueber Theme-Variablen, Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card-beta v22 (Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
+// Die Liste list_entity wird live gelesen (todo/item/subscribe), damit Favoriten, die schon
+// offen auf der Liste stehen, mit ✓ markiert sind und nicht doppelt angelegt werden.
 class ShoppingFavCard extends HTMLElement {
+  constructor() {
+    super();
+    this._timers = new Set();
+    this._gen = 0; this._unsub = null; this._subbing = false; this._failAt = 0;
+    this._open = [];           // Namen der offenen Einträge, normalisiert
+    this._optim = new Map();   // gerade angelegt, noch nicht im Abo: Name -> Zeit
+    this._markSig = ""; this._flashing = 0;
+  }
   setConfig(config) {
     if (!config || !config.list_entity) throw new Error("list_entity (todo-Liste) erforderlich");
+    this._unsubscribe();
     this.config = Object.assign({
       columns: 3, store_entity: "", title: "", assign: false, targets: [], default_target: "",
       big: false, fallback: "", add_button: false, add_label: "", show_due: true, target_label: "Wer?",
@@ -1724,12 +1735,102 @@ class ShoppingFavCard extends HTMLElement {
       repeat_options: [], repeat_label: "Wiederholung", todoist_service: "rest_command.todoist_add_task",
     }, config || {});
     this._editing = false; this._lastVal = null; this._built = false;
+    this._open = []; this._optim.clear(); this._markSig = ""; this._failAt = 0;
+    if (this.isConnected) this._subscribe();
+  }
+  connectedCallback() { this._subscribe(); this._sync(); }
+  disconnectedCallback() {
+    this._timers.forEach(t => clearTimeout(t)); this._timers.clear();
+    this._unsubscribe();
   }
   set hass(hass) {
     this._hass = hass;
+    this._subscribe();
     if (this._editing) return;
     const v = this._storeVal();
     if (v !== this._lastVal || !this._built) { this._lastVal = v; this._render(); }
+  }
+  _after(fn, ms) {
+    const t = setTimeout(() => { this._timers.delete(t); fn(); }, ms);
+    this._timers.add(t);
+  }
+
+  // ---------- „Schon auf der Liste“ (Abo auf list_entity) ----------
+  // Tipp legt direkt an (kein Zuweisen-Blatt) und es gibt Favoriten, die man markieren kann
+  _assigning() { return !!(this.config.assign && (this.config.targets || []).length); }
+  _marking() { return !!(this.config.store_entity && !this._assigning()); }
+  _showFavs() {
+    // Favoriten und Hinzufügen-Knopf sind kombinierbar. Ohne ausdrückliche
+    // Angabe bleibt das alte Verhalten: mit Knopf nur der Knopf (kompakte
+    // Übersicht), ohne Knopf nur die Favoriten.
+    return this.config.show_favorites !== undefined ? !!this.config.show_favorites : !this.config.add_button;
+  }
+  _live() { return !!(this._unsub || this._subbing); }
+  _subscribe() {
+    if (this._unsub || this._subbing || !this._hass || !this.isConnected || !this.config || !this._marking()) return;
+    if (Date.now() - this._failAt < 30000) return;   // nach einem Fehler nicht bei jedem hass-Update neu versuchen
+    const conn = this._hass.connection;
+    if (!conn || !conn.subscribeMessage) return;
+    const gen = this._gen;
+    this._subbing = true;
+    let p;
+    try { p = conn.subscribeMessage(msg => { if (gen === this._gen) this._onItems(msg); }, { type: "todo/item/subscribe", entity_id: this.config.list_entity }); }
+    catch (e) { p = Promise.reject(e); }
+    p.then(unsub => {
+      if (gen !== this._gen) { try { const r = unsub(); if (r && r.catch) r.catch(() => {}); } catch (e) {} return; }   // inzwischen abgehängt oder umkonfiguriert
+      this._subbing = false; this._unsub = unsub;
+    }).catch(() => {
+      if (gen !== this._gen) return;
+      this._subbing = false; this._failAt = Date.now();   // still: dann eben ohne Markierung
+    });
+  }
+  _unsubscribe() {
+    this._gen++; this._subbing = false;
+    const u = this._unsub; this._unsub = null;
+    if (u) { try { const r = u(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
+  _key(s) { return this._norm(String(s == null ? "" : s)).replace(/\s+/g, " ").trim(); }
+  _onItems(msg) {
+    const items = Array.isArray(msg && msg.items) ? msg.items : [];
+    this._open = items.filter(i => i && i.status === "needs_action").map(i => this._key(i.summary)).filter(Boolean);
+    // Vorab-Markierungen weg, sobald das Abo den Eintrag bringt (oder sie abgelaufen sind)
+    const now = Date.now();
+    for (const [k, t] of [...this._optim]) if (this._isOpen(k) || now - t >= 20000) this._optim.delete(k);
+    this._sync();
+  }
+  // offener Eintrag mit gleichem Namen, oder mit Menge davor („200 g Butter“)
+  _isOpen(k) { return this._open.some(s => s === k || s.endsWith(" " + k)); }
+  _isMarked(name) {
+    if (!this._marking()) return false;
+    const k = this._key(name);
+    if (!k) return false;
+    if (this._isOpen(k)) return true;
+    const t = this._optim.get(k);
+    return !!t && Date.now() - t < 20000;
+  }
+  _markOptimistic(name) {
+    if (!this._marking() || !this._live()) return;
+    const k = this._key(name);
+    if (!k) return;
+    this._optim.set(k, Date.now());
+    this._after(() => this._sync(), 20100);   // abgelaufene Vorab-Markierung wieder wegnehmen
+  }
+  _marksSig() {
+    if (!this._showFavs() || !this._marking()) return "";
+    return this._items().map(f => this._isMarked(f) ? "1" : "0").join("");
+  }
+  // Neu zeichnen nur, wenn sich Markierungen ändern; nie unter einem offenen Blatt oder mitten im „Hinzugefügt“
+  _sync() {
+    if (!this._built) return;
+    if (this._aov) this._paintPicks();
+    if (this._editing || this._flashing) return;
+    if (this._marksSig() !== this._markSig) this._render();
+  }
+  // Favoriten-Chips im Hinzufügen-Blatt: markiert nur, wenn das gewählte Ziel die überwachte Liste ist
+  _paintPicks() {
+    if (!this._aov) return;
+    const on = this._marking() && this._sel === this.config.list_entity;
+    this._aov.querySelectorAll(".sf-favpick").forEach(b => b.classList.toggle("sf-on", on && this._isMarked(b.dataset.n)));
   }
   _storeVal() {
     const e = this.config.store_entity;
@@ -1822,6 +1923,7 @@ class ShoppingFavCard extends HTMLElement {
     if (dueString) { this._addRecurring(name, ent, due, dueString); return; }
     const data = { entity_id: ent, item: name };
     if (due) data.due_date = due;
+    if (ent === this.config.list_entity) this._markOptimistic(name);   // gilt sofort als „auf der Liste“, bis das Abo es bringt
     window.dispatchEvent(new CustomEvent("fp-todo-add", { detail: { entity: ent, summary: name, due: due || null } }));
     this._hass.callService("todo", "add_item", data).catch(() => this._toast("Konnte nicht zur Liste hinzugefügt werden"));
   }
@@ -1964,6 +2066,7 @@ class ShoppingFavCard extends HTMLElement {
     this._editing = false;
     if (this._aov && this._aov.parentNode) this._aov.parentNode.removeChild(this._aov);
     this._aov = null;
+    this._sync();   // Markierungen, die sich unter dem Blatt geändert haben
   }
   _openAdd() {
     this._editing = true;
@@ -1971,7 +2074,7 @@ class ShoppingFavCard extends HTMLElement {
     const def = this.config.default_target || this.config.list_entity || (targets[0] && targets[0].entity) || "";
     this._sel = def; this._due = "";
     const favs = this._items();
-    const favChips = favs.map(f => `<button class="sf-favpick" data-n="${this._esc(f)}">${this._emoji(f)} ${this._esc(f)}</button>`).join("");
+    const favChips = favs.map(f => `<button class="sf-favpick" data-n="${this._esc(f)}">${this._emoji(f)} ${this._esc(f)}<span class="sf-ck">${CP(0x2713)}</span></button>`).join("");
     const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
     const dueHtml = this.config.show_due ? this._dueHtml() : "";
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
@@ -1981,7 +2084,8 @@ class ShoppingFavCard extends HTMLElement {
     const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
     ov.querySelectorAll(".sf-favpick").forEach(b => b.addEventListener("click", () => { txt.value = b.dataset.n; }));
-    ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => { this._sel = b.dataset.e; ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b)); if (syncRep) syncRep(); }));
+    ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => { this._sel = b.dataset.e; ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b)); if (syncRep) syncRep(); this._paintPicks(); }));
+    this._paintPicks();
     this._wireDue(ov);
     const submit = () => { const t = txt.value.trim(); if (!t) { txt.focus(); return; } this._addItem(t, this._sel || def, this._due, this._rep); this._closeAssign(); };
     txt.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
@@ -1990,37 +2094,47 @@ class ShoppingFavCard extends HTMLElement {
   }
   _flash(b) {
     const o = b.innerHTML; b.classList.add("sf-added"); b.innerHTML = CP(0x2713) + " Hinzugefügt";
-    setTimeout(() => { b.classList.remove("sf-added"); b.innerHTML = o; }, 850);
+    this._flashing++;   // währenddessen nicht neu zeichnen, sonst verschwindet die Rückmeldung
+    setTimeout(() => {
+      b.classList.remove("sf-added"); b.innerHTML = o;
+      this._flashing = Math.max(0, this._flashing - 1);
+      this._sync();   // jetzt darf der Favorit als „auf der Liste“ erscheinen
+    }, 850);
   }
   _render() {
     this._built = true;
-    // Favoriten und Hinzufügen-Knopf sind kombinierbar. Ohne ausdrückliche
-    // Angabe bleibt das alte Verhalten: mit Knopf nur der Knopf (kompakte
-    // Übersicht), ohne Knopf nur die Favoriten.
-    const showFavs = this.config.show_favorites !== undefined
-      ? !!this.config.show_favorites : !this.config.add_button;
-    const head = this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : "";
-    let body = "";
+    const showFavs = this._showFavs();
+    const assign = this._assigning();
+    const mark = this._marking();
+    let top = "", body = "";
+    if (this.config.add_button) {
+      // bei „Schnell anlegen“ über dem Kopf mit den Favoriten
+      top = `<div class="sf-addbar"><button class="sf-addbig"><span class="sf-ic">${CP(0x2795)}</span><span>${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</span></button></div>`;
+    }
     if (showFavs) {
       const items = this._items();
-      const cols = this.config.columns || 3;
+      const cols = Math.max(1, parseInt(this.config.columns, 10) || 3);
       const big = this.config.big ? " sf-big" : "";
-      const chips = items.map(it => `<button class="sf-chip${big}" data-n="${this._esc(it)}">${this._emoji(it)} ${this._esc(it)}</button>`).join("");
-      body += `<div class="sf-grid" style="grid-template-columns:repeat(${cols},1fr);">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div>`
-            + `<div class="sf-editbar"><button class="sf-edit">${CP(0x270F) + CP(0xFE0F)} Favoriten bearbeiten</button></div>`;
+      const chips = items.map(it => {
+        const on = mark && this._isMarked(it);
+        return `<button class="sf-chip${big}${on ? " sf-on" : ""}" data-n="${this._esc(it)}"><span class="sf-em">${this._emoji(it)}</span><span class="sf-nm">${this._esc(it)}</span>${on ? `<span class="sf-ck">${CP(0x2713)}</span>` : ""}</button>`;
+      }).join("");
+      // Kopf: Titel (oder kleiner Abschnittstitel) links, Bearbeiten rechts
+      const lead = this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : `<div class="sf-sec">Favoriten</div>`;
+      body = `<div class="sf-head">${lead}<button class="sf-edit" aria-label="Favoriten bearbeiten"><span class="sf-ic">${CP(0x270F) + CP(0xFE0F)}</span><span>Bearbeiten</span></button></div>`
+           + `<div class="sf-grid" lang="de" style="--sf-cols:${cols};">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div>`;
     }
-    if (this.config.add_button) {
-      // gleiche Leiste wie „Favoriten bearbeiten" -> identische Breite und Abstand
-      body += `<div class="sf-addbar"><button class="sf-addbig">${CP(0x2795)} ${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</button></div>`;
-    }
-    this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${head}${body}</ha-card>${this._styles()}`;
+    this._markSig = this._marksSig();
+    this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${top}${body}</ha-card>${this._styles()}`;
 
     const ab = this.querySelector(".sf-addbig");
     if (ab) ab.addEventListener("click", () => this._openAdd());
-    const assign = this.config.assign && (this.config.targets || []).length;
     this.querySelectorAll(".sf-chip").forEach(b => b.addEventListener("click", () => {
-      if (assign) { this._openAssign(b.dataset.n); }
-      else { this._addItem(b.dataset.n, this.config.list_entity); this._flash(b); }
+      const n = b.dataset.n;
+      if (assign) { this._openAssign(n); return; }
+      // steht schon offen auf der Liste: nichts anlegen
+      if (this._isMarked(n)) { this._toast(`„${n}“ steht schon auf der Liste`); return; }
+      this._addItem(n, this.config.list_entity); this._flash(b);
     }));
     const eb = this.querySelector(".sf-edit"); if (eb) eb.addEventListener("click", () => this._openEditor());
   }
@@ -2054,33 +2168,45 @@ class ShoppingFavCard extends HTMLElement {
   }
   _styles() {
     return `<style>
-      .sf-card{padding:12px;}
-      .sf-title{font-weight:700;margin-bottom:8px;}
-      .sf-grid{display:grid;gap:8px;}
-      .sf-chip{height:50px;border:1px solid var(--divider-color);border-radius:12px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.92rem;font-weight:600;cursor:pointer;padding:4px;line-height:1.1;}
-      .sf-chip:hover{background:var(--primary-color);color:var(--text-primary-color,#fff);}
+      /* Farben und Radien kommen aus dem Theme (--fp-*); nach dem Komma steht der Rückfall für Themes ohne diese Zeilen. */
+      .sf-card{padding:14px;}
+      /* Kopf: Titel (oder kleiner Abschnittstitel) links, Bearbeiten rechts */
+      .sf-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;min-height:36px;}
+      .sf-title{font-weight:700;min-width:0;overflow-wrap:anywhere;}
+      .sf-sec{font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
+      .sf-edit{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:36px;box-sizing:border-box;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      /* Raster: höchstens --sf-cols Spalten, auf schmalen Karten weniger (mindestens 96px), alle gleich breit */
+      .sf-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(max(96px,calc((100% - (var(--sf-cols,3) - 1) * 8px) / var(--sf-cols,3) - 1px)),1fr));}
+      .sf-chip{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:68px;box-sizing:border-box;padding:8px 6px;border:none;border-radius:var(--fp-radius-sm,12px);background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-size:.82rem;font-weight:700;line-height:1.15;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .sf-ic{flex:none;line-height:1;}
+      .sf-em{font-size:1.45rem;line-height:1;}
+      /* Namen trennen nach Silben (lang="de" am Raster), nie mitten im Wort hart umbrechen; zwei Zeilen, ein zu langes Wort wird am Rand abgeschnitten */
+      .sf-nm{max-width:100%;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:normal;word-break:normal;-webkit-hyphens:auto;hyphens:auto;}
+      .sf-chip.sf-big{min-height:84px;}
+      .sf-chip.sf-big .sf-em{font-size:1.7rem;}
+      .sf-chip.sf-big .sf-nm{font-size:.92rem;}
+      @media (hover:hover){.sf-chip:not(.sf-on):hover{background:var(--fp-surface-2,var(--divider-color));}}
       .sf-chip:active{transform:scale(.97);}
-      .sf-added{background:rgba(76,175,80,.85)!important;color:#fff!important;border-color:transparent!important;}
+      /* steht schon offen auf der Liste: Rand und Schrift in Akzent, kleines ✓ oben rechts */
+      .sf-chip.sf-on{background:transparent;color:var(--fp-accent,var(--primary-color));box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--fp-accent,var(--primary-color)) 60%,transparent);}
+      .sf-chip .sf-ck{position:absolute;top:5px;right:7px;font-size:.7rem;font-weight:800;line-height:1;}
+      .sf-added{background:var(--fp-accent,var(--primary-color))!important;color:var(--fp-accent-fg,var(--text-primary-color,#fff))!important;box-shadow:none!important;}
       .sf-empty{grid-column:1/-1;color:var(--secondary-text-color);padding:8px;text-align:center;}
-      .sf-editbar{margin-top:10px;display:flex;}
-      .sf-edit{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(120,144,156,.16);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
-      .sf-edit:hover{background:rgba(120,144,156,.30);}
       .sf-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
       .sf-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(92vw,420px);max-height:82vh;overflow:auto;border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
       .sf-mhead{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
       .sf-list{display:flex;flex-direction:column;gap:6px;}
-      .sf-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(127,127,127,.10);border-radius:10px;padding:6px 8px;}
+      .sf-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--fp-surface,var(--secondary-background-color));border-radius:10px;padding:6px 8px;}
       .sf-rlbl{font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
       .sf-acts{display:flex;gap:2px;flex:none;}
       .sf-acts button{border:none;background:transparent;cursor:pointer;font-size:1rem;padding:4px 7px;color:var(--secondary-text-color);border-radius:8px;}
-      .sf-acts button:hover{background:rgba(127,127,127,.18);}
-      .sf-acts .sf-x{color:#c62828;}
+      .sf-acts button:hover{background:color-mix(in srgb,var(--primary-text-color) 12%,transparent);}
+      .sf-acts .sf-x{color:var(--error-color,#c62828);}
       .sf-addrow{display:flex;gap:8px;margin-top:14px;}
       .sf-new{flex:1;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-addbtn{border:none;border-radius:10px;padding:10px 12px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;white-space:nowrap;}
       .sf-foot{margin-top:16px;display:flex;justify-content:flex-end;}
-      .sf-done{border:none;border-radius:10px;padding:10px 18px;background:rgba(120,144,156,.22);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
-      .sf-chip.sf-big{height:66px;font-size:1.05rem;border-radius:14px;}
+      .sf-done{border:none;border-radius:10px;padding:10px 18px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-weight:600;cursor:pointer;}
       .sf-sub{font-size:.8rem;font-weight:700;color:var(--secondary-text-color);text-transform:uppercase;letter-spacing:.03em;margin:14px 0 6px;}
       .sf-tgts,.sf-dates{display:flex;gap:8px;flex-wrap:wrap;}
       .sf-tgt{flex:1;min-width:84px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
@@ -2102,21 +2228,27 @@ class ShoppingFavCard extends HTMLElement {
          beschriftet es wie einen Knopf und lässt Tipps durch (pointer-events). */
       .sf-datewrap.sf-dempty::after{content:"Datum wählen";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.9rem;pointer-events:none;}
       .sf-datewrap.sf-dsel .sf-date{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
-      .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:rgba(120,144,156,.20);color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
+      .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
       .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;}
+      /* Großer Knopf: volle Breite in Akzent; bei „Schnell anlegen“ über dem Kopf mit den Favoriten */
+      .sf-addbar{display:flex;margin-bottom:14px;}
+      .sf-addbig{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;box-sizing:border-box;border:none;border-radius:var(--fp-radius-sm,12px);padding:12px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:800;font-size:1rem;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .sf-addbig:active{transform:scale(.99);}
+      @media (hover:hover){.sf-addbig:hover{filter:brightness(1.06);}}
       /* Zeigt die Karte nur den Knopf, ist der Knopf die Kachel: kein Rahmen,
          keine Innenabstaende, eine durchgehende Flaeche. */
       .sf-addcard{padding:0;background:transparent;border:none;box-shadow:none;}
-      .sf-addbar{margin-top:8px;display:flex;}
-      .sf-addcard .sf-addbar{margin-top:0;}
-      .sf-addbig{flex:1;border:none;border-radius:10px;padding:12px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;font-size:1rem;cursor:pointer;}
+      .sf-addcard .sf-addbar{margin:0;}
       .sf-addcard .sf-addbig{border-radius:var(--ha-card-border-radius,12px);padding:15px 12px;}
-      .sf-addbig:hover{background:rgba(var(--fp-accent-rgb,79,195,247),1);}
       .sf-addtext{width:100%;box-sizing:border-box;border:1px solid var(--divider-color);border-radius:10px;padding:11px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-favs{display:flex;gap:8px;flex-wrap:wrap;}
       .sf-favpick{border:1px solid var(--divider-color);border-radius:12px;padding:12px 14px;min-height:46px;box-sizing:border-box;display:flex;align-items:center;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;font-weight:600;cursor:pointer;}
       .sf-favpick:active{transform:scale(.97);}
       .sf-favpick:hover{background:var(--primary-color);color:var(--text-primary-color,#fff);}
+      /* schon auf der Liste (nur wenn das Ziel die überwachte Liste ist) */
+      .sf-favpick .sf-ck{display:none;margin-left:8px;font-weight:800;}
+      .sf-favpick.sf-on,.sf-favpick.sf-on:hover{background:transparent;color:var(--fp-accent,var(--primary-color));border-color:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 60%,transparent);}
+      .sf-favpick.sf-on .sf-ck{display:inline;}
     </style>`;
   }
   getCardSize() { return 3; }
