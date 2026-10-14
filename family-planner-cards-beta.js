@@ -6421,7 +6421,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v12 (am Handy nur ein Kinderschalter in „Momente“; Farben und Radien aus dem Theme statt fester Palette, hell oder dunkel nach Gerät, Nachthimmel nur im dunklen Modus, Windel blaugrün; appearance entfällt; Kindwechsel als Segment-Schalter im Kopf und per Wischen; Stillprotokoll als Ansicht „Protokoll“ mit eingebetteter Still- und Windelkarte, erreichbar über die Leiste, „Jetzt“ und „Muster“; details_path entfällt; jeder Eintrag antippbar zum Ändern und Löschen; „Rückgängig“ nach Schnelleinträgen, Stillen- und Schlafstart; „＋ Nachtragen“ je Kind; ⚙ Einstellungen für Erinnerung und Pause; Erinnerung tags/nachts und Pause bis zur neuen Mahlzeit aus denselben Helfern wie Stillkarte und Automation; Meilensteine als Ansicht „Momente“ in der Übersicht statt Sprung in einen eigenen Tab; aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Protokoll/Muster/Wachstum/Momente) ===== */
+/* ===== fp-baby-overview-card-beta v13 (weniger Doppeltes in „Heute“: Stillen-Uhr nur in der Hauptkarte, Schlafzeit nur im Knopf, Kachel zeigt den Ausblick, Spanne der nächsten Mahlzeit nur in der Hauptkarte, ohne „her“, Einträge die letzten fünf, kein Protokoll-Link unter „Heute“; davor: Farben und Radien aus dem Theme, hell oder dunkel nach Gerät; Kindwechsel als Segment-Schalter im Kopf und per Wischen; Leiste unten mit Heute, Protokoll (eingebettete Still- und Windelkarte), Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“ nach Schnelleinträgen, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Jetzt-Karten, Tageszahlen, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -6476,6 +6476,7 @@ class FpBabyOverviewCard extends HTMLElement {
     this._spanne = this._pref("spanne", "7") === "14" ? 14 : 7;
     this._off = 0;   // 0 = heute, -1 = gestern …
     this._wAlle = false;   // Wachstum: alle Messungen statt der letzten
+    this._eAlle = false;   // Heute: alle Einträge des Tages statt der letzten fünf
     this._emb = {};        // Protokoll: eingebettete Still- und Windelkarte je Kind, einmal angelegt
     this._ref = null;
     if (this.config.growth_data) this._loadRef();
@@ -6984,7 +6985,7 @@ class FpBabyOverviewCard extends HTMLElement {
     if ((b = z(".fo-spark"))) { this._openChat(); return; }
     if ((b = z(".fo-gear"))) { this._sheetEinst(); return; }
     if ((b = z("[data-kind-sel]"))) { this._kindWahl(b.dataset.kindSel); return; }
-    if ((b = z("[data-off]"))) { this._off = Math.min(0, Math.max(-(LADETAGE - 1), this._off + Number(b.dataset.off))); this._paint(true); return; }
+    if ((b = z("[data-off]"))) { this._off = Math.min(0, Math.max(-(LADETAGE - 1), this._off + Number(b.dataset.off))); this._eAlle = false; this._paint(true); return; }
     if ((b = z("[data-view]"))) {
       const vorher = this._view;
       this._view = b.dataset.view; this._setPref("view", this._view); this._off = 0; this._paint(true);
@@ -7001,6 +7002,7 @@ class FpBabyOverviewCard extends HTMLElement {
       if (e) this._sheetSchlaf(kid, e); return;
     }
     if ((b = z("[data-walle]"))) { this._wAlle = !this._wAlle; this._paint(true); return; }
+    if ((b = z("[data-ealle]"))) { this._eAlle = !this._eAlle; this._paint(true); return; }
     if ((b = z("[data-euid]"))) {
       // Stillen und Fläschchen liegen im Stillkalender, Windeln im Windelkalender
       const kid = this._kid(b.dataset.kind), raw = this._d && this._d.kids[kid.key], windel = b.dataset.ek === "w";
@@ -7024,7 +7026,7 @@ class FpBabyOverviewCard extends HTMLElement {
     if (!this._built || !this._d) return;
     if ((this._view === "protokoll" && !this._hatProtokoll()) || (this._view === "wachstum" && !this.config.weight_calendar) || (this._view === "momente" && !this.config.milestone_calendar)) this._view = "heute";
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
-    const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
+    const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, this._eAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
       kids.map(k => [this._laeuft(k), this._seite(k), this._schlaeft(k)]),
       vms.map(v => [v.raw.feeds.map(e => `${e.uid}:${+e.start}:${+e.end}:${e.typ}:${e.ml}:${e.seite}`).join(), v.raw.diapers.map(e => `${e.uid}:${+e.start}:${e.art}`).join(), v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length,
         v.schlaf.filter(x => !x.laeuft).map(x => `${x.uid}:${+x.start}:${+x.end}`).join()])]);
@@ -7044,7 +7046,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const kopf = this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav() + (this._off === 0 ? this._schlafLeiste() : "");
     if (this._view === "momente") this._zeigeMomente(body);
     else if (this._view === "protokoll") this._zeigeProtokoll(body);
-    else body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>` + (this._view === "heute" ? this._detailsLink() : "");
+    else body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
     const views = [["heute", "Heute"]];
     if (this._hatProtokoll()) views.push(["protokoll", "Protokoll"]);
     views.push(["muster", "Muster"]);
@@ -7106,12 +7108,12 @@ class FpBabyOverviewCard extends HTMLElement {
   // ---------- Heute ----------
   // Feste Bausteine: Schnellknöpfe, Hauptkarte, Jetzt, Tageszahlen, Streifen, Wachstum/Momente, Einträge.
   _heuteSpalte(vm) {
-    const k = vm.kid, jetzt = Date.now(), heute = this._off === 0, tag = this._mitternacht(new Date(), this._off);
+    const k = vm.kid, heute = this._off === 0, tag = this._mitternacht(new Date(), this._off);
     const b = ["", "", ""];
     if (heute) {
       const lauf = this._laeuft(k), ab = lauf ? this._beginn(k) : 0;
       b[0] = `<div class="fo-quick">
-        ${k.switch ? `<button class="fo-q${lauf ? " fo-q-run" : ""}" style="--q:var(--c-nurse)" data-act="still" data-kind="${U.esc(k.key)}"><span class="fo-qe">${lauf ? "⏸" : "🤱"}</span>${lauf ? `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>` : "<span>Stillen</span>"}</button>` : ""}
+        ${k.switch ? `<button class="fo-q${lauf ? " fo-q-run" : ""}" style="--q:var(--c-nurse)" data-act="still" data-kind="${U.esc(k.key)}"><span class="fo-qe">${lauf ? "■" : "🤱"}</span><span>${lauf ? "Stopp" : "Stillen"}</span></button>` : ""}
         ${k.diaper_calendar ? `<button class="fo-q" style="--q:var(--c-diaper)" data-act="windel" data-kind="${U.esc(k.key)}"><span class="fo-qe">💩</span><span>Windel</span></button>` : ""}
         ${k.feeding_calendar ? `<button class="fo-q" style="--q:var(--c-bottle)" data-act="flasche" data-kind="${U.esc(k.key)}"><span class="fo-qe">🍼</span><span>Fläschchen</span></button>` : ""}
       </div>`;
@@ -7150,7 +7152,7 @@ class FpBabyOverviewCard extends HTMLElement {
     if (!l) return `<div class="fo-next"><div class="fo-nl">Mahlzeiten</div><div class="fo-nb">–</div><div class="fo-ns">Noch nichts eingetragen</div></div>`;
     const seit = jetzt - l.start;
     if (!p || seit > 8 * STD) {
-      return `<div class="fo-next"><div class="fo-nl">Letzte Mahlzeit</div><div class="fo-nb">${this._her(seit)} her</div><div class="fo-nf">${U.esc(zuletzt)}</div></div>`;
+      return `<div class="fo-next"><div class="fo-nl">Letzte Mahlzeit</div><div class="fo-nb">${this._her(seit)}</div><div class="fo-nf">${U.esc(zuletzt)}</div></div>`;
     }
     const big = jetzt < p.lo ? `${this._hm(new Date(p.lo))} – ${this._hm(new Date(p.hi))}` : jetzt <= p.hi ? `jetzt – ${this._hm(new Date(p.hi))}` : "Fällig";
     return `<div class="fo-next${jetzt > p.hi ? " fo-next-due" : ""}"><div class="fo-nl">Nächste Mahlzeit</div>
@@ -7167,39 +7169,49 @@ class FpBabyOverviewCard extends HTMLElement {
     // Stillen und Fläschchen führen per Tipp ins Stillprotokoll (Ansicht „Protokoll“).
     const proto = this._hatProtokoll() ? ` data-view="protokoll"` : "";
     const karte = (farbe, titel, wert, unter, naechst, faellig, link) => `<div class="fo-nc${faellig ? " fo-due" : ""}"${link ? proto : ""}>
-      <div class="fo-ncl"><i style="background:${farbe}"></i>${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div>
+      <div class="fo-ncl"><i style="background:${farbe}"></i>${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter || "&nbsp;"}</div>
       <div class="fo-ncn">${naechst || "&nbsp;"}</div></div>`;
     const spanne = p => `Nächste ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}`;
-    // Unter einem Tag „1:47 h her“, sonst Wochentag und Uhrzeit statt „2 T. 11 h“
-    const her = t => { const d = jetzt - t; if (d < TAG) return [this._her(d), "her"]; const n = Math.floor(d / TAG); return [`${WT[new Date(t).getDay()]} ${this._hm(new Date(t))}`, `vor ${n} ${n === 1 ? "Tag" : "Tagen"}`]; };
+    // Unter einem Tag nur „1:47 h“ (ohne Unterzeile), sonst Wochentag und Uhrzeit statt „2 T. 11 h“, darunter „vor n Tagen“
+    const her = t => { const d = jetzt - t; if (d < TAG) return [this._her(d), ""]; const n = Math.floor(d / TAG); return [`${WT[new Date(t).getDay()]} ${this._hm(new Date(t))}`, `vor ${n} ${n === 1 ? "Tag" : "Tagen"}`]; };
     const leer = (farbe, titel, text, link) => karte(farbe, titel, "–", text, "", false, link);
     if (k.sleep_calendar || k.sleep_switch) {
       const l = vm.schlaf[vm.schlaf.length - 1], p = vm.schlafProg;
-      if (vm.schlaeft) karten.push(karte("var(--c-sleep)", "Schlaf", `<span class="fo-dauer" data-ab="${vm.schlafAb}">${this._hDauer(jetzt - vm.schlafAb)}</span>`, `schläft seit ${this._hm(new Date(vm.schlafAb))}`, ""));
-      else if (l && jetzt - l.end < TAG) {
-        const lang = p && jetzt > p.hi && jetzt - l.end <= 8 * STD;
-        karten.push(karte("var(--c-sleep)", "Schlaf", this._her(jetzt - l.end), `wach seit ${this._hm(new Date(l.end))}`,
-          lang ? `<span class="fo-due-t">Länger wach als sonst</span>` : p ? `Schlaf ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}` : "", lang));
+      if (vm.schlaeft) {
+        // Die laufende Zeit steht im Schlafknopf. Die Kachel nennt den Beginn und, wie lange es sonst dauert.
+        const dauern = vm.schlaf.filter(x => !x.laeuft && +x.end > +x.start && +x.end >= jetzt - 72 * STD).map(x => +x.end - +x.start);
+        karten.push(karte("var(--c-sleep)", "Schlaf", `seit ${this._hm(new Date(vm.schlafAb))}`, dauern.length >= 3 ? `meist ~${this._hDauer(this._median(dauern))}` : "schläft", ""));
+      } else if (l && jetzt - l.end < TAG) {
+        // Wach: der Ausblick auf den nächsten Schlaf (Spanne aus den eigenen Wachphasen)
+        if (!p) karten.push(karte("var(--c-sleep)", "Schlaf", "–", "noch zu wenig Schlaf", ""));
+        else if (jetzt <= p.hi) karten.push(karte("var(--c-sleep)", "Schlaf", jetzt < p.lo ? `~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}` : `jetzt – ${this._hm(new Date(p.hi))}`, "nächster Schlaf", ""));
+        else karten.push(karte("var(--c-sleep)", "Schlaf", "Länger wach", "als sonst", "", jetzt - l.end <= 8 * STD));
       } else karten.push(leer("var(--c-sleep)", "Schlaf", l ? "länger nichts eingetragen" : "noch nichts eingetragen"));
     }
     if (k.feeding_calendar || k.switch) {
       const st = vm.raw.feeds.filter(e => e.typ === "stillen").pop(), l = vm.letzte;
       const ziel = this._grenze(k, jetzt) * STD, faellig = !lauf && l && jetzt - l.start >= ziel && jetzt - l.start <= 8 * STD;
-      if (lauf) karten.push(karte("var(--c-nurse)", "Stillen", `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>`, "läuft gerade", "", false, true));
-      else if (st) { const [w, u] = her(+st.start); karten.push(karte("var(--c-nurse)", "Stillen", w, u, faellig ? `<span class="fo-due-t">Fällig</span>` : vm.prog && jetzt < vm.prog.hi ? spanne(vm.prog) : "", faellig, true)); }
-      else karten.push(leer("var(--c-nurse)", "Stillen", "noch nichts eingetragen", true));
+      if (lauf) {
+        // Die laufende Uhr steht nur in der Hauptkarte. Die Kachel nennt die Seite und den Beginn.
+        const sd = this._seite(k);
+        karten.push(karte("var(--c-nurse)", "Stillen", sd ? U.esc(sd.charAt(0).toUpperCase() + sd.slice(1)) : "läuft", `seit ${this._hm(new Date(ab))}`, "", false, true));
+      } else if (st) {
+        // Die Spanne der nächsten Mahlzeit steht nur in der Hauptkarte. Unter einem Tag: Seite und Dauer des letzten Stillens.
+        const [w, u] = her(+st.start), davon = U.esc([st.seite, this._minText(+st.end - +st.start)].filter(Boolean).join(" · "));
+        karten.push(karte("var(--c-nurse)", "Stillen", w, jetzt - st.start < TAG ? davon : u, faellig ? `<span class="fo-due-t">Fällig</span>` : "", faellig, true));
+      } else karten.push(leer("var(--c-nurse)", "Stillen", "noch nichts eingetragen", true));
     }
     if (k.feeding_calendar) {
       const fl = vm.raw.feeds.filter(e => e.typ === "flasche").pop();
-      if (fl) { const [w, u] = her(+fl.start); karten.push(karte("var(--c-bottle)", "Fläschchen", w, `${u}${fl.ml ? ` · ${fl.ml} ml` : ""}`, "", false, true)); }
+      if (fl) { const [w, u] = her(+fl.start); karten.push(karte("var(--c-bottle)", "Fläschchen", w, [u, fl.ml ? `${fl.ml} ml` : ""].filter(Boolean).join(" · "), "", false, true)); }
       else karten.push(leer("var(--c-bottle)", "Fläschchen", "noch keins", true));
     }
     if (k.diaper_calendar) {
       if (vm.windel) {
         const p = this._prognoseWindel(vm.raw.diapers, jetzt), faellig = p && jetzt > p.hi && jetzt - vm.windel.start <= 8 * STD, [w, u] = her(+vm.windel.start);
         // Stuhl als Zeile in der Windelkarte statt als fünfte Karte
-        const stuhl = !vm.stuhl ? "noch kein Stuhl" : vm.stuhl === vm.windel ? "mit Stuhl" : `Stuhl ${her(+vm.stuhl.start)[1] === "her" ? `vor ${this._her(jetzt - vm.stuhl.start)}` : her(+vm.stuhl.start)[0]}`;
-        karten.push(karte("var(--c-diaper)", "Windel", w, `${u} · ${stuhl}`, faellig ? `<span class="fo-due-t">Fällig</span>` : p ? spanne(p) : "", faellig));
+        const stuhl = !vm.stuhl ? "noch kein Stuhl" : vm.stuhl === vm.windel ? "mit Stuhl" : `Stuhl ${jetzt - vm.stuhl.start < TAG ? `vor ${this._her(jetzt - vm.stuhl.start)}` : her(+vm.stuhl.start)[0]}`;
+        karten.push(karte("var(--c-diaper)", "Windel", w, u ? `${u} · ${stuhl}` : stuhl, faellig ? `<span class="fo-due-t">Fällig</span>` : p ? spanne(p) : "", faellig));
       } else karten.push(leer("var(--c-diaper)", "Windel", "noch nichts eingetragen"));
     }
     return karten.length ? `<div class="fo-sec">Jetzt</div><div class="fo-nowgrid">${karten.join("")}</div>` : "";
@@ -7239,13 +7251,10 @@ class FpBabyOverviewCard extends HTMLElement {
     const kopf = `<div class="fo-sec fo-sech"><span>Einträge</span>${plus}</div>`;
     if (!z.length) return `${kopf}<div class="fo-leer">An diesem Tag ist nichts eingetragen.</div>`;
     const zeile = x => `<i style="background:${x.f}"></i><span>${U.esc(x.s)}</span><small>${x.d}</small><time>${this._hm(new Date(x.t))}</time>`;
-    return `${kopf}<div class="fo-list">${z.map(x => !x.uid ? `<div class="fo-li">${zeile(x)}</div>`
+    const zeig = this._eAlle ? z : z.slice(0, 5);   // standardmäßig die letzten fünf
+    return `${kopf}<div class="fo-list">${zeig.map(x => !x.uid ? `<div class="fo-li">${zeile(x)}</div>`
       : x.ek === "s" ? `<button type="button" class="fo-li fo-wli" data-suid="${U.esc(x.uid)}" data-kind="${kk}">${zeile(x)}</button>`
-      : `<button type="button" class="fo-li fo-wli" data-euid="${U.esc(x.uid)}" data-ek="${x.ek}" data-kind="${kk}">${zeile(x)}</button>`).join("")}</div>`;
-  }
-  // Knopf unter den Spalten in „Heute“ zur Ansicht „Protokoll“ mit den Still- und Windelkarten.
-  _detailsLink() {
-    return this._hatProtokoll() ? `<button type="button" class="fo-details" data-view="protokoll"><span>Stillprotokoll, Windeln und Bericht</span><i>›</i></button>` : "";
+      : `<button type="button" class="fo-li fo-wli" data-euid="${U.esc(x.uid)}" data-ek="${x.ek}" data-kind="${kk}">${zeile(x)}</button>`).join("")}</div>${z.length > 5 ? `<button class="fo-more" type="button" data-ealle>${this._eAlle ? "Weniger zeigen" : `Alle ${z.length} Einträge`}</button>` : ""}`;
   }
 
   // Wachstum und Momente — in Buma eigene Bereiche, hier zwei kleine Karten.
@@ -8271,8 +8280,6 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-bericht{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:-4px 2px 14px;}
       .fo-bericht button{border:none;border-radius:999px;padding:8px 14px;background:var(--b-acc2);color:var(--b-acc) !important;font-size:.86rem;font-weight:800;cursor:pointer;}
       .fo-bericht span{font-size:.8rem;color:var(--b-mut);}
-      .fo-details{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin-top:18px;padding:13px 16px;border:none;border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);color:var(--b-acc) !important;font-size:.92rem;font-weight:700;text-align:left;cursor:pointer;}
-      .fo-details i{font-style:normal;font-size:1.3rem;line-height:1;}
       .fo-mctl{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:16px;}
       .fo-seg{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--b-card);}
       .fo-seg button{border:none;background:transparent;border-radius:999px;padding:6px 14px;font-weight:700;font-size:.86rem;color:var(--b-mut) !important;cursor:pointer;}
