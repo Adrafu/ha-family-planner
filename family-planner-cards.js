@@ -1,4 +1,4 @@
-/* Family Planner custom cards v2.9.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
+/* Family Planner custom cards v3.0.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -14,6 +14,8 @@
     norm: s => { let out = ""; for (const ch of String(s).toLowerCase()) { const c = ch.codePointAt(0); if (c === 0xe4) out += "a"; else if (c === 0xf6) out += "o"; else if (c === 0xfc) out += "u"; else if (c === 0xdf) out += "ss"; else out += ch; } return out; },
     reEsc: s => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
     toast: (el, msg) => { try { el.dispatchEvent(new CustomEvent("hass-notification", { detail: { message: msg }, bubbles: true, composed: true })); } catch (e) {} },
+    // Hinweis mit Knopf "Rueckgaengig" (HA zeigt ihn ms lang, Vorgabe 8 s); fn laeuft beim Tipp darauf.
+    undo: (el, msg, fn, ms) => { try { el.dispatchEvent(new CustomEvent("hass-notification", { detail: { message: msg, duration: ms || 8000, action: { text: "Rückgängig", action: fn } }, bubbles: true, composed: true })); } catch (e) {} },
     // Karte fuellt ihre Rasterzelle aus.
     // HA gibt dem Grid-Item (div.card) die Zeilenhoehe, dazwischen sitzt aber
     // <hui-card> ganz ohne eigene Hoehe (light DOM, keine Styles). Damit reisst
@@ -115,7 +117,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card v27 (auf schmalen Karten gedreht: Tage als Zeilen, Mahlzeiten als Spalten; Speichern-Knopf mit Theme-Textfarbe, vorher im hellen Modus kaum lesbar; Heute als Ring statt Einfaerbung, Knopfleiste im Theme-Ton, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header fuer die Uebersicht, Leistenfarbe via --fp-bar-bg; „Zum Rezept" springt ins eigene Kochbuch, wenn das Gericht dort steht; sonst Web-Suche) ===== */
+/* ===== meal-grid-card v29 (Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -123,6 +125,8 @@ class MealGridCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
       title: "Wochenplan", mode: "week", week_offset: 0, nav_path: "",
+      layout: "list",                       // Wochenansicht: "list" (Liste nach Tagen), "today" (Heute groß, Woche kurz) oder "grid" (Tabelle)
+      days_ahead: 4,                        // nur layout "today": wie viele Tage nach heute in der kurzen Liste stehen
       show_emojis: true, meal_icons: true, background: "",
       ai_suggest: true, ai_entity: "", recipe_url: "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html",
       hide_header: false,                   // Wochenansicht ohne Kopfleiste und Wochennavigation (fuer die Uebersicht)
@@ -136,13 +140,26 @@ class MealGridCard extends HTMLElement {
       ],
     }, config || {});
     if (!this.config.entity) throw new Error("Bitte 'entity' (einen Kalender) angeben");
+    this._titleSet = !!(config && config.title); // „Essen heute“ nur, wenn kein eigener Titel gesetzt ist
     this._offset = this.config.week_offset || 0;
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
   }
   set hass(hass) { this._hass = hass; this._maybeFetch(); }
-  // Unter 560 px (Handy) wird das Raster gedreht: sieben Spalten wären dort zu schmal
-  // für die Gerichte. Neu zeichnen nur, wenn die Breite die Schwelle überschreitet.
-  _istSchmal() { return this.config.mode !== "compact" && this.clientWidth > 0 && this.clientWidth < 560; }
+  // Darstellung: compact (Heute/Morgen, Altbestand) ignoriert layout; sonst list (Vorgabe), today oder grid.
+  _layout() {
+    if (this.config.mode === "compact") return "compact";
+    const l = this.config.layout;
+    return l === "grid" || l === "today" ? l : "list";
+  }
+  // Grid: unter 560 px (Handy) wird das Raster gedreht, sieben Spalten wären dort zu schmal für die Gerichte.
+  // Today: unter ca. 110 px je Mahlzeit stehen die Mahlzeiten untereinander statt nebeneinander.
+  // Die Liste braucht keine Umstellung. Neu zeichnen nur, wenn die Breite die Schwelle überschreitet.
+  _istSchmal() {
+    const l = this._layout(), w = this.clientWidth;
+    if (!(w > 0) || (l !== "grid" && l !== "today")) return false;
+    return l === "today" ? w < 110 * Math.max(1, (this.config.meals || []).length) : w < 560;
+  }
+  _daysAhead() { const n = Number(this.config.days_ahead); return Number.isFinite(n) ? Math.max(0, Math.min(13, Math.floor(n))) : 4; }
   connectedCallback() {
     // Als Block, sonst ist das Element inline: Breite 0 und kein ResizeObserver-Signal.
     if (!this.style.display) this.style.display = "block";
@@ -158,6 +175,9 @@ class MealGridCard extends HTMLElement {
     let startDate, days;
     if (this.config.mode === "compact") {
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()); days = 2;
+    } else if (this._layout() === "today") {
+      // heute plus die nächsten Tage, dürfen in die nächste Woche reichen
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()); days = 1 + this._daysAhead();
     } else {
       const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const dow = (d.getDay() + 6) % 7;
@@ -507,8 +527,10 @@ class MealGridCard extends HTMLElement {
     if (this._editing) return; // offenen Dialog nicht zerstören
     const { startDate, days } = this._range();
     const compact = this.config.mode === "compact";
+    const layout = this._layout();
     const meals = this.config.meals;
     const dn = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    const mn = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
     const cols = [];
     for (let i = 0; i < days; i++) { const d = new Date(startDate); d.setDate(d.getDate() + i); cols.push(d); }
     const cells = meals.map(() => cols.map(() => []));
@@ -526,80 +548,201 @@ class MealGridCard extends HTMLElement {
     this._cols = cols; this._cells = cells; this._meals = meals;
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const isToday = d => d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-    const colLabel = (d, i) => compact ? (i === 0 ? "Heute" : "Morgen") : dn[(d.getDay() + 6) % 7];
-
-    let head = "";
-    if (!compact && this.config.hide_header) {
-      head = "";
-    } else if (!compact) {
-      const a = cols[0], b = cols[cols.length - 1];
-      const range = `${a.getDate()}.${a.getMonth() + 1}. - ${b.getDate()}.${b.getMonth() + 1}.`;
-      const rel = this._offset === 0 ? "Diese Woche" : (this._offset === 1 ? "+1 Woche" : this._offset === -1 ? "Letzte Woche" : (this._offset > 0 ? "+" : "") + this._offset + " Wochen");
-      head = `<div class="mg-bar">
-        <button class="mg-nav" data-d="-1" title="Vorige Woche">${CP(0x2039)}</button>
-        <div class="mg-bar-mid"><div class="mg-bar-t">${this._esc(this.config.title)}</div><div class="mg-bar-s">${range} &middot; ${rel}</div></div>
-        <button class="mg-today-btn" data-d="0" title="Aktuelle Woche">${CP(0x1F3E0)}</button>
-        <button class="mg-nav" data-d="1" title="Nächste Woche">${CP(0x203A)}</button>
-      </div>`;
-    } else if (this.config.title) {
-      head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
-    }
-
+    const wd = d => dn[(d.getDay() + 6) % 7];
+    const colLabel = (d, i) => compact ? (i === 0 ? "Heute" : "Morgen") : wd(d);
     const quer = this._quer = this._istSchmal();
-    const kopfMahlzeit = (m, cls) => {
-      const ic = this.config.meal_icons ? `<div class="mg-meal-ic">${this._mealIcon(m.label)}</div>` : "";
-      const tx = this.config.meal_labels ? `<div class="mg-meal-tx">${this._esc(m.label)}</div>` : "";
-      return `<th class="${cls}">${ic}${tx}</th>`;
-    };
-    const kopfTag = (d, i, cls) => `<th class="${cls} ${isToday(d) ? "mg-today" : ""}"><div class="mg-day">${colLabel(d, i)}</div><div class="mg-date">${d.getDate()}.${d.getMonth() + 1}.</div></th>`;
-    const zelle = (mi, ci, d) => {
-      const items = cells[mi][ci].filter(o => o.summary).map(o => {
-        const em = this.config.show_emojis ? this._food(o.summary) : "";
-        return (em ? `<span class="mg-em">${em}</span>` : "") + this._esc(o.summary);
-      });
-      const inner = items.length ? `<span>${items.join("<br>")}</span>`
-        : `<span class="mg-plus">${this._esc(this.config.empty_text)}</span>`;
-      // mg-m<mi>: Feldfarbe je Mahlzeit, auch wenn die Mahlzeiten Spalten sind
-      return `<td class="mg-cell mg-m${mi} ${isToday(d) ? "mg-today" : ""}" data-mi="${mi}" data-ci="${ci}">${inner}</td>`;
-    };
-    let html = `<ha-card class="mg-card">${head}${(!compact && this.config.ai_suggest) ? `<div class="mg-fillrow"><button class="mg-fill">${CP(0x2728)} Woche f&uuml;llen</button><button class="mg-clear">${CP(0x1F5D1)} Woche leeren</button></div>` : ""}<div class="mg-wrap"><table class="mg${quer ? " mg-quer" : ""}"><thead><tr><th class="mg-corner"></th>`;
-    if (quer) {
-      meals.forEach(m => { html += kopfMahlzeit(m, "mg-meal-h"); });
-      html += "</tr></thead><tbody>";
-      cols.forEach((d, ci) => {
-        html += `<tr>${kopfTag(d, ci, "mg-dayh")}${meals.map((m, mi) => zelle(mi, ci, d)).join("")}</tr>`;
-      });
+
+    // ---------- Kopf ----------
+    // Woche füllen / Leeren sitzen als kleine Pillen im Kopf (nicht in „Heute groß“: dort ist keine ganze Woche geladen)
+    const aktionen = (!compact && layout !== "today" && this.config.ai_suggest)
+      ? `<div class="mg-acts"><button class="mg-fill">${CP(0x2728)} Woche füllen</button><button class="mg-clear">${CP(0x1F5D1)} Leeren</button></div>` : "";
+    let head = "";
+    if (compact) {
+      if (this.config.title) head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
+    } else if (this.config.hide_header) {
+      // ohne Kopf, aber die Aktionen gehen nicht verloren (vorher eigene Reihe unter dem Kopf)
+      head = aktionen ? `<div class="mg-head mg-head-a">${aktionen}</div>` : "";
+    } else if (layout === "today") {
+      const t = this._titleSet ? this.config.title : "Essen heute";
+      head = `<div class="mg-head"><div class="mg-title">${this._esc(t)}</div><span class="mg-dp">${wd(cols[0])}, ${cols[0].getDate()}. ${mn[cols[0].getMonth()]}</span></div>`;
     } else {
-      cols.forEach((d, i) => { html += kopfTag(d, i, ""); });
-      html += "</tr></thead><tbody>";
-      meals.forEach((m, mi) => {
-        // Zeilenklasse: jede Mahlzeit darf eine eigene Feldfarbe bekommen
-        html += `<tr class="mg-r${mi}">${kopfMahlzeit(m, "mg-meal")}${cols.map((d, ci) => zelle(mi, ci, d)).join("")}</tr>`;
-      });
+      const a = cols[0], b = cols[cols.length - 1];
+      const range = a.getMonth() === b.getMonth()
+        ? `${a.getDate()}.–${b.getDate()}. ${mn[b.getMonth()]}`
+        : `${a.getDate()}. ${mn[a.getMonth()]} – ${b.getDate()}. ${mn[b.getMonth()]}`;
+      const heute = this._offset !== 0 ? `<button class="mg-today-btn" data-d="0" title="Aktuelle Woche">Heute</button>` : "";
+      head = `<div class="mg-head"><div class="mg-title">${this._esc(this.config.title)}</div>
+        <div class="mg-hr">${heute}<div class="mg-wk">
+          <button class="mg-nav" data-d="-1" title="Vorige Woche" aria-label="Vorige Woche">${CP(0x2039)}</button>
+          <span class="mg-range">${range}</span>
+          <button class="mg-nav" data-d="1" title="Nächste Woche" aria-label="Nächste Woche">${CP(0x203A)}</button>
+        </div></div>${aktionen}</div>`;
     }
-    html += "</tbody></table></div></ha-card>";
+
+    // ---------- Bausteine ----------
+    // Gerichte einer Zelle (mit Emoji), mehrere Einträge getrennt durch sep
+    const gericht = (mi, ci, sep) => cells[mi][ci].filter(o => o.summary).map(o => {
+      const em = this.config.show_emojis ? this._food(o.summary) : "";
+      return (em ? `<span class="mg-em">${em}</span>` : "") + this._esc(o.summary);
+    }).join(sep);
+    const leer = this._esc(this.config.empty_text);
+    // Punktfarbe: fp-meal0..2, ab der vierten Mahlzeit wie die dritte
+    const dcls = mi => `mg-d${Math.min(mi, 2)}`;
+    const lblOn = this.config.meal_labels !== false;
+
+    // Tabelle (layout: grid und mode: compact)
+    const tabelle = () => {
+      const kopfMahlzeit = (m, cls) => {
+        const ic = this.config.meal_icons ? `<div class="mg-meal-ic">${this._mealIcon(m.label)}</div>` : "";
+        const tx = this.config.meal_labels ? `<div class="mg-meal-tx">${this._esc(m.label)}</div>` : "";
+        return `<th class="${cls}">${ic}${tx}</th>`;
+      };
+      const kopfTag = (d, i, cls) => `<th class="${cls} ${isToday(d) ? "mg-today" : ""}"><div class="mg-day">${colLabel(d, i)}</div><div class="mg-date">${d.getDate()}.${d.getMonth() + 1}.</div></th>`;
+      const zelle = (mi, ci, d) => {
+        const s = gericht(mi, ci, "<br>");
+        const inner = s ? `<span>${s}</span>` : `<span class="mg-plus">${leer}</span>`;
+        // mg-m<mi>: Feldfarbe je Mahlzeit, auch wenn die Mahlzeiten Spalten sind
+        return `<td class="mg-cell mg-m${mi} ${isToday(d) ? "mg-today" : ""}" data-mi="${mi}" data-ci="${ci}">${inner}</td>`;
+      };
+      let t = `<div class="mg-wrap${head && !compact ? " mg-wrap-w" : ""}"><table class="mg${quer ? " mg-quer" : ""}"><thead><tr><th class="mg-corner"></th>`;
+      if (quer) {
+        meals.forEach(m => { t += kopfMahlzeit(m, "mg-meal-h"); });
+        t += "</tr></thead><tbody>";
+        cols.forEach((d, ci) => {
+          t += `<tr>${kopfTag(d, ci, "mg-dayh")}${meals.map((m, mi) => zelle(mi, ci, d)).join("")}</tr>`;
+        });
+      } else {
+        cols.forEach((d, i) => { t += kopfTag(d, i, ""); });
+        t += "</tr></thead><tbody>";
+        meals.forEach((m, mi) => {
+          // Zeilenklasse: jede Mahlzeit darf eine eigene Feldfarbe bekommen
+          t += `<tr class="mg-r${mi}">${kopfMahlzeit(m, "mg-meal")}${cols.map((d, ci) => zelle(mi, ci, d)).join("")}</tr>`;
+        });
+      }
+      return t + "</tbody></table></div>";
+    };
+
+    // Liste nach Tagen (layout: list)
+    const liste = () => {
+      // feste Breite der Bezeichnung nach der längsten, damit die Gerichte bündig stehen
+      const maxL = Math.max(4, ...meals.map(m => String(m.label || "").length));
+      const zeile = (mi, ci) => {
+        const s = gericht(mi, ci, " &middot; ");
+        return `<button type="button" class="mg-cell mg-mr ${dcls(mi)}" data-mi="${mi}" data-ci="${ci}"><i class="mg-dot"></i>${lblOn ? `<span class="mg-lb">${this._esc(meals[mi].label)}</span>` : ""}<span class="mg-ds${s ? "" : " mg-e"}">${s || leer}</span></button>`;
+      };
+      return `<div class="mg-list" style="--mg-ll:${maxL}">` + cols.map((d, ci) => {
+        const t = isToday(d);
+        return `<div class="mg-dr${t ? " mg-today" : ""}"><div class="mg-dl"><div class="mg-dw">${t ? "Heute" : wd(d)}</div><div class="mg-dd">${d.getDate()}.${d.getMonth() + 1}.</div></div><div class="mg-dm">${meals.map((m, mi) => zeile(mi, ci)).join("")}</div></div>`;
+      }).join("") + `</div>`;
+    };
+
+    // Heute groß, Woche kurz (layout: today)
+    const heuteGross = () => {
+      const last = meals.length - 1;
+      let t = `<div class="mg-tbox${quer ? " mg-st" : ""}">` + meals.map((m, mi) => {
+        const s = gericht(mi, 0, "<br>");
+        return `<button type="button" class="mg-cell mg-tc ${dcls(mi)}" data-mi="${mi}" data-ci="0"><span class="mg-tl"><i class="mg-dot"></i>${this._esc(m.label)}</span><span class="mg-td${s ? "" : " mg-e"}">${s || leer}</span></button>`;
+      }).join("") + `</div>`;
+      if (cols.length > 1 && last >= 0) {
+        // alles Geplante je Tag: eingetragene Mahlzeiten nebeneinander (Punkt + Gericht), leere fallen weg
+        t += `<div class="mg-nt">Nächste Tage</div><div class="mg-nx">`
+          + cols.slice(1).map((d, k) => {
+            const ci = k + 1;
+            const geplant = meals.map((m, mi) => ({ mi, s: gericht(mi, ci, " &middot; ") })).filter(x => x.s);
+            const inhalt = geplant.length
+              ? geplant.map(x => `<button type="button" class="mg-cell mg-nxg ${dcls(x.mi)}" data-mi="${x.mi}" data-ci="${ci}"><i class="mg-dot"></i><span class="mg-nxs">${x.s}</span></button>`).join("")
+              : `<button type="button" class="mg-cell mg-nxg" data-mi="${last}" data-ci="${ci}"><span class="mg-nxs mg-e">noch nichts geplant</span></button>`;
+            return `<div class="mg-nxr"><span class="mg-nxw">${wd(d)}</span><div class="mg-nxm">${inhalt}</div></div>`;
+          }).join("") + `</div>`;
+      }
+      return t;
+    };
+
+    const body = (compact || layout === "grid") ? tabelle() : (layout === "today" ? heuteGross() : liste());
+    const html = `<ha-card class="mg-card">${head}${body}</ha-card>`;
 
     let bgImg = "";
     if (this.config.background) {
       const _b = this.config.background;
       const _isImg = /^(https?:|\/|data:)/.test(_b) || /\.(jpe?g|png|webp|gif|avif)/i.test(_b);
       if (_isImg) {
-        bgImg = `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${_b}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);} .mg-card .mg-bar-t,.mg-card .mg-bar-s,.mg-card .mg-meal-tx{color:#fff;} .mg-card thead th,.mg-card thead .mg-day,.mg-card thead .mg-date{color:#fff !important;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;color:#fff !important;} .mg-card td.mg-cell span{color:#fff !important;} .mg-card .mg-plus{color:#fff !important;opacity:.65;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}`;
+        // Altbestand: Bild mit dunklem Overlay und weißer Schrift. Die Variablen färben auch Kopf, Liste und Heute-Kasten um.
+        bgImg = `.mg-card{background-image:linear-gradient(rgba(0,0,0,.62),rgba(0,0,0,.72)),url('${_b}');background-size:cover;background-position:center;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);--primary-text-color:#fff;--secondary-text-color:rgba(255,255,255,.78);--divider-color:rgba(255,255,255,.28);--fp-surface:rgba(255,255,255,.16);--fp-surface-2:rgba(255,255,255,.26);--fp-accent:#fff;} .mg-card .mg-title,.mg-card .mg-range,.mg-card .mg-meal-tx{color:#fff;} .mg-card thead th,.mg-card thead .mg-day,.mg-card thead .mg-date{color:#fff !important;} .mg-card td.mg-cell{background:rgba(255,255,255,.14);font-weight:600;color:#fff !important;} .mg-card td.mg-cell span{color:#fff !important;} .mg-card .mg-plus{color:#fff !important;opacity:.65;} .mg-card td.mg-cell:hover{background:rgba(255,255,255,.26);} .mg-card .mg-today{--mg-cell-bg:rgba(255,255,255,.32);}`;
       } else {
         bgImg = `.mg-card{background:${_b};}`;
       }
     }
     const css = `
+      /* Farben kommen aus dem Theme (--fp-*, HA-Variablen); was nach dem Komma steht, ist der Rückfall. */
       .mg-card{overflow:hidden;}
       .mg-h{padding:12px 16px 4px;font-size:1.25rem;font-weight:600;}
-      /* Leistenfarbe ueber --fp-bar-bg aus dem Theme uebersteuerbar */
-      .mg-bar{display:flex;align-items:center;gap:8px;padding:12px 14px;background:var(--fp-bar-bg,linear-gradient(135deg,rgba(var(--fp-tint-rgb,129,212,250),.70),rgba(var(--fp-accent-rgb,79,195,247),.70)));color:var(--fp-bar-fg,#fff);}
-      .mg-bar-mid{flex:1;text-align:center;line-height:1.15;}
-      .mg-bar-t{font-size:1.15rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.30);}
-      .mg-bar-s{font-size:.78rem;opacity:.95;text-shadow:0 1px 2px rgba(0,0,0,.25);}
-      .mg-nav,.mg-today-btn{border:none;background:rgba(255,255,255,.28);color:#fff;width:38px;height:38px;border-radius:50%;font-size:1.25rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;}
-      .mg-nav:hover,.mg-today-btn:hover{background:rgba(255,255,255,.45);}
+      /* Schlichter Kopf: Titel links, rechts die Wochen-Pille ‹ 13.–19. Okt ›, Aktionen als kleine Pillen; bricht am Handy um */
+      .mg-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;padding:14px 16px 8px;}
+      .mg-head-a{padding:10px 16px 0;}
+      .mg-title{flex:1 1 auto;min-width:0;font-size:1.05rem;font-weight:900;letter-spacing:-.01em;line-height:1.2;overflow-wrap:anywhere;}
+      .mg-hr{flex:none;display:flex;align-items:center;gap:6px;}
+      .mg-wk{display:flex;align-items:center;gap:2px;padding:2px;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));}
+      .mg-range{min-width:76px;padding:0 2px;text-align:center;font-size:.82rem;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;}
+      .mg-nav{flex:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--primary-text-color);font-size:1.25rem;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-nav:active{background:var(--fp-surface-2,var(--divider-color));}
+      .mg-today-btn{flex:none;min-height:32px;padding:0 12px;border:none;border-radius:999px;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);color:var(--fp-accent,var(--primary-color));font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-acts{flex:none;display:flex;flex-wrap:wrap;gap:6px;}
+      .mg-fill,.mg-clear{flex:none;min-height:32px;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-fill:disabled,.mg-clear:disabled{opacity:.6;cursor:default;}
+      @media (hover:hover){
+        .mg-nav:hover{background:var(--fp-surface-2,var(--divider-color));}
+        .mg-fill:hover{color:var(--fp-accent,var(--primary-color));border-color:var(--fp-accent,var(--primary-color));}
+        .mg-clear:hover{color:var(--error-color,#db4437);border-color:var(--error-color,#db4437);}
+      }
+      /* Datum als kleine Pille im Kopf von „Heute groß“ */
+      .mg-dp{flex:none;padding:5px 12px;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));font-size:.78rem;font-weight:800;white-space:nowrap;}
+
+      /* Punkt je Mahlzeit: fp-meal0/1/2, ab der vierten wie die dritte */
+      .mg-d0{--mg-dot:var(--fp-meal0,#C9A15A);}
+      .mg-d1{--mg-dot:var(--fp-meal1,#6E9A62);}
+      .mg-d2{--mg-dot:var(--fp-meal2,#C97A3D);}
+      .mg-dot{flex:none;display:block;width:8px;height:8px;border-radius:50%;background:var(--mg-dot);}
+      .mg-em{margin-right:3px;}
+      .mg-ds{flex:1 1 0;min-width:0;font-size:.9rem;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--primary-text-color);}
+      .mg-e{font-weight:400;color:var(--secondary-text-color);opacity:.6;}
+
+      /* Liste nach Tagen: Linien statt Kästen; Heute mit Strich am Kartenrand */
+      .mg-list{padding:0 0 6px;}
+      .mg-dr{position:relative;display:flex;align-items:flex-start;gap:12px;padding:6px 16px;box-sizing:border-box;}
+      .mg-dr+.mg-dr{border-top:1px solid var(--divider-color);}
+      .mg-dr.mg-today::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--fp-accent,var(--primary-color));}
+      .mg-dl{flex:none;width:56px;padding-top:8px;line-height:1.2;}
+      .mg-dw{font-size:.95rem;font-weight:800;}
+      .mg-dd{margin-top:1px;font-size:.68rem;color:var(--secondary-text-color);font-variant-numeric:tabular-nums;}
+      .mg-dr.mg-today .mg-dw,.mg-dr.mg-today .mg-dd{color:var(--fp-accent,var(--primary-color));}
+      .mg-dm{flex:1 1 0;min-width:0;display:flex;flex-direction:column;}
+      .mg-mr{display:flex;align-items:center;gap:8px;align-self:stretch;min-height:36px;box-sizing:border-box;margin:0 -8px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-lb{flex:none;width:calc(var(--mg-ll,6) * .82em);max-width:96px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+      /* Heute groß: Mahlzeiten von heute nebeneinander in einem Kasten, darunter die nächsten Tage als kurze Liste */
+      .mg-tbox{display:flex;margin:4px 16px 0;border:1px solid var(--divider-color);border-radius:var(--fp-radius-sm,12px);overflow:hidden;}
+      .mg-tc{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px;box-sizing:border-box;padding:12px;border:none;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-tc+.mg-tc{border-left:1px solid var(--divider-color);}
+      .mg-tbox.mg-st{flex-direction:column;}
+      .mg-tbox.mg-st .mg-tc+.mg-tc{border-left:none;border-top:1px solid var(--divider-color);}
+      .mg-tl{display:flex;align-items:center;gap:6px;max-width:100%;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);}
+      .mg-td{max-width:100%;font-size:1rem;font-weight:900;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;hyphens:auto;color:var(--primary-text-color);}
+      .mg-td.mg-e{font-weight:400;color:var(--secondary-text-color);}
+      .mg-nt{margin:16px 16px 2px;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
+      .mg-nx{display:flex;flex-direction:column;padding:0 16px 8px;}
+      /* Nächste Tage: links der Wochentag, rechts alle eingetragenen Mahlzeiten nebeneinander, bei Platzmangel umbrechend */
+      .mg-nxr{display:flex;align-items:flex-start;gap:12px;box-sizing:border-box;padding:4px 0;}
+      .mg-nxw{flex:none;width:44px;min-height:36px;display:flex;align-items:center;font-size:.9rem;font-weight:800;}
+      .mg-nxm{flex:1 1 0;min-width:0;margin-left:-8px;display:flex;flex-wrap:wrap;gap:4px 12px;}
+      .mg-nxg{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-width:0;max-width:100%;min-height:36px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-nxs{min-width:0;font-size:.9rem;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--primary-text-color);}
+      .mg-nxs.mg-e{font-weight:400;color:var(--secondary-text-color);}
+      .mg-tc:active,.mg-mr:active,.mg-nxg:active{background:var(--fp-surface,var(--secondary-background-color));}
+      @media (hover:hover){.mg-tc:hover,.mg-mr:hover,.mg-nxg:hover{background:var(--fp-surface,var(--secondary-background-color));}}
+
+      /* Tabelle (layout: grid, mode: compact) */
       .mg-wrap{padding:14px 16px 18px;overflow-x:auto;}
+      .mg-wrap.mg-wrap-w{padding-top:6px;}
       table.mg{width:100%;border-collapse:separate;border-spacing:7px;table-layout:fixed;}
       table.mg th,table.mg td{text-align:center;}
       table.mg thead th{font-size:.8rem;color:var(--secondary-text-color);padding:2px;}
@@ -616,40 +759,35 @@ class MealGridCard extends HTMLElement {
       .mg-meal-ic{font-size:1.15rem;line-height:1.2;}
       .mg-meal-tx{font-size:.6rem;color:var(--secondary-text-color);text-transform:uppercase;letter-spacing:.03em;}
       /* Feldfarbe je Mahlzeit: das Theme setzt fp-meal0/1/2-bg, ohne Theme
-         bleiben alle drei Zeilen wie bisher. */
-      tr.mg-r0,td.mg-m0{--mg-cell-bg:var(--fp-meal0-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
-      tr.mg-r1,td.mg-m1{--mg-cell-bg:var(--fp-meal1-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
-      tr.mg-r2,td.mg-m2{--mg-cell-bg:var(--fp-meal2-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));}
-      td.mg-cell{background:var(--mg-cell-bg,rgba(var(--fp-tint-rgb,129,212,250),0.10));border:1px solid var(--fp-meal-border,var(--divider-color));border-radius:var(--fp-meal-radius,14px);min-height:var(--fp-meal-h,48px);height:var(--fp-meal-h,48px);padding:6px;font-size:.82rem;line-height:1.2;color:var(--primary-text-color);cursor:pointer;vertical-align:middle;transition:background .15s,transform .1s;}
-      td.mg-cell:hover{background:var(--mg-cell-bg-hover,rgba(var(--fp-tint-rgb,129,212,250),0.20));transform:translateY(-1px);}
+         bleiben alle drei Zeilen gleich (Tönung des Akzents). */
+      tr.mg-r0,td.mg-m0{--mg-cell-bg:var(--fp-meal0-bg,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent));}
+      tr.mg-r1,td.mg-m1{--mg-cell-bg:var(--fp-meal1-bg,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent));}
+      tr.mg-r2,td.mg-m2{--mg-cell-bg:var(--fp-meal2-bg,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent));}
+      td.mg-cell{background:var(--mg-cell-bg,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent));border:1px solid var(--fp-meal-border,var(--divider-color));border-radius:var(--fp-meal-radius,14px);min-height:var(--fp-meal-h,48px);height:var(--fp-meal-h,48px);padding:6px;font-size:.82rem;line-height:1.2;color:var(--primary-text-color);cursor:pointer;vertical-align:middle;transition:background .15s,transform .1s;}
+      td.mg-cell:hover{background:var(--mg-cell-bg-hover,color-mix(in srgb,var(--fp-accent,var(--primary-color)) 20%,transparent));transform:translateY(-1px);}
       td.mg-cell span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
       .mg-plus{color:var(--secondary-text-color);opacity:.38;font-size:.78rem;font-weight:400;}
-      .mg-em{margin-right:3px;}
       /* Heute nicht mehr einfaerben — das uebermalte die Farbe der Mahlzeit.
          Stattdessen ein Ring um die Zelle und ein hervorgehobenes Datum. */
       td.mg-cell.mg-today{box-shadow:inset 0 0 0 2px var(--fp-head,var(--primary-color));}
       thead th.mg-today .mg-day,thead th.mg-today .mg-date{color:var(--fp-head,var(--primary-color));}
       th.mg-corner{width:54px;}
+
+      /* Dialog */
       .mg-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9;}
       .mg-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(92vw,360px);border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);text-shadow:none;}
       .mg-modal-t{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
-      .mg-input{width:100%;box-sizing:border-box;padding:11px 12px;font-size:1rem;border:1px solid var(--divider-color,#ccc);border-radius:12px;background:var(--secondary-background-color,#f3f3f3);color:var(--primary-text-color);}
+      .mg-input{width:100%;box-sizing:border-box;padding:11px 12px;font-size:1rem;border:1px solid var(--divider-color);border-radius:12px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);}
       .mg-suggest-row{margin-top:10px;}
       .mg-cook-row{margin-top:10px;}
       .mg-recipe-row{margin-top:10px;}
-      .mg-recipe{width:100%;background:rgba(255,167,38,.18);color:#e65100;font-weight:600;}
-      .mg-suggest{width:100%;background:rgba(var(--fp-accent-rgb,79,195,247),.18);color:var(--fp-head,#0277bd);font-weight:600;}
-      .mg-tocook{width:100%;background:rgba(245,179,1,.18);color:#a86b00;font-weight:600;}
-      .mg-fillrow{display:flex;gap:8px;padding:10px 14px 0;}
-      .mg-fill{flex:1;border:none;border-radius:10px;padding:9px;font-size:.88rem;background:rgba(var(--fp-accent-rgb,79,195,247),.16);color:var(--fp-head,#014a73);font-weight:600;cursor:pointer;}
-      .mg-fill:hover{background:rgba(var(--fp-accent-rgb,79,195,247),.26);}
-      .mg-clear{flex:1;border:none;border-radius:10px;padding:9px;font-size:.88rem;background:transparent;border:1px solid var(--divider-color);color:var(--secondary-text-color);font-weight:600;cursor:pointer;}
-      .mg-clear:hover{color:var(--error-color);border-color:var(--error-color);}
+      .mg-recipe,.mg-tocook{width:100%;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-weight:600;}
+      .mg-suggest{width:100%;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);color:var(--fp-accent,var(--primary-color));font-weight:600;}
       .mg-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
       .mg-btn{border:none;border-radius:10px;padding:9px 14px;font-size:.9rem;cursor:pointer;}
-      .mg-cancel{background:var(--secondary-background-color,#eee);color:var(--primary-text-color);}
-      .mg-del{background:rgba(229,57,53,.15);color:#e53935;}
-      .mg-save{background:var(--fp-accent,#4fc3f7);color:var(--fp-accent-fg,#06354a);font-weight:700;}
+      .mg-cancel{background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);}
+      .mg-del{background:color-mix(in srgb,var(--error-color,#db4437) 15%,transparent);color:var(--error-color,#db4437);}
+      .mg-save{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:700;}
       ${bgImg}
     `;
     this.innerHTML = `<style>${css}</style>${html}`;
@@ -672,7 +810,13 @@ class MealGridCard extends HTMLElement {
       });
     });
   }
-  getCardSize() { return this.config.mode === "compact" ? 3 : 6; }
+  getCardSize() {
+    const l = this._layout(), n = (this.config.meals || []).length || 3;
+    if (l === "compact") return 3;
+    if (l === "today") return Math.ceil((60 + 90 + 40 + 44 * this._daysAhead()) / 50);
+    if (l === "list") return Math.ceil((60 + 7 * (36 * n + 12)) / 50);
+    return 6;
+  }
 }
 if (!customElements.get("meal-grid-card")) {
   customElements.define("meal-grid-card", MealGridCard);
@@ -681,7 +825,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v2.9 (Tagesansicht day: Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Knopf + Termin in der Kopfleiste, Personenfilter als Chips mit Alle, Tippen auf freie Flaeche legt an; Woche mit grossen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; Kopfleiste mit --fp-bar-bg/--fp-bar-fg wie der Essensplan, vorher im hellen Modus blass; Speichern-Knopf und Heute-Markierung in Theme-Farben statt festem Blau; durchlaufende Tage stehen in der Ganztagszeile, Wochenraster schneidet mehrtaegige Termine je Tag zu, Termine mit Beginn- und Enddatum, auch ueber Mitternacht, mehrtaegige Termine mit ab/bis je Tag, Mehrtagesansicht agenda mit days/hide_header/hide_legend, Farben ueber Theme-Variablen, Heute hellblau + vergangene Tage gedimmt) ===== */
+/* ===== family-calendar-card v2.10 (schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -901,7 +1045,7 @@ class FamilyCalendarCard extends HTMLElement {
     let h = '<div class="fcc-legend">';
     this.config.persons.forEach(p => {
       const off = this._hidden.has(p.name) ? " fcc-off" : "";
-      h += `<button class="fcc-chip${off}" data-person="${this._esc(p.name)}"><span class="fcc-dot" style="background:${p.color}"></span>${this._esc(p.name)}</button>`;
+      h += `<button class="fcc-chip${off}" data-person="${this._esc(p.name)}" aria-pressed="${!off}"><span class="fcc-dot" style="background:${p.color || "var(--secondary-text-color)"}"></span>${this._esc(p.name)}</button>`;
     });
     h += "</div>";
     return h;
@@ -925,20 +1069,38 @@ class FamilyCalendarCard extends HTMLElement {
     this._openEvent({ dateIso, hour: dateIso === iso(heute) ? Math.min(22, n.getHours() + 1) : 9, personName: person || null });
   }
 
+  // Kurzer Zeitraum für die Datumspille: „12.–18. Okt“, am Tag „Mi, 14. Okt“;
+  // der Monat bleibt wie die Ansicht ihn liefert. Ein fremdes Jahr steht dabei.
+  _rangeKurz(label) {
+    const mn = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+    const wd = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    if (this._view === "month") return label;
+    const r = this._range();
+    const jahr = d => d.getFullYear() !== new Date().getFullYear() ? " " + d.getFullYear() : "";
+    if (this._view === "day") { const s = r.sel; return `${wd[s.getDay()]}, ${s.getDate()}. ${mn[s.getMonth()]}${jahr(s)}`; }
+    const a = r.start, b = new Date(r.end); b.setDate(b.getDate() - 1);
+    if (this._sameDay(a, b)) return `${a.getDate()}. ${mn[a.getMonth()]}${jahr(a)}`;
+    return a.getMonth() === b.getMonth()
+      ? `${a.getDate()}.–${b.getDate()}. ${mn[b.getMonth()]}${jahr(b)}`
+      : `${a.getDate()}. ${mn[a.getMonth()]} – ${b.getDate()}. ${mn[b.getMonth()]}${jahr(b)}`;
+  }
+
+  // Schlichter Kopf: Titel, Ansichten als Segment, Datum als Pille, „Heute“ nur abseits der aktuellen Periode, ＋ Termin rechts
   _headerHTML(label) {
+    const heute = this._offset !== 0 ? `<button class="fcc-btn fcc-today" data-d="0" title="Zur aktuellen Periode">Heute</button>` : "";
     return `<div class="fcc-bar">
       <div class="fcc-title">${this._esc(this.config.title)}</div>
-      <div class="fcc-nav">
-        <button class="fcc-btn fcc-nav-b" data-d="-1">${CP(0x2039)}</button>
-        <button class="fcc-btn fcc-today" data-d="0">Heute</button>
-        <button class="fcc-btn fcc-nav-b" data-d="1">${CP(0x203A)}</button>
-      </div>
-      <div class="fcc-range">${this._esc(label)}</div>
-      <div class="fcc-views">
+      <div class="fcc-views" role="group" aria-label="Ansicht">
         <button class="fcc-btn fcc-vw${this._view === "day" ? " fcc-vw-on" : ""}" data-v="day">Tag</button>
         <button class="fcc-btn fcc-vw${this._view === "week" ? " fcc-vw-on" : ""}" data-v="week">Woche</button>
         <button class="fcc-btn fcc-vw${this._view === "month" ? " fcc-vw-on" : ""}" data-v="month">Monat</button>
       </div>
+      <div class="fcc-nav">
+        <button class="fcc-btn fcc-nav-b" data-d="-1" aria-label="Zurück">${CP(0x2039)}</button>
+        <span class="fcc-range">${this._esc(this._rangeKurz(label))}</span>
+        <button class="fcc-btn fcc-nav-b" data-d="1" aria-label="Weiter">${CP(0x203A)}</button>
+      </div>
+      ${heute}
       ${this._addBtnHTML()}
     </div>`;
   }
@@ -1019,14 +1181,14 @@ class FamilyCalendarCard extends HTMLElement {
     return { label, html: `<div class="fcc-dy">${html}</div>` };
   }
 
-  // Personenfilter als Chips (Avatar + Name, gewaehlt mit Haken), dazu
-  // "Alle". Mehrfachauswahl; ohne Auswahl ist niemand ausgefiltert.
+  // Personenfilter als Chips (Punkt in der Personenfarbe + Name, gewählt = gefüllt),
+  // dazu "Alle". Mehrfachauswahl; ohne Auswahl ist niemand ausgefiltert.
   _chipsHTML(leute) {
     [...this._filter].forEach(n => { if (!leute.some(p => p.name === n)) this._filter.delete(n); });
     let h = `<div class="fcc-flt" role="group" aria-label="Personen filtern"><button class="fcc-fc fcc-fc-alle${this._filter.size ? "" : " fcc-fc-on"}" data-person="" aria-pressed="${!this._filter.size}">Alle</button>`;
     leute.forEach(p => {
       const on = this._filter.has(p.name);
-      h += `<button class="fcc-fc${on ? " fcc-fc-on" : ""}" data-person="${this._esc(p.name)}" aria-pressed="${on}">${this._avatar(p)}${on ? `<span class="fcc-fc-chk">${CP(0x2713)}</span>` : ""}<span>${this._esc(p.name)}</span></button>`;
+      h += `<button class="fcc-fc${on ? " fcc-fc-on" : ""}" data-person="${this._esc(p.name)}" aria-pressed="${on}"><span class="fcc-dot" style="background:${p.color || "var(--secondary-text-color)"}"></span><span>${this._esc(p.name)}</span></button>`;
     });
     if (this.config.hide_header) h += this._addBtnHTML();
     return h + "</div>";
@@ -1383,7 +1545,7 @@ class FamilyCalendarCard extends HTMLElement {
     // Tag und Woche filtern ueber die Personen-Chips statt ueber die Legende
     const legende = this.config.hide_legend || this._view === "day" || (this._view === "week" && !this.config.week_grid) ? "" : this._legendHTML();
     this.innerHTML = `<style>${css}</style><ha-card class="fcc-card${this._schmal ? " fcc-narrow" : ""}" lang="de">${kopf}${legende}${view.html}</ha-card>`;
-    this.querySelectorAll(".fcc-nav-b,.fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._go(); }));
+    this.querySelectorAll(".fcc-bar .fcc-nav-b,.fcc-bar .fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._go(); }));
     this.querySelectorAll(".fcc-vw").forEach(b => b.addEventListener("click", () => { const v = b.dataset.v; if (v !== this._view) { this._view = v; this._offset = 0; this._maybeFetch(true); } }));
     this.querySelectorAll(".fcc-chip").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; if (this._hidden.has(n)) this._hidden.delete(n); else this._hidden.add(n); this._saveHidden(); this._render(); }));
     this.querySelectorAll(".fcc-dy-d,.fcc-dy-arr").forEach(b => b.addEventListener("click", () => { this._offset = parseInt(b.dataset.o, 10) || 0; this._go(); }));
@@ -1425,35 +1587,46 @@ class FamilyCalendarCard extends HTMLElement {
   _css() {
     return `
     .fcc-card{overflow:hidden;padding-bottom:6px;}
-    .fcc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;background:var(--fp-bar-bg,linear-gradient(135deg,rgba(var(--fp-tint-rgb,129,212,250),.70),rgba(var(--fp-accent-rgb,79,195,247),.70)));color:var(--fp-bar-fg,#fff);}
-    .fcc-title{font-size:1.15rem;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.25);}
-    .fcc-range{flex:1;text-align:center;font-size:.92rem;font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.2);}
-    .fcc-nav,.fcc-views{display:flex;gap:6px;}
-    .fcc-btn{border:none;border-radius:9px;padding:7px 12px;font-size:.85rem;cursor:pointer;background:rgba(255,255,255,.25);color:inherit;}
-    .fcc-btn:hover{background:rgba(255,255,255,.42);}
-    .fcc-vw-on{background:#fff;color:var(--fp-head,#0277bd);font-weight:700;}
-    .fcc-add{display:inline-flex;align-items:center;gap:6px;background:var(--fp-accent,#039be5);color:var(--fp-accent-fg,#fff);font-weight:700;padding:7px 14px 7px 11px;box-shadow:0 2px 6px rgba(0,0,0,.22);white-space:nowrap;}
-    .fcc-add:hover{background:var(--fp-accent,#039be5);filter:brightness(1.08);}
-    .fcc-add-i{font-size:1.2rem;line-height:1;font-weight:600;}
-    .fcc-flt .fcc-add{margin-left:auto;height:36px;border-radius:18px;}
-    /* Handy: Titel + Termin, darunter Navigation + Zeitraum, darunter die Ansichten */
-    .fcc-narrow .fcc-bar{display:grid;grid-template-columns:auto 1fr auto;grid-template-areas:"title title add" "nav range range" "views views views";gap:10px;}
-    .fcc-narrow .fcc-title{grid-area:title;align-self:center;}
-    .fcc-narrow .fcc-bar .fcc-add{grid-area:add;}
+    /* Schlichter Kopf wie beim Essensplan: Titel, Ansichten als Segment, Datum als Pille, Heute, ＋ Termin rechts; bricht um */
+    .fcc-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:14px 14px 6px;background:transparent;color:var(--primary-text-color);}
+    .fcc-bar .fcc-title{flex:0 1 auto;min-width:0;margin-right:2px;font-size:1.05rem;font-weight:900;letter-spacing:-.01em;line-height:1.2;overflow-wrap:anywhere;}
+    .fcc-in.fcc-title{font-weight:700;}
+    .fcc-btn{flex:none;margin:0;border:none;background:transparent;color:inherit;font:inherit;line-height:1.2;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .fcc-views{display:flex;align-items:center;gap:2px;padding:3px;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));}
+    .fcc-vw{min-height:30px;padding:0 13px;border-radius:999px;color:var(--secondary-text-color);font-size:.78rem;font-weight:800;white-space:nowrap;}
+    .fcc-vw-on{background:var(--card-background-color);color:var(--primary-text-color);box-shadow:0 1px 3px color-mix(in srgb,var(--primary-text-color) 20%,transparent);}
+    .fcc-nav{display:flex;align-items:center;gap:2px;padding:2px;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));}
+    .fcc-nav-b{display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border-radius:50%;color:var(--primary-text-color);font-size:1.25rem;line-height:1;}
+    .fcc-nav-b:active{background:var(--fp-surface-2,var(--divider-color));}
+    .fcc-range{min-width:76px;padding:0 2px;text-align:center;font-size:.82rem;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;}
+    .fcc-bar .fcc-today{min-height:32px;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;color:var(--primary-text-color);font-size:.76rem;font-weight:800;}
+    .fcc-add{display:inline-flex;align-items:center;gap:5px;margin-left:auto;min-height:36px;padding:0 15px 0 12px;border-radius:999px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-size:.82rem;font-weight:800;white-space:nowrap;}
+    .fcc-add-i{font-size:1.2rem;line-height:1;font-weight:700;}
+    .fcc-flt .fcc-add{min-height:32px;}
+    @media (hover:hover){
+      .fcc-nav-b:hover{background:var(--fp-surface-2,var(--divider-color));}
+      .fcc-bar .fcc-today:hover{background:var(--fp-surface,var(--secondary-background-color));}
+      .fcc-vw:not(.fcc-vw-on):hover{color:var(--primary-text-color);}
+      .fcc-add:hover{filter:brightness(1.08);}
+    }
+    /* Handy: Titel + Termin oben, darunter Datum + Heute, darunter die Ansichten */
+    .fcc-narrow .fcc-bar{display:grid;grid-template-columns:auto auto 1fr auto;grid-template-areas:"title title title add" "nav today . ." "views views views views";align-items:center;gap:8px 10px;}
+    .fcc-narrow .fcc-bar .fcc-title{grid-area:title;}
     .fcc-narrow .fcc-nav{grid-area:nav;}
-    .fcc-narrow .fcc-range{grid-area:range;text-align:right;align-self:center;}
+    .fcc-narrow .fcc-bar .fcc-today{grid-area:today;}
+    .fcc-narrow .fcc-bar .fcc-add{grid-area:add;margin-left:0;}
     .fcc-narrow .fcc-views{grid-area:views;}
-    .fcc-narrow .fcc-views .fcc-btn{flex:1;}
-    /* Personenfilter (Chips) */
-    .fcc-flt{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 14px 10px;}
-    .fcc-fc{display:inline-flex;align-items:center;gap:6px;height:36px;box-sizing:border-box;padding:0 12px 0 4px;border-radius:18px;border:1px solid var(--divider-color,#ccc);background:none;color:var(--primary-text-color);font:inherit;font-size:.9rem;font-weight:500;cursor:pointer;}
-    .fcc-fc.fcc-fc-alle{padding:0 14px;}
-    .fcc-fc .fcc-dy-av{flex:0 0 28px;width:28px;height:28px;border-width:0;font-size:.8rem;}
-    .fcc-fc-on{background:rgba(var(--fp-accent-rgb,79,195,247),.2);border-color:transparent;color:var(--fp-head,var(--primary-color));font-weight:700;}
-    .fcc-fc-chk{font-size:.85rem;font-weight:700;}
-    .fcc-legend{display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px 4px;}
-    .fcc-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--divider-color,#ddd);background:var(--card-background-color);color:var(--primary-text-color);border-radius:999px;padding:4px 10px;font-size:.82rem;cursor:pointer;}
-    .fcc-chip.fcc-off{opacity:.4;text-decoration:line-through;}
+    .fcc-narrow .fcc-views .fcc-vw{flex:1;}
+    /* Personenfilter (Chips): Punkt in der Personenfarbe; „Alle“ und gewählte Personen gefüllt, ausgeblendete blass */
+    .fcc-flt{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:0 14px 10px;}
+    .fcc-fc,.fcc-chip{display:inline-flex;align-items:center;gap:6px;min-height:28px;box-sizing:border-box;padding:4px 11px;border:none;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font:inherit;font-size:.78rem;font-weight:800;line-height:1.2;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .fcc-fc .fcc-dot,.fcc-chip .fcc-dot{flex:none;width:8px;height:8px;}
+    .fcc-fc-on{background:var(--primary-text-color);color:var(--card-background-color);}
+    .fcc-fc-on .fcc-dot{box-shadow:0 0 0 1.5px var(--card-background-color);}
+    .fcc-legend{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px 6px;}
+    .fcc-bar + .fcc-legend{padding-top:2px;}
+    .fcc-chip.fcc-off{opacity:.4;}
+    @media (hover:hover){.fcc-fc:not(.fcc-fc-on):hover,.fcc-chip:hover{background:var(--fp-surface-2,var(--divider-color));}}
     .fcc-dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
     /* Mehrtagesansicht */
     .fcc-ag{display:grid;gap:10px;padding:12px 14px 14px;}
@@ -1480,10 +1653,10 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-dot{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.5;}
     .fcc-dy-dot.fcc-dy-leer{visibility:hidden;}
     .fcc-dy-today .fcc-dy-n,.fcc-dy-today .fcc-dy-wd{color:var(--fp-head,var(--primary-color));}
-    .fcc-dy-d.fcc-dy-sel{background:var(--fp-accent,#039be5);}
-    .fcc-dy-d.fcc-dy-sel span{color:var(--fp-accent-fg,#fff);}
+    .fcc-dy-d.fcc-dy-sel{background:var(--fp-accent,var(--primary-color));}
+    .fcc-dy-d.fcc-dy-sel span{color:var(--fp-accent-fg,var(--text-primary-color,#fff));}
     .fcc-dy-title{display:flex;align-items:center;gap:8px;padding:0 16px 10px;font-size:1.15rem;font-weight:700;color:var(--primary-text-color);}
-    .fcc-dy-badge{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(var(--fp-accent-rgb,79,195,247),.2);color:var(--fp-head,var(--primary-color));}
+    .fcc-dy-badge{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 20%,transparent);color:var(--fp-head,var(--primary-color));}
     .fcc-dy-extra{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;}
     .fcc-dy-chip{display:inline-flex;align-items:center;gap:6px;font-size:.88rem;padding:4px 10px;border-radius:999px;background:var(--secondary-background-color,rgba(0,0,0,.05));color:var(--primary-text-color);cursor:pointer;}
     .fcc-dy-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px;padding:0 14px 4px;}
@@ -1512,8 +1685,8 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-meta{display:flex;align-items:center;gap:10px;margin-top:4px;font-size:.85rem;color:var(--primary-text-color);opacity:.8;}
     .fcc-dy-who1{display:inline-flex;align-items:center;gap:5px;}
     .fcc-dy-live{font-weight:700;}
-    .fcc-dy-jetzt{position:relative;height:0;border-top:2px solid #e53935;margin:4px 0 4px 62px;}
-    .fcc-dy-jetzt span{position:absolute;left:-58px;top:-10px;font-size:.75rem;font-weight:700;color:#e53935;width:52px;text-align:right;}
+    .fcc-dy-jetzt{position:relative;height:0;border-top:2px solid var(--error-color,#db4437);margin:4px 0 4px 62px;}
+    .fcc-dy-jetzt span{position:absolute;left:-58px;top:-10px;font-size:.75rem;font-weight:700;color:var(--error-color,#db4437);width:52px;text-align:right;}
     .fcc-dy-none{padding:24px 8px;text-align:center;font-size:.95rem;color:var(--secondary-text-color);}
     .fcc-wl{display:flex;flex-direction:column;gap:6px;}
     .fcc-wl-day{padding:4px 0 8px;}
@@ -1539,15 +1712,15 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-wt-day .fcc-dy-t{font-size:.85rem;margin-top:3px;}
     .fcc-wt-who{display:flex;align-items:center;gap:5px;margin-top:5px;font-size:.8rem;color:var(--primary-text-color);opacity:.8;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
     .fcc-wt-day .fcc-dy-chip{align-self:flex-start;max-width:100%;font-size:.8rem;}
-    .fcc-wt-jetzt{position:relative;height:0;border-top:2px solid #e53935;margin:3px 0;}
-    .fcc-wt-jetzt span{position:absolute;right:0;top:-9px;font-size:.7rem;font-weight:700;color:#e53935;background:var(--card-background-color,#fff);padding-left:4px;}
+    .fcc-wt-jetzt{position:relative;height:0;border-top:2px solid var(--error-color,#db4437);margin:3px 0;}
+    .fcc-wt-jetzt span{position:absolute;right:0;top:-9px;font-size:.7rem;font-weight:700;color:var(--error-color,#db4437);background:var(--card-background-color,#fff);padding-left:4px;}
     .fcc-dy-free{font-size:.9rem;color:var(--secondary-text-color);opacity:.7;padding:6px 2px;}
     .fcc-gutter{width:48px;flex:0 0 48px;}
     .fcc-wk-head{display:flex;padding:6px 8px 0;}
     .fcc-dcol{flex:1;min-width:0;text-align:center;border-radius:8px 8px 0 0;padding:2px;}
     .fcc-dn{font-size:.72rem;color:var(--secondary-text-color);font-weight:700;}
     .fcc-dd{font-size:.7rem;color:var(--secondary-text-color);}
-    .fcc-dcol.fcc-today .fcc-dn,.fcc-dcol.fcc-today .fcc-dd{color:var(--fp-head,#039be5);}
+    .fcc-dcol.fcc-today .fcc-dn,.fcc-dcol.fcc-today .fcc-dd{color:var(--fp-head,var(--primary-color));}
     .fcc-allday{display:flex;padding:0 8px 4px;gap:0;align-items:stretch;}
     .fcc-allday-lbl{font-size:.6rem;color:var(--secondary-text-color);display:flex;align-items:center;justify-content:flex-end;padding-right:4px;}
     .fcc-ad-cell{flex:1;min-width:0;overflow:hidden;min-height:8px;padding:1px;}
@@ -1558,19 +1731,19 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-hr{position:relative;}
     .fcc-hr span{position:absolute;top:-7px;right:6px;font-size:.66rem;color:var(--secondary-text-color);}
     .fcc-col{position:relative;flex:1;min-width:0;border-left:1px solid var(--divider-color,#eee);background-image:linear-gradient(var(--divider-color,#eee) 1px,transparent 1px);}
-    .fcc-today-col{background-color:rgba(var(--fp-tint-rgb,129,212,250),.20);}
+    .fcc-today-col{background-color:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 10%,transparent);}
     .fcc-ev{position:absolute;border-radius:7px;color:#fff;padding:2px 5px;overflow:hidden;font-size:.72rem;line-height:1.05;box-shadow:0 1px 3px rgba(0,0,0,.25);cursor:pointer;box-sizing:border-box;}
     .fcc-ev-t{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .fcc-ev-h{font-size:.62rem;opacity:.9;}
     .fcc-past{position:absolute;left:0;right:0;top:0;background:rgba(0,0,0,.16);pointer-events:none;}
-    .fcc-now{position:absolute;left:0;right:0;height:0;border-top:2px solid #e53935;z-index:6;pointer-events:none;}
-    .fcc-now::before{content:"";position:absolute;left:-1px;top:-4px;width:8px;height:8px;border-radius:50%;background:#e53935;}
+    .fcc-now{position:absolute;left:0;right:0;height:0;border-top:2px solid var(--error-color,#db4437);z-index:6;pointer-events:none;}
+    .fcc-now::before{content:"";position:absolute;left:-1px;top:-4px;width:8px;height:8px;border-radius:50%;background:var(--error-color,#db4437);}
     .fcc-m-head{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));padding:6px 8px 0;}
     .fcc-m-head>div{text-align:center;font-size:.72rem;font-weight:700;color:var(--secondary-text-color);}
     .fcc-m-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;padding:6px 8px 8px;}
     .fcc-m-cell{min-width:0;overflow:hidden;min-height:84px;border-radius:8px;border:1px solid var(--divider-color);background:var(--secondary-background-color,rgba(0,0,0,.03));padding:3px;}
     .fcc-m-cell.fcc-dim{opacity:.45;}
-    .fcc-m-cell.fcc-today{outline:2px solid var(--fp-head,#039be5);}
+    .fcc-m-cell.fcc-today{outline:2px solid var(--fp-head,var(--primary-color));}
     .fcc-m-num{font-size:.72rem;font-weight:700;text-align:right;color:var(--primary-text-color);padding:0 2px;}
     .fcc-m-ev{border-left:3px solid #888;background:var(--card-background-color);border-radius:4px;margin:2px 0;padding:1px 4px;overflow:hidden;cursor:pointer;}
     .fcc-m-t{font-size:.66rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:var(--primary-text-color);}
@@ -1588,7 +1761,7 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
     .fcc-btn2{border:none;border-radius:10px;padding:9px 14px;font-size:.9rem;cursor:pointer;}
     .fcc-cancel{background:var(--secondary-background-color,#eee);color:var(--primary-text-color);}
-    .fcc-save{background:var(--fp-accent,#039be5);color:var(--fp-accent-fg,#fff);font-weight:700;}
+    .fcc-save{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:700;}
     .fcc-del{background:rgba(229,57,53,.15);color:#c62828;}
     .fcc-check{display:flex;align-items:center;gap:8px;font-size:.85rem;margin:10px 0 2px;color:var(--primary-text-color);}
     `;
@@ -1706,13 +1879,24 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v21 (Datumsfeld passt aufs iPhone; Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Farben ueber Theme-Variablen, Wiederholung: eigene Intervalle wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card v22 (Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
+// Die Liste list_entity wird live gelesen (todo/item/subscribe), damit Favoriten, die schon
+// offen auf der Liste stehen, mit ✓ markiert sind und nicht doppelt angelegt werden.
 class ShoppingFavCard extends HTMLElement {
+  constructor() {
+    super();
+    this._timers = new Set();
+    this._gen = 0; this._unsub = null; this._subbing = false; this._failAt = 0;
+    this._open = [];           // Namen der offenen Einträge, normalisiert
+    this._optim = new Map();   // gerade angelegt, noch nicht im Abo: Name -> Zeit
+    this._markSig = ""; this._flashing = 0;
+  }
   setConfig(config) {
     if (!config || !config.list_entity) throw new Error("list_entity (todo-Liste) erforderlich");
+    this._unsubscribe();
     this.config = Object.assign({
       columns: 3, store_entity: "", title: "", assign: false, targets: [], default_target: "",
       big: false, fallback: "", add_button: false, add_label: "", show_due: true, target_label: "Wer?",
@@ -1722,12 +1906,102 @@ class ShoppingFavCard extends HTMLElement {
       repeat_options: [], repeat_label: "Wiederholung", todoist_service: "rest_command.todoist_add_task",
     }, config || {});
     this._editing = false; this._lastVal = null; this._built = false;
+    this._open = []; this._optim.clear(); this._markSig = ""; this._failAt = 0;
+    if (this.isConnected) this._subscribe();
+  }
+  connectedCallback() { this._subscribe(); this._sync(); }
+  disconnectedCallback() {
+    this._timers.forEach(t => clearTimeout(t)); this._timers.clear();
+    this._unsubscribe();
   }
   set hass(hass) {
     this._hass = hass;
+    this._subscribe();
     if (this._editing) return;
     const v = this._storeVal();
     if (v !== this._lastVal || !this._built) { this._lastVal = v; this._render(); }
+  }
+  _after(fn, ms) {
+    const t = setTimeout(() => { this._timers.delete(t); fn(); }, ms);
+    this._timers.add(t);
+  }
+
+  // ---------- „Schon auf der Liste“ (Abo auf list_entity) ----------
+  // Tipp legt direkt an (kein Zuweisen-Blatt) und es gibt Favoriten, die man markieren kann
+  _assigning() { return !!(this.config.assign && (this.config.targets || []).length); }
+  _marking() { return !!(this.config.store_entity && !this._assigning()); }
+  _showFavs() {
+    // Favoriten und Hinzufügen-Knopf sind kombinierbar. Ohne ausdrückliche
+    // Angabe bleibt das alte Verhalten: mit Knopf nur der Knopf (kompakte
+    // Übersicht), ohne Knopf nur die Favoriten.
+    return this.config.show_favorites !== undefined ? !!this.config.show_favorites : !this.config.add_button;
+  }
+  _live() { return !!(this._unsub || this._subbing); }
+  _subscribe() {
+    if (this._unsub || this._subbing || !this._hass || !this.isConnected || !this.config || !this._marking()) return;
+    if (Date.now() - this._failAt < 30000) return;   // nach einem Fehler nicht bei jedem hass-Update neu versuchen
+    const conn = this._hass.connection;
+    if (!conn || !conn.subscribeMessage) return;
+    const gen = this._gen;
+    this._subbing = true;
+    let p;
+    try { p = conn.subscribeMessage(msg => { if (gen === this._gen) this._onItems(msg); }, { type: "todo/item/subscribe", entity_id: this.config.list_entity }); }
+    catch (e) { p = Promise.reject(e); }
+    p.then(unsub => {
+      if (gen !== this._gen) { try { const r = unsub(); if (r && r.catch) r.catch(() => {}); } catch (e) {} return; }   // inzwischen abgehängt oder umkonfiguriert
+      this._subbing = false; this._unsub = unsub;
+    }).catch(() => {
+      if (gen !== this._gen) return;
+      this._subbing = false; this._failAt = Date.now();   // still: dann eben ohne Markierung
+    });
+  }
+  _unsubscribe() {
+    this._gen++; this._subbing = false;
+    const u = this._unsub; this._unsub = null;
+    if (u) { try { const r = u(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
+  _key(s) { return this._norm(String(s == null ? "" : s)).replace(/\s+/g, " ").trim(); }
+  _onItems(msg) {
+    const items = Array.isArray(msg && msg.items) ? msg.items : [];
+    this._open = items.filter(i => i && i.status === "needs_action").map(i => this._key(i.summary)).filter(Boolean);
+    // Vorab-Markierungen weg, sobald das Abo den Eintrag bringt (oder sie abgelaufen sind)
+    const now = Date.now();
+    for (const [k, t] of [...this._optim]) if (this._isOpen(k) || now - t >= 20000) this._optim.delete(k);
+    this._sync();
+  }
+  // offener Eintrag mit gleichem Namen, oder mit Menge davor („200 g Butter“)
+  _isOpen(k) { return this._open.some(s => s === k || s.endsWith(" " + k)); }
+  _isMarked(name) {
+    if (!this._marking()) return false;
+    const k = this._key(name);
+    if (!k) return false;
+    if (this._isOpen(k)) return true;
+    const t = this._optim.get(k);
+    return !!t && Date.now() - t < 20000;
+  }
+  _markOptimistic(name) {
+    if (!this._marking() || !this._live()) return;
+    const k = this._key(name);
+    if (!k) return;
+    this._optim.set(k, Date.now());
+    this._after(() => this._sync(), 20100);   // abgelaufene Vorab-Markierung wieder wegnehmen
+  }
+  _marksSig() {
+    if (!this._showFavs() || !this._marking()) return "";
+    return this._items().map(f => this._isMarked(f) ? "1" : "0").join("");
+  }
+  // Neu zeichnen nur, wenn sich Markierungen ändern; nie unter einem offenen Blatt oder mitten im „Hinzugefügt“
+  _sync() {
+    if (!this._built) return;
+    if (this._aov) this._paintPicks();
+    if (this._editing || this._flashing) return;
+    if (this._marksSig() !== this._markSig) this._render();
+  }
+  // Favoriten-Chips im Hinzufügen-Blatt: markiert nur, wenn das gewählte Ziel die überwachte Liste ist
+  _paintPicks() {
+    if (!this._aov) return;
+    const on = this._marking() && this._sel === this.config.list_entity;
+    this._aov.querySelectorAll(".sf-favpick").forEach(b => b.classList.toggle("sf-on", on && this._isMarked(b.dataset.n)));
   }
   _storeVal() {
     const e = this.config.store_entity;
@@ -1820,6 +2094,7 @@ class ShoppingFavCard extends HTMLElement {
     if (dueString) { this._addRecurring(name, ent, due, dueString); return; }
     const data = { entity_id: ent, item: name };
     if (due) data.due_date = due;
+    if (ent === this.config.list_entity) this._markOptimistic(name);   // gilt sofort als „auf der Liste“, bis das Abo es bringt
     window.dispatchEvent(new CustomEvent("fp-todo-add", { detail: { entity: ent, summary: name, due: due || null } }));
     this._hass.callService("todo", "add_item", data).catch(() => this._toast("Konnte nicht zur Liste hinzugefügt werden"));
   }
@@ -1962,6 +2237,7 @@ class ShoppingFavCard extends HTMLElement {
     this._editing = false;
     if (this._aov && this._aov.parentNode) this._aov.parentNode.removeChild(this._aov);
     this._aov = null;
+    this._sync();   // Markierungen, die sich unter dem Blatt geändert haben
   }
   _openAdd() {
     this._editing = true;
@@ -1969,7 +2245,7 @@ class ShoppingFavCard extends HTMLElement {
     const def = this.config.default_target || this.config.list_entity || (targets[0] && targets[0].entity) || "";
     this._sel = def; this._due = "";
     const favs = this._items();
-    const favChips = favs.map(f => `<button class="sf-favpick" data-n="${this._esc(f)}">${this._emoji(f)} ${this._esc(f)}</button>`).join("");
+    const favChips = favs.map(f => `<button class="sf-favpick" data-n="${this._esc(f)}">${this._emoji(f)} ${this._esc(f)}<span class="sf-ck">${CP(0x2713)}</span></button>`).join("");
     const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
     const dueHtml = this.config.show_due ? this._dueHtml() : "";
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
@@ -1979,7 +2255,8 @@ class ShoppingFavCard extends HTMLElement {
     const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
     ov.querySelectorAll(".sf-favpick").forEach(b => b.addEventListener("click", () => { txt.value = b.dataset.n; }));
-    ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => { this._sel = b.dataset.e; ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b)); if (syncRep) syncRep(); }));
+    ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => { this._sel = b.dataset.e; ov.querySelectorAll(".sf-tgt").forEach(x => x.classList.toggle("sf-tgt-on", x === b)); if (syncRep) syncRep(); this._paintPicks(); }));
+    this._paintPicks();
     this._wireDue(ov);
     const submit = () => { const t = txt.value.trim(); if (!t) { txt.focus(); return; } this._addItem(t, this._sel || def, this._due, this._rep); this._closeAssign(); };
     txt.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
@@ -1988,37 +2265,47 @@ class ShoppingFavCard extends HTMLElement {
   }
   _flash(b) {
     const o = b.innerHTML; b.classList.add("sf-added"); b.innerHTML = CP(0x2713) + " Hinzugefügt";
-    setTimeout(() => { b.classList.remove("sf-added"); b.innerHTML = o; }, 850);
+    this._flashing++;   // währenddessen nicht neu zeichnen, sonst verschwindet die Rückmeldung
+    setTimeout(() => {
+      b.classList.remove("sf-added"); b.innerHTML = o;
+      this._flashing = Math.max(0, this._flashing - 1);
+      this._sync();   // jetzt darf der Favorit als „auf der Liste“ erscheinen
+    }, 850);
   }
   _render() {
     this._built = true;
-    // Favoriten und Hinzufügen-Knopf sind kombinierbar. Ohne ausdrückliche
-    // Angabe bleibt das alte Verhalten: mit Knopf nur der Knopf (kompakte
-    // Übersicht), ohne Knopf nur die Favoriten.
-    const showFavs = this.config.show_favorites !== undefined
-      ? !!this.config.show_favorites : !this.config.add_button;
-    const head = this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : "";
-    let body = "";
+    const showFavs = this._showFavs();
+    const assign = this._assigning();
+    const mark = this._marking();
+    let top = "", body = "";
+    if (this.config.add_button) {
+      // bei „Schnell anlegen“ über dem Kopf mit den Favoriten
+      top = `<div class="sf-addbar"><button class="sf-addbig"><span class="sf-ic">${CP(0x2795)}</span><span>${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</span></button></div>`;
+    }
     if (showFavs) {
       const items = this._items();
-      const cols = this.config.columns || 3;
+      const cols = Math.max(1, parseInt(this.config.columns, 10) || 3);
       const big = this.config.big ? " sf-big" : "";
-      const chips = items.map(it => `<button class="sf-chip${big}" data-n="${this._esc(it)}">${this._emoji(it)} ${this._esc(it)}</button>`).join("");
-      body += `<div class="sf-grid" style="grid-template-columns:repeat(${cols},1fr);">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div>`
-            + `<div class="sf-editbar"><button class="sf-edit">${CP(0x270F) + CP(0xFE0F)} Favoriten bearbeiten</button></div>`;
+      const chips = items.map(it => {
+        const on = mark && this._isMarked(it);
+        return `<button class="sf-chip${big}${on ? " sf-on" : ""}" data-n="${this._esc(it)}"><span class="sf-em">${this._emoji(it)}</span><span class="sf-nm">${this._esc(it)}</span>${on ? `<span class="sf-ck">${CP(0x2713)}</span>` : ""}</button>`;
+      }).join("");
+      // Kopf: Titel (oder kleiner Abschnittstitel) links, Bearbeiten rechts
+      const lead = this.config.title ? `<div class="sf-title">${this._esc(this.config.title)}</div>` : `<div class="sf-sec">Favoriten</div>`;
+      body = `<div class="sf-head">${lead}<button class="sf-edit" aria-label="Favoriten bearbeiten"><span class="sf-ic">${CP(0x270F) + CP(0xFE0F)}</span><span>Bearbeiten</span></button></div>`
+           + `<div class="sf-grid" lang="de" style="--sf-cols:${cols};">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div>`;
     }
-    if (this.config.add_button) {
-      // gleiche Leiste wie „Favoriten bearbeiten" -> identische Breite und Abstand
-      body += `<div class="sf-addbar"><button class="sf-addbig">${CP(0x2795)} ${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</button></div>`;
-    }
-    this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${head}${body}</ha-card>${this._styles()}`;
+    this._markSig = this._marksSig();
+    this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${top}${body}</ha-card>${this._styles()}`;
 
     const ab = this.querySelector(".sf-addbig");
     if (ab) ab.addEventListener("click", () => this._openAdd());
-    const assign = this.config.assign && (this.config.targets || []).length;
     this.querySelectorAll(".sf-chip").forEach(b => b.addEventListener("click", () => {
-      if (assign) { this._openAssign(b.dataset.n); }
-      else { this._addItem(b.dataset.n, this.config.list_entity); this._flash(b); }
+      const n = b.dataset.n;
+      if (assign) { this._openAssign(n); return; }
+      // steht schon offen auf der Liste: nichts anlegen
+      if (this._isMarked(n)) { this._toast(`„${n}“ steht schon auf der Liste`); return; }
+      this._addItem(n, this.config.list_entity); this._flash(b);
     }));
     const eb = this.querySelector(".sf-edit"); if (eb) eb.addEventListener("click", () => this._openEditor());
   }
@@ -2052,33 +2339,45 @@ class ShoppingFavCard extends HTMLElement {
   }
   _styles() {
     return `<style>
-      .sf-card{padding:12px;}
-      .sf-title{font-weight:700;margin-bottom:8px;}
-      .sf-grid{display:grid;gap:8px;}
-      .sf-chip{height:50px;border:1px solid var(--divider-color);border-radius:12px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.92rem;font-weight:600;cursor:pointer;padding:4px;line-height:1.1;}
-      .sf-chip:hover{background:var(--primary-color);color:var(--text-primary-color,#fff);}
+      /* Farben und Radien kommen aus dem Theme (--fp-*); nach dem Komma steht der Rückfall für Themes ohne diese Zeilen. */
+      .sf-card{padding:14px;}
+      /* Kopf: Titel (oder kleiner Abschnittstitel) links, Bearbeiten rechts */
+      .sf-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;min-height:36px;}
+      .sf-title{font-weight:700;min-width:0;overflow-wrap:anywhere;}
+      .sf-sec{font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
+      .sf-edit{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:36px;box-sizing:border-box;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      /* Raster: höchstens --sf-cols Spalten, auf schmalen Karten weniger (mindestens 96px), alle gleich breit */
+      .sf-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(max(96px,calc((100% - (var(--sf-cols,3) - 1) * 8px) / var(--sf-cols,3) - 1px)),1fr));}
+      .sf-chip{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:68px;box-sizing:border-box;padding:8px 6px;border:none;border-radius:var(--fp-radius-sm,12px);background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-size:.82rem;font-weight:700;line-height:1.15;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .sf-ic{flex:none;line-height:1;}
+      .sf-em{font-size:1.45rem;line-height:1;}
+      /* Namen trennen nach Silben (lang="de" am Raster), nie mitten im Wort hart umbrechen; zwei Zeilen, ein zu langes Wort wird am Rand abgeschnitten */
+      .sf-nm{max-width:100%;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:normal;word-break:normal;-webkit-hyphens:auto;hyphens:auto;}
+      .sf-chip.sf-big{min-height:84px;}
+      .sf-chip.sf-big .sf-em{font-size:1.7rem;}
+      .sf-chip.sf-big .sf-nm{font-size:.92rem;}
+      @media (hover:hover){.sf-chip:not(.sf-on):hover{background:var(--fp-surface-2,var(--divider-color));}}
       .sf-chip:active{transform:scale(.97);}
-      .sf-added{background:rgba(76,175,80,.85)!important;color:#fff!important;border-color:transparent!important;}
+      /* steht schon offen auf der Liste: Rand und Schrift in Akzent, kleines ✓ oben rechts */
+      .sf-chip.sf-on{background:transparent;color:var(--fp-accent,var(--primary-color));box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--fp-accent,var(--primary-color)) 60%,transparent);}
+      .sf-chip .sf-ck{position:absolute;top:5px;right:7px;font-size:.7rem;font-weight:800;line-height:1;}
+      .sf-added{background:var(--fp-accent,var(--primary-color))!important;color:var(--fp-accent-fg,var(--text-primary-color,#fff))!important;box-shadow:none!important;}
       .sf-empty{grid-column:1/-1;color:var(--secondary-text-color);padding:8px;text-align:center;}
-      .sf-editbar{margin-top:10px;display:flex;}
-      .sf-edit{flex:1;border:none;border-radius:10px;padding:10px;background:rgba(120,144,156,.16);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
-      .sf-edit:hover{background:rgba(120,144,156,.30);}
       .sf-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
       .sf-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(92vw,420px);max-height:82vh;overflow:auto;border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
       .sf-mhead{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
       .sf-list{display:flex;flex-direction:column;gap:6px;}
-      .sf-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(127,127,127,.10);border-radius:10px;padding:6px 8px;}
+      .sf-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--fp-surface,var(--secondary-background-color));border-radius:10px;padding:6px 8px;}
       .sf-rlbl{font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
       .sf-acts{display:flex;gap:2px;flex:none;}
       .sf-acts button{border:none;background:transparent;cursor:pointer;font-size:1rem;padding:4px 7px;color:var(--secondary-text-color);border-radius:8px;}
-      .sf-acts button:hover{background:rgba(127,127,127,.18);}
-      .sf-acts .sf-x{color:#c62828;}
+      .sf-acts button:hover{background:color-mix(in srgb,var(--primary-text-color) 12%,transparent);}
+      .sf-acts .sf-x{color:var(--error-color,#c62828);}
       .sf-addrow{display:flex;gap:8px;margin-top:14px;}
       .sf-new{flex:1;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-addbtn{border:none;border-radius:10px;padding:10px 12px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;white-space:nowrap;}
       .sf-foot{margin-top:16px;display:flex;justify-content:flex-end;}
-      .sf-done{border:none;border-radius:10px;padding:10px 18px;background:rgba(120,144,156,.22);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
-      .sf-chip.sf-big{height:66px;font-size:1.05rem;border-radius:14px;}
+      .sf-done{border:none;border-radius:10px;padding:10px 18px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-weight:600;cursor:pointer;}
       .sf-sub{font-size:.8rem;font-weight:700;color:var(--secondary-text-color);text-transform:uppercase;letter-spacing:.03em;margin:14px 0 6px;}
       .sf-tgts,.sf-dates{display:flex;gap:8px;flex-wrap:wrap;}
       .sf-tgt{flex:1;min-width:84px;border:1px solid var(--divider-color);border-radius:10px;padding:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
@@ -2100,21 +2399,27 @@ class ShoppingFavCard extends HTMLElement {
          beschriftet es wie einen Knopf und lässt Tipps durch (pointer-events). */
       .sf-datewrap.sf-dempty::after{content:"Datum wählen";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.9rem;pointer-events:none;}
       .sf-datewrap.sf-dsel .sf-date{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
-      .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:rgba(120,144,156,.20);color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
+      .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
       .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;}
+      /* Großer Knopf: volle Breite in Akzent; bei „Schnell anlegen“ über dem Kopf mit den Favoriten */
+      .sf-addbar{display:flex;margin-bottom:14px;}
+      .sf-addbig{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;box-sizing:border-box;border:none;border-radius:var(--fp-radius-sm,12px);padding:12px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:800;font-size:1rem;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .sf-addbig:active{transform:scale(.99);}
+      @media (hover:hover){.sf-addbig:hover{filter:brightness(1.06);}}
       /* Zeigt die Karte nur den Knopf, ist der Knopf die Kachel: kein Rahmen,
          keine Innenabstaende, eine durchgehende Flaeche. */
       .sf-addcard{padding:0;background:transparent;border:none;box-shadow:none;}
-      .sf-addbar{margin-top:8px;display:flex;}
-      .sf-addcard .sf-addbar{margin-top:0;}
-      .sf-addbig{flex:1;border:none;border-radius:10px;padding:12px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;font-size:1rem;cursor:pointer;}
+      .sf-addcard .sf-addbar{margin:0;}
       .sf-addcard .sf-addbig{border-radius:var(--ha-card-border-radius,12px);padding:15px 12px;}
-      .sf-addbig:hover{background:rgba(var(--fp-accent-rgb,79,195,247),1);}
       .sf-addtext{width:100%;box-sizing:border-box;border:1px solid var(--divider-color);border-radius:10px;padding:11px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1rem;}
       .sf-favs{display:flex;gap:8px;flex-wrap:wrap;}
       .sf-favpick{border:1px solid var(--divider-color);border-radius:12px;padding:12px 14px;min-height:46px;box-sizing:border-box;display:flex;align-items:center;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;font-weight:600;cursor:pointer;}
       .sf-favpick:active{transform:scale(.97);}
       .sf-favpick:hover{background:var(--primary-color);color:var(--text-primary-color,#fff);}
+      /* schon auf der Liste (nur wenn das Ziel die überwachte Liste ist) */
+      .sf-favpick .sf-ck{display:none;margin-left:8px;font-weight:800;}
+      .sf-favpick.sf-on,.sf-favpick.sf-on:hover{background:transparent;color:var(--fp-accent,var(--primary-color));border-color:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 60%,transparent);}
+      .sf-favpick.sf-on .sf-ck{display:inline;}
     </style>`;
   }
   getCardSize() { return 3; }
@@ -2203,104 +2508,430 @@ if (!customElements.get("nav-card")) {
 }
 })();
 
-/* ===== fp-todo-card v14 (Datumsfeld passt aufs iPhone; Datumsfeld als Knopf in der Bis-wann-Reihe, Namens-Pille als Kartenkopf, Farben ueber Theme-Variablen, Änderungsdialog: eigene Wiederholungs-Intervalle) ===== */
+/* ===== fp-todo-card v16 (Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; davor: Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+// Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
+// selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
+// Hinzufügen über das Ereignis fp-todo-add bleiben.
 (() => {
 const U = window.__fpUtils;
+const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];   // Date.getDay(): 0 = Sonntag
 class FpTodoCard extends HTMLElement {
+  constructor() {
+    super();
+    this._items = null;        // null = noch nichts geladen
+    this._pending = [];        // gerade angelegt, noch nicht im Abo: { uid, summary, description, key, due, base, t }
+    this._ovr = new Map();     // abgehakt/wieder geöffnet, noch unbestätigt: uid -> { status, t }
+    this._keep = new Map();    // gerade abgehakt, bleibt kurz sichtbar: uid -> { until, item }
+    this._timers = new Set();
+    this._gen = 0; this._pseq = 0; this._failAt = 0;
+    this._unsub = null; this._subbing = false; this._built = false; this._sig = "";
+    this._onAdd = e => {
+      const d = e.detail || {};
+      if (this.config && d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary), d.due || null, d.description);
+    };
+  }
   setConfig(config) {
     if (!config || !config.entity) throw new Error("entity erforderlich");
+    this._unsubscribe();
     this.config = config;
     // Eigener Änderungsdialog statt des nativen: erlaubt Verschieben in eine
     // andere Liste, Datum-Schnellauswahl und Serien (letztere nur bei Todoist).
     this._edit = !!config.edit_dialog;
     this._targets = config.edit_targets || config.targets || [];
     this._repeats = config.repeat_options || [];
-    this._pending = [];
+    this._items = null; this._err = false; this._errShown = false; this._loadedOnce = false; this._failAt = 0;
+    this._pending = []; this._ovr.clear(); this._keep.clear();
     this._built = false;
-    this._onAdd = e => { const d = e.detail || {}; if (d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary)); };
-    this._onInlineKey = e => { if (e.key === "Enter") this._maybeInline(e); };
-    this._onInlineClick = e => { this._maybeRowTap(e); if (!e.defaultPrevented) this._maybeInline(e); };
+    if (this.isConnected) { this._build(); this._subscribe(); this._paint(); }
   }
   connectedCallback() {
     window.addEventListener("fp-todo-add", this._onAdd);
-    this.addEventListener("keydown", this._onInlineKey, true);
-    this.addEventListener("click", this._onInlineClick, true);
-    this._build();
+    if (!this._tick) this._tick = setInterval(() => this._paint(), 60000);   // „heute/morgen“ wandert mit dem Tag
+    if (!this._built && this.config) this._build();
+    if (U.fill) U.fill(this);   // jetzt hängt die Karte im DOM, hui-card ist erreichbar
+    this._subscribe();
+    this._paint();
   }
   disconnectedCallback() {
     window.removeEventListener("fp-todo-add", this._onAdd);
-    this.removeEventListener("keydown", this._onInlineKey, true);
-    this.removeEventListener("click", this._onInlineClick, true);
-    if (this._poll) { clearInterval(this._poll); this._poll = null; }
+    if (this._tick) { clearInterval(this._tick); this._tick = null; }
+    this._timers.forEach(t => clearTimeout(t)); this._timers.clear();
+    this._unsubscribe();
     this._closeEdit();
   }
-  // Tipp auf eine Aufgabe abfangen, bevor der native Bearbeiten-Dialog aufgeht.
-  // Die Checkbox bleibt unangetastet — Abhaken muss weiter direkt funktionieren.
-  _maybeRowTap(e) {
-    if (!this._edit || this._ov) return;
-    const path = e.composedPath ? e.composedPath() : [];
-    if (path.some(el => el && el.localName && /checkbox/.test(el.localName))) return;
-    const row = path.find(el => el && el.localName === "ha-check-list-item");
-    if (!row) return;
-    const uid = row.itemId;
-    if (!uid) return;
-    e.stopPropagation(); e.preventDefault();
-    this._openEdit(uid);
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._built && this.config) this._build();
+    this._subscribe();
   }
-  _maybeInline(e) {
-    const path = e.composedPath ? e.composedPath() : [];
-    if (!path.some(el => el && el.classList && el.classList.contains("addRow"))) return;
-    if (e.type === "click" && !path.some(el => el && el.classList && el.classList.contains("addButton"))) return;
-    const inp = path.find(el => el && el.localName === "ha-input");
-    const val = inp && inp.value != null ? String(inp.value).trim() : "";
-    if (val) this._optimistic(val);
+  _after(fn, ms) {
+    const t = setTimeout(() => { this._timers.delete(t); fn(); }, ms);
+    this._timers.add(t);
   }
-  set hass(hass) { this._hass = hass; if (this._child) { this._child.hass = hass; this._placePill(); } else this._build(); }
-  async _build() {
-    if (this._built || !this._hass || !this.isConnected) return;
-    this._built = true;
-    let el;
-    try {
-      const helpers = await window.loadCardHelpers();
-      const cfg = Object.assign({}, this.config);
-      cfg.type = "todo-list";
-      // Statt der nativen Ueberschrift eine farbige Pille: die native muss weg,
-      // sonst steht der Name zweimal da.
-      if (this.config.pill) delete cfg.title;
-      el = helpers.createCardElement(cfg);
-    } catch (e) { this._built = false; return; }
-    el.hass = this._hass;
-    this._child = el;
-    this.innerHTML = "";
-    this.appendChild(el);
-    this._pillTries = 0;
-    this._placePill();
+
+  // ---------- Daten (Abo) ----------
+  _subscribe() {
+    if (this._unsub || this._subbing || !this._hass || !this.isConnected || !this.config) return;
+    if (Date.now() - this._failAt < 30000) return;   // nach einem Fehler nicht bei jedem hass-Update neu versuchen
+    const conn = this._hass.connection;
+    if (!conn || !conn.subscribeMessage) return;
+    const gen = this._gen, ent = this.config.entity;
+    this._subbing = true;
+    let p;
+    try { p = conn.subscribeMessage(msg => { if (gen === this._gen) this._onItems(msg); }, { type: "todo/item/subscribe", entity_id: ent }); }
+    catch (e) { p = Promise.reject(e); }
+    p.then(unsub => {
+      if (gen !== this._gen) { try { const r = unsub(); if (r && r.catch) r.catch(() => {}); } catch (e) {} return; }   // inzwischen abgehängt oder umkonfiguriert
+      this._subbing = false; this._unsub = unsub;
+    }).catch(err => {
+      if (gen !== this._gen) return;
+      this._subbing = false; this._failAt = Date.now();
+      console.warn("[fp-todo-card] Abo fehlgeschlagen:", ent, err);
+      if (this._items === null) this._err = true;
+      // allerersten Ladefehler (Startup-Flackern) nicht melden, danach nur einmal je Störung
+      if (this._loadedOnce && !this._errShown) U.toast(this, "Aufgabenliste konnte nicht geladen werden");
+      this._errShown = true; this._loadedOnce = true;
+      this._paint();
+    });
   }
-  // Die Pille gehoert optisch in die Karte, die native Karte hat aber ein
-  // eigenes Shadow-DOM. Also hineinsetzen — und bei jedem Zustandswechsel
-  // nachsehen, ob Lit sie beim Neuzeichnen entfernt hat.
-  _placePill() {
-    const p = this.config && this.config.pill;
-    if (!p) return;
-    const root = this._child && this._child.shadowRoot;
-    const card = root && root.querySelector("ha-card");
-    if (!card) {
-      if ((this._pillTries = (this._pillTries || 0) + 1) < 30) setTimeout(() => this._placePill(), 100);
-      return;
+  _unsubscribe() {
+    this._gen++; this._subbing = false;
+    const u = this._unsub; this._unsub = null;
+    if (u) { try { const r = u(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
+  _key(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+  _onItems(msg) {
+    this._items = Array.isArray(msg && msg.items) ? msg.items : [];
+    this._err = false; this._errShown = false; this._loadedOnce = true;
+    const byUid = new Map(this._items.map(i => [i.uid, i]));
+    // bestätigte (oder verschwundene) Zeilen brauchen die Vorab-Anzeige nicht mehr
+    for (const [uid, o] of this._ovr) { const it = byUid.get(uid); if (!it || it.status === o.status) this._ovr.delete(uid); }
+    // „ausstehend“: weg, sobald mehr offene Einträge gleichen Namens da sind als beim Anlegen
+    const open = {};
+    for (const i of this._items) if (i.status !== "completed") { const k = this._key(i.summary); open[k] = (open[k] || 0) + 1; }
+    this._pending = this._pending.filter(p => (open[p.key] || 0) <= p.base);
+    this._paint();
+  }
+  _expire() {
+    const now = Date.now();
+    this._pending = this._pending.filter(p => now - p.t < 20000);
+    for (const [uid, o] of this._ovr) if (now - o.t >= 20000) this._ovr.delete(uid);
+    for (const [uid, k] of this._keep) if (k.until <= now) this._keep.delete(uid);
+  }
+
+  // ---------- Fälligkeit ----------
+  _dayNum(d) { return Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5); }
+  // due: "YYYY-MM-DD" oder ISO mit Uhrzeit -> { d: Date, day: Tageszahl, t: ms, time: "HH:MM" | "" }
+  _parseDue(s) {
+    if (!s) return null;
+    s = String(s);
+    let d, hasTime = false;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (m) d = new Date(+m[1], +m[2] - 1, +m[3]);
+    else {
+      d = new Date(s.replace(" ", "T")); hasTime = true;
+      if (isNaN(d)) {
+        const m2 = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+        if (!m2) return null;
+        d = new Date(+m2[1], +m2[2] - 1, +m2[3]); hasTime = false;
+      }
     }
-    if (card.querySelector(".fpt-pill")) return;
-    const el = document.createElement("div");
-    el.className = "fpt-pill";
-    el.textContent = p.label || this.config.title || "";
-    el.setAttribute("style",
-      "display:inline-block;margin:12px 0 2px 16px;padding:3px 11px;border-radius:99px;"
-      + "font-size:12px;font-weight:600;line-height:1.55;letter-spacing:.01em;"
-      + "background:" + (p.bg || "var(--secondary-background-color)") + ";"
-      + "color:" + (p.color || "var(--primary-text-color)") + ";");
-    card.insertBefore(el, card.firstChild);
+    const time = hasTime && (d.getHours() || d.getMinutes()) ? U.pad(d.getHours()) + ":" + U.pad(d.getMinutes()) : "";
+    return { d, day: this._dayNum(d), t: d.getTime(), time };
   }
-  _list() {
-    try { return this._child && this._child.shadowRoot && this._child.shadowRoot.querySelector("ha-list"); } catch (e) { return null; }
+  // due_date_period: Tageszahl, bis zu der Aufgaben gezeigt werden (Überfälliges eingeschlossen); null = kein Filter
+  _limit(now) {
+    const per = this.config.due_date_period;
+    const c = per && per.calendar;
+    if (!c) return null;
+    const off = parseInt(c.offset, 10) || 0;
+    const y = now.getFullYear(), mo = now.getMonth(), da = now.getDate();
+    let end;
+    if (c.period === "week") end = new Date(y, mo, da - ((now.getDay() + 6) % 7) + (off + 1) * 7 - 1);   // Woche beginnt am Montag, endet Sonntag
+    else if (c.period === "month") end = new Date(y, mo + off + 1, 0);
+    else if (c.period === "year") end = new Date(y + off + 1, 0, 0);
+    else end = new Date(y, mo, da + off);
+    return this._dayNum(end);
+  }
+  _dm(d) { return d.getDate() + "." + (d.getMonth() + 1) + "."; }
+  // Beschreibung für die zweite Zeile: Zeilenumbrüche werden zu Leerzeichen, leer = keine Zeile
+  _descText(v) { return v == null ? "" : String(v).replace(/\s*[\r\n]+\s*/g, " ").trim(); }
+  _chip(due, today) {
+    const diff = due.day - today;
+    if (diff < 0) return { c: "ov", t: diff === -1 ? "gestern" : diff >= -6 ? "seit " + WD[due.d.getDay()] : "seit " + this._dm(due.d) };
+    if (diff === 0) return { c: "td", t: due.time ? "heute " + due.time : "heute" };
+    if (diff === 1) return { c: "nx", t: "morgen" };
+    return { c: "nx", t: diff <= 6 ? WD[due.d.getDay()] : this._dm(due.d) };
+  }
+
+  // ---------- Aufbereiten ----------
+  // Aus Abo-Daten, Vorab-Anzeigen und Einstellungen die Zeilen samt Gruppen bauen.
+  _model() {
+    const cfg = this.config, nowD = new Date(), nowMs = nowD.getTime(), today = this._dayNum(nowD);
+    const hideDone = cfg.hide_completed !== false;
+    const lim = this._limit(nowD);
+    const showDesc = cfg.show_description !== false;   // Vorgabe an: Beschreibung (z. B. Menge bei Einkaufslisten) als zweite Zeile
+    const src = [];
+    for (const p of this._pending) src.push({ uid: p.uid, summary: p.summary, description: p.description, status: "needs_action", due: p.due, pend: true });
+    const seen = new Set();
+    for (const it of (this._items || [])) { src.push(it); seen.add(it.uid); }
+    // gerade abgehakt und aus der Liste schon verschwunden (z. B. Cloud-Listen): kurz noch zeigen
+    for (const [uid, k] of this._keep) if (!seen.has(uid) && k.until > nowMs) src.push(k.item);
+    const rows = [];
+    src.forEach((it, i) => {
+      const ov = this._ovr.get(it.uid);
+      const done = (ov ? ov.status : it.status) === "completed";
+      const k = this._keep.get(it.uid);
+      const kept = !it.pend && !!k && k.until > nowMs;
+      if (done && hideDone && !kept) return;
+      const due = this._parseDue(it.due);
+      if (lim !== null && !it.pend) {   // Filter: nur Offenes bis Zeitraumende, ohne Datum fällt weg (frisch Angelegtes bleibt kurz als Rückmeldung)
+        if (done && !kept) return;
+        if (!due || due.day > lim) return;
+      }
+      const grp = done && !kept ? "done" : !due ? "none" : due.day < today ? "ov" : due.day === today ? "td" : "nx";
+      rows.push({ u: it.uid, s: String(it.summary == null ? "" : it.summary), d: showDesc ? this._descText(it.description) : "", done, pend: !!it.pend, due, i, grp, chip: !done && due ? this._chip(due, today) : null });
+    });
+    const open = rows.filter(r => !r.done).length;
+    const groups = [];
+    if (cfg.display_order === "duedate_asc") {
+      const byDue = (a, b) => (a.due.t - b.due.t) || (a.i - b.i);
+      const add = (key, title, list, sort) => { if (list.length) groups.push({ key, title, rows: sort ? list.sort(byDue) : list }); };
+      const pick = g => rows.filter(r => r.grp === g);
+      add("ov", "Überfällig", pick("ov"), true);
+      add("td", "Heute", pick("td"), true);
+      add("nx", "Demnächst", pick("nx"), true);
+      add("none", "Ohne Datum", pick("none"), false);
+      add("done", "Erledigt", pick("done"), false);
+    } else {
+      const act = rows.filter(r => r.grp !== "done"), dn = rows.filter(r => r.grp === "done");
+      if (cfg.display_order === "alpha_asc") {
+        const byName = (a, b) => a.s.localeCompare(b.s, "de") || (a.i - b.i);
+        act.sort(byName); dn.sort(byName);
+      }
+      if (act.length) groups.push({ key: "all", title: "", rows: act });
+      if (dn.length) groups.push({ key: "done", title: "Erledigt", rows: dn });
+    }
+    return { groups, open };
+  }
+
+  // ---------- Zeichnen ----------
+  _build() {
+    this._closeEdit();
+    this._built = true; this._sig = "";
+    const add = this.config.hide_create === true ? "" :
+      `<div class="fpt-add"><input class="fpt-in" type="text" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe" enterkeyhint="done" autocomplete="off"><button type="button" class="fpt-plus" aria-label="Aufgabe hinzufügen">＋</button></div>`;
+    // Farbe des Abhak-Kreises: die Personenfarbe der Pille, bei der alten Form (bg + color) und ohne Farbe der Akzent
+    const pc = this.config.pill;
+    const dot = pc && typeof pc === "object" && pc.color && !pc.bg ? String(pc.color) : "";
+    this.innerHTML = `<ha-card class="fpt-card"${dot ? ` style="${U.esc("--fpt-dot:" + dot)}"` : ""}><div class="fpt-body"><div class="fpt-head" hidden></div><div class="fpt-list" lang="de"></div>${add}</div></ha-card>${this._styles()}`;
+    if (U.fill) U.fill(this);
+    const card = this.querySelector(".fpt-card");
+    this._head = card.querySelector(".fpt-head");
+    this._list = card.querySelector(".fpt-list");
+    card.addEventListener("click", e => this._onClick(e));
+    const inp = card.querySelector(".fpt-in");
+    if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); this._add(); } });
+    this._paint();
+  }
+  _pillStyle(p) {
+    const bg = p.bg ? String(p.bg) : "", col = p.color ? String(p.color) : "";
+    let b, f;
+    if (bg && col) { b = bg; f = col; }   // alte Form: Hintergrund plus Schriftfarbe, genau diese beiden Werte
+    else if (col) {                        // eine Farbe je Person: Grund und Schrift daraus, passt hell und dunkel
+      b = `color-mix(in srgb, ${col} 22%, var(--ha-card-background, var(--card-background-color, #fff)))`;
+      f = `color-mix(in srgb, ${col} 65%, var(--primary-text-color, #222))`;
+    } else if (bg) { b = bg; f = "var(--primary-text-color)"; }
+    else return "";                        // neutrale Pille über das CSS
+    return U.esc(`--fpt-pbg:${b};--fpt-pfg:${f}`);
+  }
+  _headHtml(open) {
+    const c = this.config;
+    let p = c.pill;
+    if (typeof p === "string") p = { label: p };
+    let left = "";
+    if (p) {
+      const label = p.label || c.title || "";
+      const st = this._pillStyle(p);
+      if (label) left = `<span class="fpt-pill"${st ? ` style="${st}"` : ""}>${U.esc(label)}</span>`;
+    } else if (c.title) left = `<div class="fpt-title">${U.esc(c.title)}</div>`;
+    const right = open > 0 ? `<div class="fpt-cnt"><b>${open}</b><small>offen</small></div>` : "";
+    return left + right;
+  }
+  _rowHtml(r) {
+    const uid = U.esc(r.u);
+    const ed = this._edit && !r.pend;
+    return `<div class="fpt-row${r.done ? " fpt-done" : ""}${r.pend ? " fpt-pend" : ""}">`
+      + `<button type="button" class="fpt-chk" role="checkbox" aria-checked="${r.done ? "true" : "false"}" aria-label="${r.done ? "Wieder öffnen" : "Erledigt"}"${r.pend ? " disabled" : ` data-uid="${uid}"`}><span class="fpt-circ"></span></button>`
+      + `<div class="fpt-txt${ed ? " fpt-edit" : ""}"${ed ? ` data-uid="${uid}"` : ""}><span>${U.esc(r.s)}</span>${r.d ? `<div class="fpt-desc">${U.esc(r.d)}</div>` : ""}</div>`
+      + (r.chip ? `<span class="fpt-chip fpt-c-${r.chip.c}">${U.esc(r.chip.t)}</span>` : "")
+      + `</div>`;
+  }
+  // Neu zeichnen nur, wenn sich etwas Sichtbares ändert (Signatur): Daten, Vorab-Anzeigen oder der Tag.
+  _paint() {
+    if (!this._built || !this.config) return;
+    this._expire();
+    const m = this._model();
+    const state = this._items !== null ? "ok" : this._err ? "err" : "wait";
+    const sig = JSON.stringify([state, m.open, m.groups.map(g => [g.key, g.title, g.rows.map(r => [r.u, r.s, r.d, r.done, r.pend, r.chip ? r.chip.c + ":" + r.chip.t : ""])])]);
+    if (sig === this._sig) return;
+    this._sig = sig;
+    this._nRows = m.groups.reduce((n, g) => n + g.rows.length, 0);
+    const head = this._headHtml(m.open);
+    this._head.innerHTML = head;
+    this._head.hidden = !head;
+    let html = "";
+    if (m.groups.length) {
+      html = m.groups.map(g =>
+        (g.title ? `<div class="fpt-sec${g.key === "ov" ? " fpt-sec-ov" : ""}">${g.title}</div>` : "")
+        + `<div class="fpt-rows">${g.rows.map(r => this._rowHtml(r)).join("")}</div>`).join("");
+    } else if (state === "ok") {
+      const t = this.config.empty_text != null ? String(this.config.empty_text) : "Alles erledigt";
+      html = `<div class="fpt-empty"><div class="fpt-empty-i">✓</div>${t ? `<div>${U.esc(t)}</div>` : ""}</div>`;
+    } else if (state === "err") {
+      html = `<div class="fpt-empty"><div>Liste konnte nicht geladen werden</div></div>`;
+    }
+    this._list.innerHTML = html;
+  }
+  _styles() {
+    return `<style>
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fpt-card{--fpt-s:var(--fp-surface,var(--secondary-background-color));--fpt-s2:var(--fp-surface-2,var(--divider-color));
+        --fpt-mut:var(--secondary-text-color);--fpt-acc:var(--fp-accent,var(--primary-color,#4F6B57));--fpt-dot:var(--fpt-acc);--fpt-err:var(--error-color,#db4437);
+        --fpt-al:var(--fp-alert,var(--warning-color,#b97f06));--fpt-alb:var(--fp-alert-bg,color-mix(in srgb,var(--warning-color,#b97f06) 18%,transparent));
+        --fpt-r:var(--fp-radius-sm,12px);
+        box-sizing:border-box;height:100%;display:flex;flex-direction:column;container-type:inline-size;color:var(--primary-text-color);}
+      .fpt-body{flex:1 1 auto;min-height:0;box-sizing:border-box;padding:14px;display:flex;flex-direction:column;}
+      :where(.fpt-card) button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;}
+      /* Kopf: Pille (oder Titel) links, Zahl der offenen Aufgaben rechts */
+      .fpt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;min-height:30px;}
+      .fpt-head[hidden]{display:none;}
+      .fpt-title{font-size:1.05rem;font-weight:800;letter-spacing:-.01em;min-width:0;overflow-wrap:break-word;}
+      .fpt-pill{display:inline-block;min-width:0;max-width:100%;padding:4px 12px;border-radius:999px;font-size:.82rem;font-weight:800;letter-spacing:.01em;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+        background:var(--fpt-pbg,var(--fp-surface,var(--secondary-background-color)));color:var(--fpt-pfg,var(--primary-text-color));}
+      .fpt-cnt{display:flex;align-items:baseline;gap:5px;flex:none;margin-left:auto;white-space:nowrap;}
+      .fpt-cnt b{font-size:1.45rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;}
+      .fpt-cnt small{font-size:.72rem;font-weight:600;color:var(--fpt-mut);}
+      /* Liste */
+      .fpt-list{flex:1 1 auto;min-height:0;}
+      .fpt-sec{margin:12px 0 0;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--fpt-mut);}
+      .fpt-list>.fpt-sec:first-child{margin-top:0;}
+      .fpt-sec-ov{color:var(--fpt-err);}
+      .fpt-rows{display:flex;flex-direction:column;}
+      /* Zeilen liegen ohne Fläche auf der Karte; eine Linie trennt sie innerhalb einer Gruppe (nicht über der ersten) */
+      .fpt-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;min-height:46px;box-sizing:border-box;padding:0;}
+      .fpt-row+.fpt-row{border-top:1px solid var(--divider-color);}
+      .fpt-chk{flex:none;align-self:stretch;width:44px;min-height:44px;margin:0 0 0 -10px;padding:0;border:none;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+      .fpt-chk:disabled{cursor:default;}
+      /* Kreis: Personenfarbe mit etwas Textfarbe gemischt — im Hellen dunkler, im Dunkeln heller, damit er auch bei dunklen Farben nicht verschwindet */
+      .fpt-circ{position:relative;display:block;box-sizing:border-box;width:24px;height:24px;border-radius:50%;border:2px solid color-mix(in srgb, var(--fpt-dot) 75%, var(--primary-text-color, #222));transition:background .15s,border-color .15s,transform .1s;}
+      .fpt-chk:active .fpt-circ{transform:scale(.86);}
+      .fpt-done .fpt-circ{background:color-mix(in srgb, var(--fpt-dot) 75%, var(--primary-text-color, #222));}
+      .fpt-done .fpt-circ::after{content:"";position:absolute;left:6px;top:2px;width:6px;height:11px;border:solid var(--fp-accent-fg,#fff);border-width:0 2.5px 2.5px 0;transform:rotate(45deg);}
+      .fpt-txt{flex:1 1 0;min-width:0;align-self:stretch;display:flex;flex-direction:column;justify-content:center;padding:8px 8px 8px 4px;font-size:.92rem;font-weight:700;line-height:1.3;overflow-wrap:break-word;word-break:normal;hyphens:auto;color:var(--primary-text-color);}
+      .fpt-txt.fpt-edit{cursor:pointer;}
+      /* Beschreibung: kleine zweite Zeile, höchstens zwei Zeilen */
+      .fpt-desc{margin-top:1px;font-size:.76rem;font-weight:600;line-height:1.3;color:var(--secondary-text-color);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;word-break:normal;hyphens:auto;}
+      .fpt-done .fpt-txt{color:var(--fpt-mut);font-weight:600;opacity:.65;}
+      .fpt-done .fpt-txt span{text-decoration:line-through;}
+      .fpt-pend{opacity:.5;}
+      /* Fälligkeit */
+      .fpt-chip{flex:none;margin-left:4px;padding:3px 10px;border-radius:999px;font-size:.72rem;font-weight:800;line-height:1.4;white-space:nowrap;}
+      .fpt-c-ov{background:color-mix(in srgb,var(--fpt-err) 16%,transparent);color:color-mix(in srgb,var(--fpt-err) 75%,var(--primary-text-color));}
+      .fpt-c-td{background:var(--fpt-alb);color:color-mix(in srgb,var(--fpt-al) 75%,var(--primary-text-color));}
+      .fpt-c-nx{background:var(--fpt-s2);color:var(--fpt-mut);}
+      /* leer / Fehler */
+      .fpt-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px 8px;text-align:center;font-size:.9rem;font-weight:600;color:var(--fpt-mut);}
+      .fpt-empty-i{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--fpt-s);color:var(--fpt-acc);font-size:1.1rem;font-weight:800;}
+      /* Eingabezeile */
+      .fpt-add{display:flex;gap:8px;margin-top:12px;}
+      .fpt-in{flex:1 1 auto;min-width:0;box-sizing:border-box;min-height:46px;padding:0 14px;border:none;border-radius:var(--fpt-r);background:var(--fpt-s);color:var(--primary-text-color);font-size:1rem;font-weight:600;}
+      .fpt-in::placeholder{color:var(--fpt-mut);font-weight:600;opacity:1;}
+      .fpt-in:focus{outline:2px solid color-mix(in srgb,var(--fpt-acc) 55%,transparent);outline-offset:0;}
+      .fpt-plus{flex:none;width:46px;min-height:46px;padding:0;border:none;border-radius:var(--fpt-r);background:var(--fpt-acc);color:var(--fp-accent-fg,#fff) !important;font-size:1.3rem;font-weight:700;line-height:1;cursor:pointer;}
+      .fpt-plus:active{opacity:.8;}
+      /* schmale Karten (Handy-Spalten, ca. 120–140 px): Chip unter den Text, kleinere Tippfläche und Polster */
+      @container (max-width: 280px){
+        .fpt-body{padding:10px;}
+        .fpt-head{gap:6px;}
+        .fpt-row{min-height:40px;}
+        .fpt-chk{width:36px;min-height:36px;margin-left:-8px;}
+        .fpt-circ{width:20px;height:20px;}
+        .fpt-done .fpt-circ::after{left:5px;top:1.5px;width:5px;height:9px;border-width:0 2px 2px 0;}
+        .fpt-txt{padding:6px 4px;}
+        .fpt-chip{grid-column:2;grid-row:2;justify-self:start;margin:0 0 6px 4px;}
+        .fpt-in{min-height:40px;padding:0 10px;}
+        .fpt-plus{width:40px;min-height:40px;}
+      }
+    </style>`;
+  }
+
+  // ---------- Bedienung ----------
+  _onClick(e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const chk = t.closest(".fpt-chk[data-uid]");
+    if (chk) { this._toggle(chk.dataset.uid); return; }
+    if (t.closest(".fpt-plus")) { this._add(); return; }
+    const txt = t.closest(".fpt-txt[data-uid]");
+    if (txt && this._edit && !this._ov && !this._opening) {
+      this._opening = true;
+      this._openEdit(txt.dataset.uid).finally(() => { this._opening = false; });
+    }
+  }
+  _byUid(uid) {
+    const it = (this._items || []).find(i => i.uid === uid);
+    if (it) return it;
+    const k = this._keep.get(uid);
+    return k ? k.item : null;
+  }
+  _toggle(uid) {
+    const it = this._byUid(uid);
+    if (!it || !this._hass) return;
+    const ov = this._ovr.get(uid);
+    const cur = ov ? ov.status : it.status;
+    this._setStatus(uid, it, cur === "completed" ? "needs_action" : "completed", true);
+  }
+  // Sofort zeigen, dann beim Dienst melden. Schlägt er fehl: Zeile zurück und Fehler-Toast.
+  _setStatus(uid, it, status, withUndo) {
+    const now = Date.now();
+    this._ovr.set(uid, { status, t: now });
+    if (status === "completed") {
+      this._keep.set(uid, { until: now + 1400, item: Object.assign({}, it, { status: "completed" }) });   // kurz sichtbar, dann ausgeblendet
+      this._after(() => this._paint(), 1450);
+    } else this._keep.delete(uid);
+    this._paint();
+    this._hass.callService("todo", "update_item", { entity_id: this.config.entity, item: uid, status }).catch(err => {
+      console.warn("[fp-todo-card] Status setzen fehlgeschlagen:", this.config.entity, uid, err);
+      this._ovr.delete(uid); this._keep.delete(uid); this._paint();
+      U.toast(this, status === "completed" ? "Abhaken fehlgeschlagen" : "Wieder öffnen fehlgeschlagen");
+    });
+    if (withUndo) U.undo(this, `„${it.summary || ""}“ erledigt`, () => this._setStatus(uid, it, "needs_action", false));
+  }
+  _add() {
+    const inp = this.querySelector(".fpt-in");
+    const v = inp ? inp.value.trim() : "";
+    if (!v || !this._hass) return;
+    inp.value = "";
+    const p = this._optimistic(v, null);
+    this._hass.callService("todo", "add_item", { entity_id: this.config.entity, item: v }).catch(err => {
+      console.warn("[fp-todo-card] Anlegen fehlgeschlagen:", this.config.entity, err);
+      this._pending = this._pending.filter(x => x !== p); this._paint();
+      U.toast(this, "Aufgabe konnte nicht angelegt werden");
+    });
+  }
+  // Neuer Eintrag sofort in der Liste (leicht ausgegraut), bis er im Abo auftaucht, höchstens 20 s.
+  _optimistic(summary, due, description) {
+    const text = String(summary).trim();
+    if (!text) return null;
+    const key = this._key(text);
+    const base = (this._items || []).filter(i => i.status !== "completed" && this._key(i.summary) === key).length;
+    const p = { uid: "fpt-pend-" + (++this._pseq), summary: text, description: description == null ? "" : String(description), key, due: due || null, base, t: Date.now() };
+    this._pending.push(p);
+    this._after(() => this._paint(), 20100);
+    this._paint();
+    return p;
   }
 
   // ---------- Änderungsdialog ----------
@@ -2472,41 +3103,16 @@ class FpTodoCard extends HTMLElement {
     </style>`;
   }
 
-  _optimistic(summary) {
-    const list = this._list();
-    if (!list) return;
-    const node = document.createElement("ha-check-list-item");
-    node.setAttribute("left", "");
-    node.className = "editRow";
-    node.style.opacity = "0.5";
-    const col = document.createElement("div"); col.className = "column";
-    const span = document.createElement("span"); span.className = "summary"; span.textContent = summary;
-    col.appendChild(span); node.appendChild(col);
-    list.insertBefore(node, list.firstChild);
-    this._pending.push({ key: summary.toLowerCase(), node: node, t: Date.now() });
-    if (!this._poll) this._poll = setInterval(() => this._reconcile(), 400);
-  }
-  _reconcile() {
-    const items = (this._child && this._child._items) || [];
-    const active = items.filter(i => i && i.status !== "completed");
-    this._pending = this._pending.filter(p => {
-      const found = active.some(i => (i.summary || "").toLowerCase() === p.key);
-      const old = Date.now() - p.t > 12000;
-      if (found || old) { if (p.node && p.node.parentNode) p.node.parentNode.removeChild(p.node); return false; }
-      return true;
-    });
-    if (!this._pending.length && this._poll) { clearInterval(this._poll); this._poll = null; }
-  }
-  getCardSize() { return (this._child && this._child.getCardSize) ? this._child.getCardSize() : 3; }
+  getCardSize() { return 2 + Math.max(1, this._nRows || 1); }
 }
 if (!customElements.get("fp-todo-card")) {
   customElements.define("fp-todo-card", FpTodoCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "fp-todo-card", name: "FP Todo Card", description: "Wraps native todo-list with optimistic instant add" });
+  window.customCards.push({ type: "fp-todo-card", name: "FP Todo Card", description: "Eigene Aufgabenliste: Gruppen nach Fälligkeit, Abhaken mit Rückgängig, sofortiges Hinzufügen" });
 }
 })();
 
-/* ===== fp-glance-card v6 (fuellt die Rasterzelle aus, forecast_rows statt forecast_days (clock-weather-card v2), hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay = Touch+Maus zuverlaessig; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card; Tageszeit-Hintergrund via sun.sun) ===== */
+/* ===== fp-glance-card v7 (Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2532,7 +3138,7 @@ class FpGlanceCard extends HTMLElement {
       nav_path: "",                         // (veraltet) Fallback fuer calendar_path
     }, config || {});
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
-    this._built = false; this._wc = null; this._curBg = ""; this._curLight = null;
+    this._built = false; this._wc = null; this._curBg = ""; this._curMode = ""; this._curFg = null;
     // Eingebettete Wetterkarte (transparent aufs Banner geblendet); volle Config ueberschreibbar via weather_card
     if (this.config.show_weather) {
       // Kopie: eine aus der Dashboard-Konfiguration gereichte weather_card ist eingefroren
@@ -2544,7 +3150,8 @@ class FpGlanceCard extends HTMLElement {
         hide_today_section: !!this.config.hide_today_section, hide_forecast_section: false,
         forecast_rows: this.config.forecast_rows,
       });
-      if (!base.card_mod) base.card_mod = { style: "ha-card{background:transparent!important;box-shadow:none!important;border:none!important;} :host{--primary-text-color:#fff;--secondary-text-color:rgba(255,255,255,.9);} img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));} svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));}" };
+      // Schriftfarben kommen nicht mehr von hier, sondern von .fpg-wc der Glance-Karte (erben hinein)
+      if (!base.card_mod) base.card_mod = { style: "ha-card{background:transparent!important;box-shadow:none!important;border:none!important;} img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));} svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));}" };
       this._wcConfig = base;
     }
   }
@@ -2648,14 +3255,22 @@ class FpGlanceCard extends HTMLElement {
   _daypart() { const h = new Date().getHours(); if (h >= 5 && h < 11) return "morning"; if (h >= 11 && h < 17) return "day"; if (h >= 17 && h < 22) return "evening"; return "night"; }
   _greet() { const p = this._daypart(); return p === "morning" ? "Guten Morgen" : p === "evening" ? "Guten Abend" : p === "night" ? "Gute Nacht" : "Hallo"; }
   _defaultBg(part) { return part === "morning" ? "linear-gradient(135deg,#5b9bd5,#89c4f4)" : part === "day" ? "linear-gradient(135deg,#2f80c4,#5aa9e6)" : part === "evening" ? "linear-gradient(135deg,#3a5a8c,#7b6ca8)" : "linear-gradient(135deg,#1b2a4a,#33415e)"; }
+  // Rückgabe: style + mode ("light" = weiße Schrift auf Bild/Vorgabe, "dark" = Theme-Schrift auf eigener Farbe,
+  // "theme" = Hintergrund und Schrift aus --fp-glance-*), bei "theme" zusätzlich fg = --fp-glance-fg gesetzt
   _bg() {
     const part = this._daypart();
     const bgs = this.config.backgrounds || {};
     const bRaw = bgs[part] || this.config.background || "";
     const isImg = bRaw && (/^(https?:|\/|data:)/.test(bRaw) || /\.(jpe?g|png|webp|gif|avif)/i.test(bRaw));
-    if (isImg) return { style: `background-image:linear-gradient(rgba(0,0,0,.42),rgba(0,0,0,.58)),url('${bRaw}');background-size:cover;background-position:center;`, light: true };
-    if (bRaw) return { style: `background:${bRaw};`, light: false };
-    return { style: `background:${this._defaultBg(part)};`, light: true };
+    if (isImg) return { style: `background-image:linear-gradient(rgba(0,0,0,.42),rgba(0,0,0,.58)),url('${bRaw}');background-size:cover;background-position:center;`, mode: "light" };
+    if (bRaw) return { style: `background:${bRaw};`, mode: "dark" };
+    // Theme-Variable der Tageszeit: var(...) in den Stil, nicht der gelesene Wert,
+    // damit der Hell/Dunkel-Wechsel des Themes ohne Neuzeichnen greift.
+    const cs = getComputedStyle(this);
+    if (cs.getPropertyValue("--fp-glance-" + part).trim()) {
+      return { style: `background:var(--fp-glance-${part});`, mode: "theme", fg: !!cs.getPropertyValue("--fp-glance-fg").trim() };
+    }
+    return { style: `background:${this._defaultBg(part)};`, mode: "light" };
   }
 
   async _build() {
@@ -2670,12 +3285,19 @@ class FpGlanceCard extends HTMLElement {
              drop-shadow schon. Wert fest statt var(--ha-card-box-shadow):
              dort steht je nach Theme "none", und drop-shadow(none) macht die
              ganze Filter-Regel ungueltig — dann faellt auch der Rueckfallwert weg.
-             Ueber die Karten-Option "shadow" ueberschreibbar. */
-          filter:drop-shadow(var(--fpg-shadow,0 4px 14px rgba(0,0,0,.16)));
+             Reihenfolge: Karten-Option "shadow" (--fpg-shadow), Theme-Variable
+             --fp-glance-shadow, fester Wert. Die Theme-Variable muss ein gueltiger
+             Schattenwert sein (z. B. "0 4px 14px rgba(0,0,0,.16)"), nicht "none". */
+          filter:drop-shadow(var(--fpg-shadow,var(--fp-glance-shadow,0 4px 14px rgba(0,0,0,.16))));
           border-width:var(--ha-card-border-width,0);border-style:solid;
-          border-color:var(--ha-card-border-color,var(--divider-color));}
+          border-color:var(--fp-glance-border,var(--ha-card-border-color,var(--divider-color)));}
         .fpg-light{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.55);}
         .fpg-dark{color:var(--primary-text-color);}
+        .fpg-theme{color:var(--fp-glance-fg,var(--primary-text-color));}
+        /* Schriftfarben der eingebetteten Wetterkarte kommen von hier (erben hinein);
+           bei "dark" bleiben die Theme-Werte, bei "theme" ohne --fp-glance-fg ebenso. */
+        .fpg-light .fpg-wc{--primary-text-color:#fff;--secondary-text-color:rgba(255,255,255,.9);}
+        .fpg-theme.fpg-fg .fpg-wc{--primary-text-color:var(--fp-glance-fg);--secondary-text-color:color-mix(in srgb, var(--fp-glance-fg) 80%, transparent);}
         .fpg-clk{cursor:pointer;}
         .fpg-date.fpg-clk:hover,.fpg-chip.fpg-clk:hover{text-decoration:underline;}
         .fpg-wc.fpg-clk{cursor:pointer;}
@@ -2684,6 +3306,7 @@ class FpGlanceCard extends HTMLElement {
         .fpg-hi{font-size:1.3rem;font-weight:700;margin-top:2px;}
         .fpg-info{display:flex;gap:16px;flex-wrap:wrap;margin-top:13px;padding-top:11px;border-top:1px solid rgba(255,255,255,.28);font-size:.9rem;}
         .fpg-dark .fpg-info{border-top-color:var(--divider-color);}
+        .fpg-theme .fpg-info{border-top-color:color-mix(in srgb, var(--fp-glance-fg, var(--primary-text-color)) 22%, transparent);}
         .fpg-chip{display:inline-flex;align-items:center;gap:6px;}
         .fpg-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
         .fpg-muted{opacity:.72;}
@@ -2736,10 +3359,13 @@ class FpGlanceCard extends HTMLElement {
     if (!this._hass || !this._built || !this._elCard) return;
     const bg = this._bg();
     if (bg.style !== this._curBg) { this._elCard.setAttribute("style", bg.style); this._curBg = bg.style; }
-    if (bg.light !== this._curLight) {
-      this._elCard.classList.toggle("fpg-light", bg.light);
-      this._elCard.classList.toggle("fpg-dark", !bg.light);
-      this._curLight = bg.light;
+    const fg = !!bg.fg;
+    if (bg.mode !== this._curMode || fg !== this._curFg) {
+      this._elCard.classList.toggle("fpg-light", bg.mode === "light");
+      this._elCard.classList.toggle("fpg-dark", bg.mode === "dark");
+      this._elCard.classList.toggle("fpg-theme", bg.mode === "theme");
+      this._elCard.classList.toggle("fpg-fg", bg.mode === "theme" && fg);
+      this._curMode = bg.mode; this._curFg = fg;
     }
     const now = new Date();
     this._elDate.textContent = now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" });
@@ -2770,7 +3396,7 @@ if (!customElements.get("fp-glance-card")) {
 }
 })();
 
-/* ===== fp-cookbook-card v21 (Bilder zu den Rezepten: in Kacheln und Rezeptansicht, eigenes Foto hochladen, freie Fotos ueber Openverse suchen, KI-Bild, Bildadresse; Mengen mit Dezimalkomma; Zutaten → Einkauf fasst Mengen mit offenen Eintraegen gleichen Namens zusammen, g/kg und ml/l umgerechnet; Dialogknoepfe in Theme-Farben statt festem Hellblau, Abbrechen zurueckhaltend; Import per Link: Rezeptseiten und Videos, Naehrwerte je Portion, Filter „proteinreich" aus dem Eiweisswert, Farben ueber Theme-Variablen, Kochbuch; Rezepte bearbeiten: Name, Mahlzeit, Tags, Portionen, Zeiten, Naehrwerte, Zutaten, Schritte) ===== */
+/* ===== fp-cookbook-card v22 (ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -3315,6 +3941,11 @@ class FpCookbookCard extends HTMLElement {
     const n = this._nutriTxt(d); if (n) bits.push(`${CP(0x1F525)} ${this._esc(n)}${perPortion ? " pro Portion" : ""}`);
     return bits.length ? `<div class="${cls}">${bits.join(" &nbsp;·&nbsp; ")}</div>` : "";
   }
+  // Kachelzeile: nur Gesamtzeit und kcal je Portion, z. B. „55 Min · 520 kcal"; leer, wenn beides fehlt
+  _tileMetaTxt(d) {
+    const t = Number(d.total_min) || 0, k = Number(d.kcal) || 0;
+    return [t ? `${t} Min` : "", k ? `${k} kcal` : ""].filter(Boolean).join(" · ");
+  }
   _filtered() {
     const q = U.norm(this._search);
     return (this._dishes || []).filter(d => {
@@ -3343,9 +3974,10 @@ class FpCookbookCard extends HTMLElement {
     const cats = ["Alle", "Frühstück", "Mittag", "Abend", "vegetarisch", "kinderliebling", "schnell", "proteinreich"];
     const chips = cats.map(c => `<button class="cb-chip${this._filter === c ? " cb-chip-on" : ""}" data-f="${this._esc(c)}">${this._esc(c)}</button>`).join("");
     const nNoTime = (this._dishes || []).filter(d => !Number(d.total_min)).length;
-    const timeBar = nNoTime ? `<button class="cb-fixtimes">${CP(0x23F1)} Zubereitungszeit für ${nNoTime} Rezept${nNoTime === 1 ? "" : "e"} nachrechnen</button>` : "";
+    // Hinweise als kleine Pillen im Kopf (volle Wörter stehen im Tooltip)
+    const timeBar = nNoTime ? `<button class="cb-fixtimes" title="Zubereitungszeit für ${nNoTime} Rezept${nNoTime === 1 ? "" : "e"} nachrechnen">${CP(0x23F1)} Zeiten für ${nNoTime} nachrechnen</button>` : "";
     const nNoNutri = (this._dishes || []).filter(d => this._nutriMissing(d)).length;
-    const nutriBar = nNoNutri ? `<button class="cb-fixnutri">${CP(0x1F525)} Nährwerte für ${nNoNutri} Rezept${nNoNutri === 1 ? "" : "e"} berechnen</button>` : "";
+    const nutriBar = nNoNutri ? `<button class="cb-fixnutri" title="Nährwerte für ${nNoNutri} Rezept${nNoNutri === 1 ? "" : "e"} berechnen">${CP(0x1F525)} Nährwerte für ${nNoNutri} berechnen</button>` : "";
     const cards = dishes.length ? dishes.map(d => `
 ${this._tileHTML(d)}`).join("")
       : `<div class="cb-empty">Noch keine Rezepte. Tippe auf „＋ Neu", um eins per KI zu erzeugen.</div>`;
@@ -3354,11 +3986,11 @@ ${this._tileHTML(d)}`).join("")
       <ha-card class="cb-card">
         <div class="cb-bar">
           <div class="cb-title">${CP(0x1F4D6)} ${this._esc(this.config.title)}</div>
+          <input class="cb-search" type="text" placeholder="Suchen …" aria-label="Suchen" value="${this._esc(this._search)}">
+          ${timeBar}
+          ${nutriBar}
           <button class="cb-add">＋ Neu</button>
         </div>
-        ${timeBar}
-        ${nutriBar}
-        <input class="cb-search" type="text" placeholder="Suchen …" value="${this._esc(this._search)}">
         <div class="cb-chips">${chips}</div>
         <div class="cb-grid">${cards}</div>
       </ha-card>
@@ -3375,15 +4007,14 @@ ${this._tileHTML(d)}`).join("")
     this.querySelectorAll(".cb-dish").forEach(b => b.addEventListener("click", () => { const d = this._dishes.find(x => x.uid === b.dataset.uid); if (d) this._openDetail(d); }));
     this._fillImgs(this.querySelector(".cb-grid"));
   }
+  // Ruhige Bildkachel: Foto, darunter Name und eine Zeile mit Zeit und kcal; alles Weitere steht auf der Rezeptseite
   _tileHTML(d) {
+    const meta = this._tileMetaTxt(d);
     return `<button class="cb-dish" data-uid="${this._esc(d.uid)}">
         ${this._imgTag(d, "cb-d-img")}
         <div class="cb-d-body">
           <div class="cb-d-name">${this._esc(d.name)}</div>
-          <div class="cb-d-meta">${d.category && d.category !== "egal" ? this._esc(d.category) + " · " : ""}${this._esc(this._sinceTxt(d.last_cooked))}</div>
-          ${this._metaRow(d, "cb-d-time")}
-          <div class="cb-d-tags">${(d.tags || []).slice(0, 3).map(t => `<span class="cb-tag">${this._esc(t)}</span>`).join("")}</div>
-          <div class="cb-d-stars">${d.rating ? this._stars(d.rating) : ""}</div>
+          ${meta ? `<div class="cb-d-meta">${this._esc(meta)}</div>` : ""}
         </div>
       </button>`;
   }
@@ -3405,8 +4036,12 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
 
   _openDetail(d) {
     let portions = d.portions_base || this.config.base_portions;
+    // Mahlzeit (außer „egal") und „zuletzt gekocht" gibt es nur noch hier, nicht mehr auf der Kachel
+    const since = this._sinceTxt(d.last_cooked);
+    const subTxt = [d.category && d.category !== "egal" ? d.category : "", /^vor /.test(since) ? `zuletzt gekocht ${since}` : since].filter(Boolean).join(" · ");
     const ov = this._overlay(`
       <div class="cb-m-head"><span>${this._esc(d.name)}</span><button class="cb-x">${CP(0x2715)}</button></div>
+      <div class="cb-m-sub">${this._esc(subTxt)}</div>
       ${this._imgSrc(d)
         ? `<div class="cb-hero">${this._imgTag(d, "cb-hero-img")}<button class="cb-hero-btn">${CP(0x1F4F7)} Bild ändern</button></div>`
           + (d.image && (d.image.credit || d.image.temp) ? `<div class="cb-credit">${d.image.temp ? '<span class="cb-temp">Vorläufiges Foto</span>' : ""}${d.image.credit ? (d.image.link ? `<a href="${this._esc(d.image.link)}" target="_blank" rel="noopener">${this._esc(d.image.credit)}</a>` : this._esc(d.image.credit)) : ""}</div>` : "")
@@ -3650,27 +4285,52 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
 
   _styles() {
     return `<style>
-      .cb-card{padding:12px 14px;}
-      .cb-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
-      .cb-title{font-weight:700;font-size:1.05rem;}
-      .cb-add{border:none;border-radius:10px;padding:8px 12px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;}
-      .cb-search{width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);margin-bottom:8px;}
-      .cb-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
-      .cb-chip{border:1px solid var(--divider-color);border-radius:16px;padding:5px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.82rem;cursor:pointer;}
-      .cb-chip-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
+      .cb-card{padding:14px;container-type:inline-size;}
+      /* Kopf in einer Zeile: Titel, Suche als Pille, Hinweis-Pillen, ＋ Neu rechts; bricht um */
+      .cb-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin-bottom:10px;}
+      .cb-title{flex:0 1 auto;min-width:0;font-size:1.05rem;font-weight:900;letter-spacing:-.01em;line-height:1.2;overflow-wrap:anywhere;}
+      .cb-search{flex:1 1 140px;min-width:140px;box-sizing:border-box;margin:0;padding:7px 12px;border:none;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font:inherit;font-size:.9rem;line-height:1.3;-webkit-appearance:none;appearance:none;}
+      .cb-search::placeholder{color:var(--secondary-text-color);opacity:1;}
+      .cb-search:focus{outline:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--fp-accent,var(--primary-color)) 55%,transparent);}
+      @media (pointer:coarse){.cb-search{font-size:1rem;}}
+      .cb-fixtimes,.cb-fixnutri{flex:none;box-sizing:border-box;min-height:28px;padding:4px 11px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font:inherit;font-size:.74rem;font-weight:800;line-height:1.2;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .cb-fixtimes:disabled,.cb-fixnutri:disabled{opacity:.7;cursor:default;}
+      .cb-add{flex:none;margin-left:auto;box-sizing:border-box;min-height:32px;padding:0 14px;border:none;border-radius:999px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color));font:inherit;font-size:.82rem;font-weight:800;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      @media (hover:hover){
+        .cb-fixtimes:not(:disabled):hover,.cb-fixnutri:not(:disabled):hover{background:var(--fp-surface,var(--secondary-background-color));}
+        .cb-add:hover{filter:brightness(1.08);}
+      }
+      /* Handy: Titel und ＋ Neu oben, darunter die Suche über die volle Breite, dann die Hinweise */
+      @container (max-width:560px){
+        .cb-title{order:1;}
+        .cb-add{order:2;}
+        .cb-search{order:3;flex:1 1 100%;}
+        .cb-fixtimes,.cb-fixnutri{order:4;}
+      }
+      /* Filter: eine Zeile, waagrecht wischbar, Scrollleiste ausgeblendet */
+      .cb-chips{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin:0 -14px 14px;padding:0 14px;}
+      .cb-chips::-webkit-scrollbar{display:none;}
+      .cb-chip{flex:none;display:inline-flex;align-items:center;min-height:28px;box-sizing:border-box;padding:4px 11px;border:none;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font:inherit;font-size:.78rem;font-weight:800;line-height:1.2;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .cb-chip-on{background:var(--primary-text-color);color:var(--card-background-color);}
+      @media (hover:hover){.cb-chip:not(.cb-chip-on):hover{background:var(--fp-surface-2,var(--divider-color));}}
       .cb-src{margin-top:12px;font-size:.85rem;}
-      .cb-src a{color:var(--primary-color,var(--fp-head,#0277bd));}
-      .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;}
-      .cb-dish{text-align:left;border:1px solid var(--divider-color);border-radius:12px;padding:0;overflow:hidden;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;display:flex;flex-direction:column;min-height:70px;font:inherit;}
-      .cb-d-img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:rgba(var(--fp-tint-rgb,129,212,250),.18);}
-      .cb-noimg{display:flex;align-items:center;justify-content:center;font-size:2rem;opacity:.55;background:linear-gradient(135deg,rgba(var(--fp-tint-rgb,129,212,250),.22),rgba(var(--fp-accent-rgb,79,195,247),.12));}
+      .cb-src a{color:var(--primary-color,currentColor);}
+      /* Ruhige Bildkacheln: keine Fläche, kein Rand; das Foto ist der Inhalt */
+      .cb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px 12px;}
+      .cb-dish{display:flex;flex-direction:column;gap:8px;min-width:0;padding:0;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;color:var(--primary-text-color);text-align:left;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .cb-d-img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:var(--fp-radius-sm,12px);background:var(--fp-surface,var(--secondary-background-color));transition:filter .15s;}
+      .cb-noimg{display:flex;align-items:center;justify-content:center;font-size:2rem;background:var(--fp-surface,var(--secondary-background-color));}
       .cb-d-img.cb-noimg{aspect-ratio:4/3;}
-      .cb-d-body{display:flex;flex-direction:column;gap:4px;padding:9px 10px 10px;}
+      .cb-d-body{display:flex;flex-direction:column;gap:2px;min-width:0;padding:0 2px;}
+      .cb-d-name{font-size:.92rem;font-weight:800;line-height:1.2;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;}
+      .cb-d-meta{font-size:.76rem;font-weight:700;line-height:1.2;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .cb-dish:focus-visible{outline:2px solid color-mix(in srgb,var(--fp-accent,var(--primary-color)) 70%,transparent);outline-offset:3px;}
+      @media (hover:hover){.cb-dish:hover .cb-d-img{filter:brightness(1.06);}}
       .cb-hero{position:relative;display:block;width:100%;margin:0 0 8px;border-radius:12px;overflow:hidden;}
       .cb-hero-img{display:block;width:100%;aspect-ratio:16/10;object-fit:cover;}
       .cb-hero-img.cb-noimg{aspect-ratio:16/10;}
       .cb-hero-btn{position:absolute;right:8px;bottom:8px;border:none;border-radius:999px;padding:6px 11px;font-size:.8rem;font-weight:600;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;}
-      .cb-hero-add{border:1.5px dashed var(--divider-color);background:var(--secondary-background-color);color:var(--secondary-text-color);padding:16px;font:inherit;font-weight:600;cursor:pointer;}
+      .cb-hero-add{border:1.5px dashed var(--divider-color);background:var(--fp-surface,var(--secondary-background-color));color:var(--secondary-text-color);padding:16px;font:inherit;font-weight:600;cursor:pointer;}
       .cb-credit{font-size:.7rem;color:var(--secondary-text-color);margin:-4px 0 8px;}
       .cb-credit a{color:inherit;}
       .cb-temp{font-weight:700;margin-right:6px;}
@@ -3682,31 +4342,20 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
       .cb-busy{opacity:.7;pointer-events:none;}
       .cb-im-search{margin-top:10px;}
       .cb-im-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px;}
-      .cb-im-hit{border:none;padding:0;border-radius:8px;overflow:hidden;cursor:pointer;background:var(--secondary-background-color);aspect-ratio:1;}
+      .cb-im-hit{border:none;padding:0;border-radius:8px;overflow:hidden;cursor:pointer;background:var(--fp-surface,var(--secondary-background-color));aspect-ratio:1;}
       .cb-im-hit img{width:100%;height:100%;object-fit:cover;display:block;}
-      .cb-im-hit:hover{outline:3px solid var(--fp-accent,#039be5);}
-      .cb-dish:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.18);}
-      .cb-d-name{font-weight:700;font-size:.95rem;line-height:1.15;}
-      .cb-d-meta{font-size:.75rem;color:var(--secondary-text-color);}
-      .cb-d-time{font-size:.72rem;color:var(--secondary-text-color);}
+      .cb-im-hit:hover{outline:3px solid var(--fp-accent,var(--primary-color));}
       .cb-time{font-size:.9rem;color:var(--secondary-text-color);margin:4px 0 2px;}
-      .cb-fixtimes{width:100%;box-sizing:border-box;border:1px solid rgba(255,167,38,.5);background:rgba(255,167,38,.14);color:#e65100;font-weight:600;border-radius:12px;padding:9px 12px;margin-bottom:8px;cursor:pointer;text-align:left;font-size:.86rem;}
-      .cb-fixtimes:hover{background:rgba(255,167,38,.24);}
-      .cb-fixtimes:disabled{opacity:.7;cursor:default;}
-      .cb-fixnutri{width:100%;box-sizing:border-box;border:1px solid rgba(var(--fp-tint-rgb,125,155,132),.55);background:rgba(var(--fp-tint-rgb,125,155,132),.14);color:var(--fp-head,#3C5343);font-weight:600;border-radius:12px;padding:9px 12px;margin-bottom:8px;cursor:pointer;text-align:left;font-size:.86rem;}
-      .cb-fixnutri:hover{background:rgba(var(--fp-tint-rgb,125,155,132),.24);}
-      .cb-fixnutri:disabled{opacity:.7;cursor:default;}
       .cb-imp-row{display:flex;gap:8px;align-items:stretch;}
       .cb-imp-row .cb-in{flex:1;margin:0;}
       .cb-imp-go{white-space:nowrap;}
       .cb-imp-go:disabled{opacity:.7;cursor:default;}
-      .cb-d-tags{display:flex;gap:4px;flex-wrap:wrap;}
-      .cb-tag{font-size:.68rem;background:rgba(var(--fp-tint-rgb,129,212,250),.25);color:var(--fp-head,#0277bd);border-radius:8px;padding:1px 6px;}
-      .cb-d-stars{color:#f5b301;font-size:.8rem;}
+      .cb-tag{font-size:.68rem;font-weight:700;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);color:var(--fp-head,var(--primary-text-color));border-radius:8px;padding:1px 6px;}
       .cb-empty{grid-column:1/-1;color:var(--secondary-text-color);text-align:center;padding:18px;}
       .cb-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
       .cb-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(94vw,460px);max-height:86vh;overflow:auto;border-radius:16px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
       .cb-m-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:1.1rem;margin-bottom:8px;}
+      .cb-m-sub{font-size:.82rem;font-weight:700;color:var(--secondary-text-color);margin:-4px 0 8px;}
       .cb-x{border:none;background:transparent;font-size:1.1rem;cursor:pointer;color:var(--secondary-text-color);}
       .cb-m-tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;}
       .cb-rate{font-size:.85rem;color:var(--secondary-text-color);margin:6px 0;}
@@ -3717,16 +4366,16 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
       .cb-ing{margin:0;padding-left:18px;} .cb-ing li{margin:2px 0;}
       .cb-steps{margin:0;padding-left:20px;} .cb-steps li{margin:5px 0;line-height:1.35;}
       .cb-m-foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
-      .cb-btn{flex:1;border:none;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;background:rgba(var(--fp-accent-rgb,179,229,252),.95);color:var(--fp-accent-fg,#014a73);}
-      .cb-btn.cb-e-cancel{background:var(--secondary-background-color);color:var(--primary-text-color);}
-      .cb-btn.cb-del{flex:none;background:rgba(229,57,53,.15);color:#e53935;}
+      .cb-btn{flex:1;border:none;border-radius:10px;padding:10px;font-weight:700;cursor:pointer;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color));}
+      .cb-btn.cb-e-cancel{background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);}
+      .cb-btn.cb-del{flex:none;background:color-mix(in srgb,var(--error-color,#db4437) 15%,transparent);color:var(--error-color,#db4437);}
       .cb-in{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);margin-bottom:8px;font-size:1rem;}
       textarea.cb-free{min-height:70px;resize:vertical;}
       .cb-ck-tools{display:flex;gap:14px;margin:2px 0 8px;}
-      .cb-linkbtn{border:none;background:transparent;color:var(--primary-color,var(--fp-head,#0277bd));cursor:pointer;font-size:.85rem;padding:2px 0;text-decoration:underline;}
+      .cb-linkbtn{border:none;background:transparent;color:var(--primary-color,currentColor);cursor:pointer;font-size:.85rem;padding:2px 0;text-decoration:underline;}
       .cb-cklist{max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:2px;}
       .cb-ck{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;cursor:pointer;}
-      .cb-ck:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.12);}
+      .cb-ck:hover{background:var(--fp-surface,var(--secondary-background-color));}
       .cb-ck input{width:18px;height:18px;flex:none;}
       .cb-e-cats,.cb-e-tags{display:flex;gap:6px;flex-wrap:wrap;}
       .cb-e-hint{font-size:.75rem;color:var(--secondary-text-color);margin-top:6px;}
@@ -3736,13 +4385,13 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
       .cb-e-in{padding:8px 9px;border:1px solid var(--divider-color);border-radius:9px;background:var(--card-background-color);color:var(--primary-text-color);font-size:.95rem;box-sizing:border-box;width:100%;}
       .cb-e-row{display:flex;gap:5px;margin-bottom:5px;align-items:center;}
       .cb-e-q{flex:0 0 68px;} .cb-e-u{flex:0 0 74px;} .cb-e-i{flex:1;min-width:0;}
-      .cb-e-x{flex:none;border:none;background:rgba(229,57,53,.12);color:#e53935;border-radius:8px;width:30px;height:34px;cursor:pointer;font-size:.85rem;}
+      .cb-e-x{flex:none;border:none;background:color-mix(in srgb,var(--error-color,#db4437) 12%,transparent);color:var(--error-color,#db4437);border-radius:8px;width:30px;height:34px;cursor:pointer;font-size:.85rem;}
       textarea.cb-e-steps{min-height:150px;resize:vertical;line-height:1.45;font-family:inherit;}
       .cb-btn.cb-edit,.cb-btn.cb-del{flex:none;}
-      .cb-btn.cb-edit{background:rgba(255,213,79,.30);color:#8a6100;}
+      .cb-btn.cb-edit{background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);}
       .cb-days,.cb-meals{display:flex;gap:6px;flex-wrap:wrap;}
-      .cb-day,.cb-meal{border:1px solid var(--divider-color);border-radius:10px;padding:9px 11px;background:var(--secondary-background-color);color:var(--primary-text-color);cursor:pointer;}
-      .cb-day.cb-on,.cb-meal.cb-on{background:var(--primary-color);color:var(--text-primary-color,#fff);border-color:transparent;}
+      .cb-day,.cb-meal{border:1px solid var(--divider-color);border-radius:10px;padding:9px 11px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);cursor:pointer;}
+      .cb-day.cb-on,.cb-meal.cb-on{background:var(--primary-text-color);color:var(--card-background-color);border-color:transparent;}
     </style>`;
   }
   getCardSize() { return 8; }
@@ -3753,7 +4402,7 @@ if (!customElements.get("fp-cookbook-card")) {
   window.customCards.push({ type: "fp-cookbook-card", name: "FP Cookbook Card", description: "Kochbuch mit Rezepten, KI-Generierung, in Essensplan legen, Zutaten -> Einkauf" });
 }
 
-/* ===== dobby-clock-card v9 (neutrale Vorgabe-Spieler, echte Namen gehoeren in die Dashboard-Config; Bestenliste mit den drei laengsten Verstecken samt Zeitraum) ===== */
+/* ===== dobby-clock-card v10 (ruhiger: Uhrenfelder ohne Fläche, nur die laufende Seite in Akzent getönt, Pause als Pille, feste Farben durch Theme ersetzt; davor: neutrale Vorgabe-Spieler, Bestenliste mit den drei längsten Verstecken samt Zeitraum) ===== */
 class DobbyClockCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
@@ -3985,21 +4634,22 @@ class DobbyClockCard extends HTMLElement {
          andere und der Balken bekäme einen Knick am Scharnier. */
       .dc-paddle{flex:1 1 0;border-radius:11px;background:var(--secondary-background-color);
         transition:background .3s,box-shadow .3s;}
-      .dc-paddle.dc-up{background:rgba(var(--fp-accent-rgb,79,195,247),.9);
-        box-shadow:0 6px 14px rgba(var(--fp-accent-rgb,79,195,247),.32);}
+      .dc-paddle.dc-up{background:var(--fp-accent,var(--primary-color));
+        box-shadow:0 6px 14px color-mix(in srgb,var(--fp-accent,var(--primary-color)) 32%,transparent);}
       /* Das Scharnier dreht nicht mit — daran hängt der Balken. */
       .dc-hinge{position:absolute;left:50%;top:26px;transform:translateX(-50%);
         width:34px;height:4px;border-radius:2px;background:var(--divider-color);}
 
-      /* --- Gehäuse: eine Fläche, zwei Anzeigen, ein Haarstrich dazwischen --- */
+      /* --- Gehäuse: keine eigene Fläche, zwei Anzeigen, ein Haarstrich dazwischen.
+         Nur die laufende Seite ist in Akzent getönt. --- */
       .dc-body{display:flex;align-items:stretch;border-radius:20px;overflow:hidden;
-        background:var(--secondary-background-color);}
+        background:transparent;}
       .dc-hair{width:1px;background:var(--divider-color);opacity:.6;flex:none;margin:14px 0;}
-      .dc-side{flex:1 1 0;min-width:0;border:none;background:transparent;cursor:pointer;
+      .dc-side{flex:1 1 0;min-width:0;border:none;border-radius:var(--fp-radius-sm,14px);background:transparent;cursor:pointer;
         display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 12px 18px;
         color:var(--primary-text-color);transition:background .3s;}
-      .dc-side:active{background:rgba(0,0,0,.04);}
-      .dc-side.dc-on{background:rgba(var(--fp-accent-rgb,79,195,247),.10);}
+      .dc-side:active{background:color-mix(in srgb,var(--primary-text-color) 5%,transparent);}
+      .dc-side.dc-on{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 12%,transparent);}
       .dc-name{font-size:.8rem;font-weight:590;letter-spacing:.04em;text-transform:uppercase;
         color:var(--secondary-text-color);opacity:.75;}
       .dc-time{display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;
@@ -4009,17 +4659,17 @@ class DobbyClockCard extends HTMLElement {
       .dc-sec{font-size:1.4rem;font-weight:500;letter-spacing:-.005em;margin-left:2px;opacity:.85;}
       .dc-rest{font-size:.92rem;font-weight:590;color:var(--secondary-text-color);
         opacity:.6;min-height:1.2em;transition:color .3s,opacity .3s;}
-      .dc-side.dc-on .dc-rest{color:var(--fp-head,var(--primary-color));opacity:.9;}
-      .dc-side.dc-on .dc-time{color:var(--fp-head,var(--primary-color));opacity:1;}
+      .dc-side.dc-on .dc-rest{color:var(--fp-accent,var(--primary-color));opacity:.9;}
+      .dc-side.dc-on .dc-time{color:var(--fp-accent,var(--primary-color));opacity:1;}
       .dc-total{font-size:.76rem;color:var(--secondary-text-color);opacity:.7;min-height:1.1em;}
 
       .dc-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;
         margin-top:14px;padding:0 4px;}
       .dc-state{font-size:.82rem;color:var(--secondary-text-color);opacity:.8;}
-      .dc-pause{border:none;border-radius:999px;padding:8px 16px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);
-        cursor:pointer;font-size:.82rem;font-weight:590;transition:background .2s;}
-      .dc-pause:hover{background:rgba(var(--fp-tint-rgb,129,212,250),.22);}
+      .dc-pause{border:1px solid var(--divider-color);border-radius:999px;padding:8px 16px;min-height:36px;
+        background:transparent;color:var(--secondary-text-color);
+        cursor:pointer;font-size:.78rem;font-weight:800;transition:background .2s;}
+      .dc-pause:hover{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 12%,transparent);}
 
       /* --- Bestenliste --- */
       .dc-hs{margin-top:16px;padding-top:14px;border-top:1px solid var(--divider-color);}
@@ -4032,7 +4682,7 @@ class DobbyClockCard extends HTMLElement {
         align-items:center;justify-content:center;font-size:.72rem;font-weight:700;
         background:var(--secondary-background-color);color:var(--secondary-text-color);}
       /* Nur der erste Platz bekommt Farbe — drei bunte Medaillen waeren Laerm. */
-      .dc-hs-rang.dc-hs-r0{background:rgba(var(--fp-accent-rgb,79,195,247),.9);color:var(--fp-accent-fg,#013);}
+      .dc-hs-rang.dc-hs-r0{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));}
       .dc-hs-name{grid-area:n;font-size:.92rem;font-weight:600;}
       .dc-hs-datum{grid-area:z;font-size:.72rem;color:var(--secondary-text-color);opacity:.7;
         font-variant-numeric:tabular-nums;}
@@ -4049,7 +4699,7 @@ if (!customElements.get("dobby-clock-card")) {
   window.customCards.push({ type: "dobby-clock-card", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card v10 (7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card v11 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -4082,6 +4732,7 @@ class FpFeedingCard extends HTMLElement {
 
   set hass(hass) {
     const prev = this._hass; this._hass = hass;
+    this.classList.toggle("ff-dark", !!(hass && hass.themes && hass.themes.darkMode));   // hell oder dunkel entscheidet das Gerät; am Host, damit auch der Dialog es sieht
     if (!this._built) { this._build(); this._load(); }
     // Beim Stopp schreibt die Automation den Termin — aber nicht sofort: erst
     // ~2 s Echo-Erkennung, bei Alexa-Stopp bis zu 30 s Rueckfrage nach der Seite.
@@ -4228,7 +4879,9 @@ class FpFeedingCard extends HTMLElement {
     this._built = true;
     const c = this.config;
     // Am Host statt an der ha-card: der Dialog hängt daneben und braucht den Akzent auch.
-    if (c.color) this.style.setProperty("--ff-akzent", c.color); else this.style.removeProperty("--ff-akzent");
+    // Schrift auf der Kinderfarbe ist weiß, auf dem Theme-Akzent --fp-accent-fg (kommt im CSS).
+    if (c.color) { this.style.setProperty("--ff-akzent", c.color); this.style.setProperty("--ff-akzent-fg", "#fff"); }
+    else { this.style.removeProperty("--ff-akzent"); this.style.removeProperty("--ff-akzent-fg"); }
     this.innerHTML = `
       <ha-card class="ff-card">
         <div class="ff-head">
@@ -4756,36 +5409,44 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
 
   _styles() {
     return `<style>
-      .ff-card,.ff-ov{--ff-a:var(--ff-akzent,var(--fp-head,var(--primary-color)));}
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .ff-card,.ff-ov{--ff-a:var(--ff-akzent,var(--fp-head,var(--primary-color)));--ff-at:var(--ff-a);--ff-on:var(--ff-akzent-fg,var(--fp-accent-fg,#fff));
+        --ff-s:var(--fp-surface,var(--secondary-background-color));--ff-s2:var(--fp-surface-2,var(--divider-color));
+        --ff-alert:var(--fp-alert,var(--warning-color,#b97f06));--ff-alert-bg:var(--fp-alert-bg,rgba(217,154,11,.18));
+        --ff-r:var(--fp-radius,16px);--ff-rs:var(--fp-radius-sm,12px);}
+      /* ff-dark (am Host, folgt hass.themes.darkMode): Kinderfarbe als Schrift und dünne Linie mit der Textfarbe aufgehellt, sonst unlesbar auf dunklem Grund.
+         --ff-a (Punkt, Knopffläche) bleibt die reine Kinderfarbe. */
+      .ff-dark .ff-card,.ff-dark .ff-ov{--ff-at:color-mix(in srgb,var(--ff-a) 55%,var(--primary-text-color));}
       .ff-card{padding:16px 16px 12px;container-type:inline-size;}
       .ff-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;}
       .ff-name{display:flex;align-items:center;gap:9px;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
       .ff-dot{width:12px;height:12px;border-radius:50%;background:var(--ff-a);flex:none;}
       .ff-seite{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
       .ff-seite-lbl{font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--secondary-text-color);opacity:.75;}
-      .ff-seg{display:inline-flex;background:var(--secondary-background-color);border-radius:10px;padding:3px;gap:2px;}
+      .ff-seg{display:inline-flex;background:var(--ff-s);border-radius:var(--ff-rs);padding:3px;gap:2px;}
       .ff-seg button{border:none;background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;
-        padding:7px 13px;border-radius:8px;cursor:pointer;min-width:62px;}
-      .ff-seg button.ff-on{background:var(--card-background-color,#fff);color:var(--ff-a);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+        padding:7px 13px;border-radius:calc(var(--ff-rs) - 3px);cursor:pointer;min-width:62px;}
+      .ff-seg button.ff-on{background:var(--ff-s2);color:var(--ff-at);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12);}
 
       .ff-actions{display:flex;gap:10px;}
-      .ff-main{flex:1 1 auto;min-height:56px;border:none;border-radius:14px;cursor:pointer;font-size:1.05rem;font-weight:700;
+      .ff-main{flex:1 1 auto;min-height:56px;border:none;border-radius:var(--ff-rs);cursor:pointer;font-size:1.05rem;font-weight:700;
         display:flex;align-items:center;justify-content:center;gap:12px;padding:0 16px;
-        background:rgba(var(--fp-accent-rgb,79,195,247),.14);color:var(--ff-a);transition:background .2s,color .2s;}
-      .ff-main.ff-run{background:var(--ff-a);color:#fff;}
+        background:rgba(var(--fp-accent-rgb,79,195,247),.14);color:var(--ff-at);transition:background .2s,color .2s;}
+      .ff-main.ff-run{background:var(--ff-a);color:var(--ff-on);}
       .ff-main-uhr{font-variant-numeric:tabular-nums;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
       .ff-nach{padding:0 12px !important;font-size:.88rem !important;}
-      .ff-bottle{flex:0 0 auto;min-height:56px;border:1px solid var(--divider-color);border-radius:14px;cursor:pointer;
-        background:var(--card-background-color,#fff);color:var(--primary-text-color);font-size:.95rem;font-weight:600;padding:0 16px;}
+      .ff-bottle{flex:0 0 auto;min-height:56px;border:none;border-radius:var(--ff-rs);cursor:pointer;
+        background:var(--ff-s);color:var(--primary-text-color);font-size:.95rem;font-weight:600;padding:0 16px;}
       .ff-since{margin:12px 2px 4px;}
       .ff-since-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
       .ff-since-big{font-size:1.6rem;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;color:var(--primary-text-color);}
       .ff-since-txt{font-size:.82rem;color:var(--secondary-text-color);}
-      .ff-bar{height:6px;border-radius:3px;background:var(--secondary-background-color);margin-top:7px;overflow:hidden;}
-      .ff-bar-fill{height:100%;width:0;border-radius:3px;background:var(--ff-a);transition:width .4s,background .3s;}
-      .ff-since.ff-bald .ff-bar-fill{background:#d99a0b;}
-      .ff-since.ff-faellig .ff-bar-fill{background:var(--error-color,#c0392b);}
-      .ff-since.ff-faellig .ff-since-big{color:var(--error-color,#c0392b);}
+      .ff-bar{height:6px;border-radius:3px;background:var(--ff-s2);margin-top:7px;overflow:hidden;}
+      .ff-bar-fill{height:100%;width:0;border-radius:3px;background:var(--ff-at);transition:width .4s,background .3s;}
+      .ff-since.ff-bald .ff-bar-fill{background:var(--ff-alert);}
+      .ff-since.ff-faellig .ff-bar-fill{background:var(--ff-alert);}
+      .ff-since.ff-faellig .ff-since-big{color:var(--ff-alert);}
 
       .ff-day{margin-top:14px;}
       .ff-dayhead{font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--secondary-text-color);
@@ -4798,13 +5459,13 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
       /* Schmale Karte (Handy): Start/Stopp über die ganze Breite, darunter Fläschchen und Nachtragen. */
       @container (max-width: 440px){ .ff-actions{flex-wrap:wrap;} .ff-main{flex:1 1 100%;} .ff-bottle{flex:1 1 0;padding:0 10px;} .ff-tab th,.ff-tab td{padding-left:4px;padding-right:4px;} }
       .ff-tab tbody tr[data-uid]{cursor:pointer;}
-      .ff-tab tbody tr[data-uid]:active{background:var(--secondary-background-color);}
+      .ff-tab tbody tr[data-uid]:active{background:var(--ff-s);}
       .ff-tab th:last-child,.ff-tab td:last-child{text-align:right;}
       .ff-leer{color:var(--secondary-text-color);opacity:.5;}
       .ff-ml{font-weight:600;}
-      .ff-r-flasche td:first-child{color:var(--ff-a);font-weight:600;}
+      .ff-r-flasche td:first-child{color:var(--ff-at);font-weight:600;}
       .ff-auto{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;font-size:.62rem;font-weight:700;
-        letter-spacing:.04em;text-transform:uppercase;background:rgba(217,154,11,.18);color:#8a6100;vertical-align:1px;}
+        letter-spacing:.04em;text-transform:uppercase;background:var(--ff-alert-bg);color:color-mix(in srgb,var(--ff-alert) 75%,var(--primary-text-color));vertical-align:1px;}
       .ff-nichts td{color:var(--secondary-text-color);opacity:.7;font-size:.82rem;text-align:left !important;}
       .ff-foot2{display:flex;justify-content:space-between;align-items:center;margin-top:14px;}
       .ff-txtbtn{border:none;background:transparent;cursor:pointer;padding:6px 2px;
@@ -4820,40 +5481,41 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
       .ff-wk td:nth-child(2){padding-right:22px;}
       .ff-wk-n{display:flex;align-items:center;gap:10px;}
       .ff-wk-n b{flex:0 0 2ch;text-align:right;}
-      .ff-wk-track{flex:1;height:8px;border-radius:4px;background:var(--secondary-background-color);overflow:hidden;}
-      .ff-wk-bar{display:block;height:100%;border-radius:4px;background:var(--ff-a);}
+      .ff-wk-track{flex:1;height:8px;border-radius:4px;background:var(--ff-s2);overflow:hidden;}
+      .ff-wk-bar{display:block;height:100%;border-radius:4px;background:var(--ff-at);}
       @container (max-width: 440px){ .ff-wk{table-layout:auto;} .ff-wk th,.ff-wk td{padding-left:4px;padding-right:4px;} .ff-wk td:nth-child(2){padding-right:4px;} .ff-wk-track{display:none;} .ff-wk-n b{flex:none;} .ff-wk th{white-space:nowrap;font-size:.66rem;} }
       .ff-tab tfoot td{border-bottom:none;font-weight:700;font-size:.82rem;color:var(--secondary-text-color);padding-top:8px;}
 
       .ff-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
-      .ff-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:18px;padding:18px;
+      .ff-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--ff-r);padding:18px;
         width:100%;max-width:380px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
       .ff-mhead{font-size:1.1rem;font-weight:700;margin-bottom:12px;}
       .ff-lbl{display:block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
         color:var(--secondary-text-color);margin:12px 0 6px;}
       .ff-chips{display:flex;gap:6px;flex-wrap:wrap;}
-      .ff-chip{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:10px;padding:10px 6px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
-      .ff-chip.ff-on{background:var(--ff-a);color:#fff;border-color:transparent;}
+      .ff-chip{flex:1;min-width:64px;border:1px solid var(--divider-color);border-radius:var(--ff-rs);padding:10px 6px;
+        background:var(--ff-s);color:var(--primary-text-color);font-weight:600;cursor:pointer;}
+      .ff-chip.ff-on{background:var(--ff-a);color:var(--ff-on);border-color:transparent;}
       .ff-mlrow{display:flex;gap:8px;margin-top:8px;}
-      .ff-step{width:48px;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);
+      .ff-step{width:48px;border:1px solid var(--divider-color);border-radius:var(--ff-rs);background:var(--ff-s);
         color:var(--primary-text-color);font-size:1.2rem;cursor:pointer;}
-      .ff-in{flex:1;width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .ff-in[type=date],.ff-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .ff-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .ff-in{flex:1;width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:var(--ff-rs);
+        background:var(--ff-s);color:var(--primary-text-color);font-size:1rem;}
+      .ff-in[type=date],.ff-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;} .ff-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .ff-dark .ff-in[type=date],.ff-dark .ff-in[type=time]{color-scheme:dark;}
       .ff-zeiten{display:flex;gap:10px;} .ff-zeiten label{flex:1;}
       .ff-seg-edit{display:flex;} .ff-seg-edit button{flex:1;}
       .ff-foot{display:flex;gap:8px;margin-top:18px;align-items:center;}
       .ff-flex{flex:1;}
-      .ff-btn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);}
-      .ff-ok{background:var(--ff-a);color:#fff;}
+      .ff-btn{border:none;border-radius:var(--ff-rs);padding:11px 16px;font-weight:600;cursor:pointer;
+        background:var(--ff-s);color:var(--primary-text-color);}
+      .ff-ok{background:var(--ff-a);color:var(--ff-on);}
       .ff-del{background:transparent;color:var(--error-color,#c0392b);padding-left:4px;padding-right:4px;}
       .ff-rep-ov{padding:12px;}
-      .ff-rep-box{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:16px;
+      .ff-rep-box{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--ff-r);
         width:min(900px,100%);height:min(92vh,1100px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.3);}
       .ff-rep-bar{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--divider-color);}
-      .ff-rep-frame{flex:1;width:100%;border:0;background:#fff;}
+      .ff-rep-frame{flex:1;width:100%;border:0;background:#fff;}   /* der Bericht ist zum Drucken gedacht und bleibt hell */
       @media (max-width:600px){.ff-rep-ov{padding:0;} .ff-rep-box{border-radius:0;height:100%;width:100%;}
         .ff-rep-bar{padding-top:max(10px, env(safe-area-inset-top));}}   /* iPhone: nicht unter die Statusleiste */
     </style>`;
@@ -4867,7 +5529,7 @@ if (!customElements.get("fp-feeding-card")) {
 }
 })();
 
-/* ===== fp-weight-card v6 (Datumsfeld passt aufs iPhone, Kopfzeile bricht nur ganze Werte um; Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
+/* ===== fp-weight-card v7 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Datumsfeld passt aufs iPhone, Kopfzeile bricht nur ganze Werte um; Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
 // Ein Eintrag = ein Ganztagstermin im Kalender: Titel "Kind A 3450 g",
 // Beschreibung {"typ":"gewicht","kind":"kind_a","g":3450}. Pro Kind und Tag gibt
 // es höchstens einen Wert — wer denselben Tag nochmal einträgt, korrigiert ihn.
@@ -4901,6 +5563,7 @@ class FpWeightCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    this.classList.toggle("fw-dark", !!(hass && hass.themes && hass.themes.darkMode));   // hell oder dunkel entscheidet das Gerät
     if (!this._built) { this._build(); this._load(); }
   }
   connectedCallback() {
@@ -5103,20 +5766,20 @@ class FpWeightCard extends HTMLElement {
       const c = s.kids.length > 1 ? "var(--secondary-text-color)" : U.esc(s.kids[0].color);
       const band = (lo, hi) => s.pts.map(p => `${x(p.t)},${y(p.c[hi])}`).join(" ") + " " + s.pts.slice().reverse().map(p => `${x(p.t)},${y(p.c[lo])}`).join(" ");
       const last = s.pts[s.pts.length - 1];
-      kurven += `<polygon points="${band(0, 4)}" fill="${c}" opacity=".07"/><polygon points="${band(1, 3)}" fill="${c}" opacity=".09"/>` +
-        `<polyline points="${s.pts.map(p => `${x(p.t)},${y(p.c[2])}`).join(" ")}" fill="none" stroke="${c}" stroke-width="1.2" stroke-dasharray="4 4" opacity=".55"/>` +
+      kurven += `<g class="fw-ser" style="--k:${c}"><polygon points="${band(0, 4)}" fill="var(--kl)" opacity=".07"/><polygon points="${band(1, 3)}" fill="var(--kl)" opacity=".09"/>` +
+        `<polyline points="${s.pts.map(p => `${x(p.t)},${y(p.c[2])}`).join(" ")}" fill="none" stroke="var(--kl)" stroke-width="1.2" stroke-dasharray="4 4" opacity=".55"/></g>` +
         [[0, "3"], [2, "50"], [4, "97"]].map(([i, l]) => `<text x="${x(last.t) - 3}" y="${y(last.c[i]) - 3}" class="fw-plab">P${l}</text>`).join("");
     });
     let linien = "", punkte = "";
     reihen.forEach(({ kid, pts }) => {
       if (!pts.length) return;
       const c = U.esc(kid.color);
-      if (pts.length > 1) linien += `<polyline points="${pts.map(p => `${x(+p.date)},${y(p.g)}`).join(" ")}" fill="none" stroke="${c}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+      if (pts.length > 1) linien += `<g class="fw-ser" style="--k:${c}"><polyline points="${pts.map(p => `${x(+p.date)},${y(p.g)}`).join(" ")}" fill="none" stroke="var(--kl)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></g>`;
       pts.forEach(p => {
         const tip = `${kid.name}: ${this._kg(p.g)} am ${this._dmy(p.date)}`;
-        punkte += `<g data-uid="${U.esc(p.uid)}" class="fw-pt"><title>${U.esc(tip)}</title>` +
+        punkte += `<g data-uid="${U.esc(p.uid)}" class="fw-pt fw-ser" style="--k:${c}"><title>${U.esc(tip)}</title>` +
           `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="14" fill="transparent"/>` +
-          `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="4.5" fill="${c}" stroke="var(--card-background-color,#fff)" stroke-width="2"/></g>`;
+          `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="4.5" fill="var(--kl)" stroke="var(--ha-card-background,var(--card-background-color,#fff))" stroke-width="2"/></g>`;
       });
     });
     box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gewichtsverlauf">
@@ -5213,10 +5876,19 @@ class FpWeightCard extends HTMLElement {
 
   _styles() {
     return `<style>
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fw-card,.fw-ov{--fw-s:var(--fp-surface,var(--secondary-background-color));--fw-s2:var(--fp-surface-2,var(--divider-color));
+        --fw-up:var(--success-color,#3c7a3c);--fw-down:var(--error-color,#c0392b);
+        --fw-r:var(--fp-radius,16px);--fw-rs:var(--fp-radius-sm,12px);}
+      /* Kinderfarbe der Kurven: --k ist die Farbe des Kindes, --kl die Variante für Linien und Punkte.
+         fw-dark (am Host, folgt hass.themes.darkMode): im Dunkeln mit der Textfarbe aufgehellt, sonst verschwindet das Grün auf dem dunklen Grund. */
+      .fw-ser{--kl:var(--k);}
+      .fw-dark .fw-ser{--kl:color-mix(in srgb,var(--k) 55%,var(--primary-text-color));}
       .fw-card{padding:16px 16px 10px;}
       .fw-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
       .fw-title{font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
-      .fw-add{border:none;border-radius:12px;padding:10px 16px;font-size:.95rem;font-weight:700;cursor:pointer;
+      .fw-add{border:none;border-radius:var(--fw-rs);padding:10px 16px;font-size:.95rem;font-weight:700;cursor:pointer;
         background:rgba(var(--fp-accent-rgb,79,195,247),.14);color:var(--fp-head,var(--primary-color));}
       .fw-sum{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.9rem;margin:0 2px 8px;font-variant-numeric:tabular-nums;}
       .fw-chip{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;}
@@ -5224,13 +5896,13 @@ class FpWeightCard extends HTMLElement {
       .fw-chip .fw-dot{align-self:center;}
       .fw-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:none;}
       .fw-muted{color:var(--secondary-text-color);font-size:.82rem;}
-      .fw-delta{font-weight:700;font-size:.85rem;} .fw-up{color:#3c7a3c;} .fw-down{color:var(--error-color,#c0392b);}
+      .fw-delta{font-weight:700;font-size:.85rem;} .fw-up{color:var(--fw-up);} .fw-down{color:var(--fw-down);}
       .fw-chart{width:100%;min-height:60px;}
       .fw-chart svg{display:block;overflow:visible;}
       .fw-grid{stroke:var(--divider-color);stroke-width:1;}
       .fw-today{stroke:var(--secondary-text-color);stroke-width:1;stroke-dasharray:3 4;opacity:.5;}
       .fw-plab{font-size:9.5px;fill:var(--secondary-text-color);text-anchor:end;opacity:.8;}
-      .fw-pz{font-size:.78rem;font-weight:700;color:var(--secondary-text-color);background:var(--secondary-background-color);border-radius:6px;padding:1px 6px;}
+      .fw-pz{font-size:.78rem;font-weight:700;color:var(--secondary-text-color);background:var(--fw-s);border-radius:6px;padding:1px 6px;}
       .fw-quelle{font-size:.7rem;color:var(--secondary-text-color);opacity:.75;margin-top:4px;}
       .fw-ylab{font-size:11px;fill:var(--secondary-text-color);text-anchor:end;font-variant-numeric:tabular-nums;}
       .fw-unit{font-weight:700;}
@@ -5238,24 +5910,25 @@ class FpWeightCard extends HTMLElement {
       .fw-pt{cursor:pointer;}
       .fw-empty{padding:26px 8px;text-align:center;color:var(--secondary-text-color);font-size:.9rem;line-height:1.5;}
       .fw-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
-      .fw-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:18px;padding:18px;
+      .fw-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--fw-r);padding:18px;
         width:100%;max-width:400px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
       .fw-mhead{font-size:1.1rem;font-weight:700;margin-bottom:6px;}
       .fw-lbl{display:block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--secondary-text-color);margin:12px 0 6px;}
-      .fw-seg{display:flex;background:var(--secondary-background-color);border-radius:10px;padding:3px;gap:2px;}
+      .fw-seg{display:flex;background:var(--fw-s);border-radius:var(--fw-rs);padding:3px;gap:2px;}
       .fw-seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;border:none;background:transparent;
-        color:var(--secondary-text-color);font-size:.95rem;font-weight:600;padding:9px 12px;border-radius:8px;cursor:pointer;}
-      .fw-seg button.fw-on{background:var(--card-background-color,#fff);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+        color:var(--secondary-text-color);font-size:.95rem;font-weight:600;padding:9px 12px;border-radius:calc(var(--fw-rs) - 3px);cursor:pointer;}
+      .fw-seg button.fw-on{background:var(--fw-s2);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
       .fw-row{display:flex;gap:10px;} .fw-row label{flex:1;min-width:0;}
-      .fw-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .fw-in[type=date],.fw-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fw-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .fw-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:var(--fw-rs);
+        background:var(--fw-s);color:var(--primary-text-color);font-size:1rem;}
+      .fw-in[type=date],.fw-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;} .fw-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .fw-dark .fw-in[type=date],.fw-dark .fw-in[type=time]{color-scheme:dark;}
       .fw-hint{font-size:.78rem;color:var(--secondary-text-color);margin-top:6px;}
       .fw-foot{display:flex;gap:8px;margin-top:18px;align-items:center;} .fw-flex{flex:1;}
-      .fw-btn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);}
+      .fw-btn{border:none;border-radius:var(--fw-rs);padding:11px 16px;font-weight:600;cursor:pointer;
+        background:var(--fw-s);color:var(--primary-text-color);}
       .fw-ok{background:var(--fp-head,var(--primary-color));color:var(--fp-accent-fg,#fff);}
-      .fw-del{background:transparent;color:var(--error-color,#c0392b);padding-left:4px;padding-right:4px;}
+      .fw-del{background:transparent;color:var(--fw-down);padding-left:4px;padding-right:4px;}
     </style>`;
   }
   getCardSize() { return 6; }
@@ -5267,7 +5940,7 @@ if (!customElements.get("fp-weight-card")) {
 }
 })();
 
-/* ===== fp-diaper-card v3 (liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
+/* ===== fp-diaper-card v4 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
 // Ein Eintrag = ein kurzer Termin im eigenen Kalender: Titel "Windel nass",
 // Beschreibung {"typ":"windel","art":"nass|voll|beides"}. Nicht in den
 // Stillkalender schreiben: die 3-h-Erinnerung zählt dort jeden Eintrag als Mahlzeit.
@@ -5283,6 +5956,7 @@ class FpDiaperCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    this.classList.toggle("fd-dark", !!(hass && hass.themes && hass.themes.darkMode));   // hell oder dunkel entscheidet das Gerät; am Host, damit auch der Dialog es sieht
     if (!this._built) { this._build(); this._load(); }
   }
   connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._tick(), 20000); }
@@ -5328,7 +6002,9 @@ class FpDiaperCard extends HTMLElement {
     this._built = true;
     const c = this.config;
     // Am Host statt an der ha-card: der Dialog hängt daneben und braucht den Akzent auch.
-    if (c.color) this.style.setProperty("--fd-akzent", c.color); else this.style.removeProperty("--fd-akzent");
+    // Schrift auf der Kinderfarbe ist weiß, auf dem Theme-Akzent --fp-accent-fg (kommt im CSS).
+    if (c.color) { this.style.setProperty("--fd-akzent", c.color); this.style.setProperty("--fd-akzent-fg", "#fff"); }
+    else { this.style.removeProperty("--fd-akzent"); this.style.removeProperty("--fd-akzent-fg"); }
     this.innerHTML = `
       <ha-card class="fd-card">
         <div class="fd-name"><span class="fd-dot"></span>${U.esc(c.name)}</div>
@@ -5475,15 +6151,23 @@ class FpDiaperCard extends HTMLElement {
 
   _styles() {
     return `<style>
-      .fd-card,.fd-ov{--fd-a:var(--fd-akzent,var(--fp-head,var(--primary-color)));}
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fd-card,.fd-ov{--fd-a:var(--fd-akzent,var(--fp-head,var(--primary-color)));--fd-at:var(--fd-a);--fd-on:var(--fd-akzent-fg,var(--fp-accent-fg,#fff));
+        --fd-s:var(--fp-surface,var(--secondary-background-color));--fd-s2:var(--fp-surface-2,var(--divider-color));
+        --fd-nass:var(--fp-c-diaper,#3E9DB0);--fd-voll:var(--fp-c-stool,#A77446);
+        --fd-r:var(--fp-radius,16px);--fd-rs:var(--fp-radius-sm,12px);}
+      /* fd-dark (am Host, folgt hass.themes.darkMode): Kinderfarbe als Schrift mit der Textfarbe aufgehellt, sonst unlesbar auf dunklem Grund.
+         --fd-a (Punkt, Knopffläche) bleibt die reine Kinderfarbe. */
+      .fd-dark .fd-card,.fd-dark .fd-ov{--fd-at:color-mix(in srgb,var(--fd-a) 55%,var(--primary-text-color));}
       .fd-card{padding:16px 16px 12px;container-type:inline-size;}
       .fd-name{display:flex;align-items:center;gap:9px;font-size:1.25rem;font-weight:700;letter-spacing:-.01em;margin-bottom:14px;}
       .fd-dot{width:12px;height:12px;border-radius:50%;background:var(--fd-a);flex:none;}
       .fd-actions{display:flex;gap:10px;}
-      .fd-btn{flex:1 1 0;min-height:56px;border:1px solid var(--divider-color);border-radius:14px;cursor:pointer;padding:0 6px;
-        background:var(--card-background-color,#fff);color:var(--primary-text-color);font-size:1rem;font-weight:600;}
+      .fd-btn{flex:1 1 0;min-height:56px;border:none;border-radius:var(--fd-rs);cursor:pointer;padding:0 6px;
+        background:var(--fd-s);color:var(--primary-text-color);font-size:1rem;font-weight:600;}
       @container (max-width: 400px){ .fd-btn{font-size:.86rem;padding:0 4px;white-space:nowrap;} }
-      .fd-btn:active{background:var(--secondary-background-color);}
+      .fd-btn:active{background:var(--fd-s2);}
       .fd-since{display:flex;gap:22px;flex-wrap:wrap;margin:14px 2px 4px;}
       .fd-since>div{display:flex;flex-direction:column;}
       .fd-since-lbl{font-size:.66rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--secondary-text-color);opacity:.8;}
@@ -5495,7 +6179,7 @@ class FpDiaperCard extends HTMLElement {
       .fd-tab th{font-size:.7rem;font-weight:600;color:var(--secondary-text-color);text-align:left;padding:4px 6px;border-bottom:1px solid var(--divider-color);}
       .fd-tab td{padding:9px 6px;border-bottom:1px solid var(--divider-color);}
       .fd-tab tbody tr[data-uid]{cursor:pointer;}
-      .fd-tab tbody tr[data-uid]:active{background:var(--secondary-background-color);}
+      .fd-tab tbody tr[data-uid]:active{background:var(--fd-s);}
       .fd-tab tbody td:first-child{width:64px;}
       .fd-nichts td{color:var(--secondary-text-color);opacity:.7;font-size:.82rem;}
       .fd-tab tfoot td{border-bottom:none;font-weight:700;font-size:.82rem;color:var(--secondary-text-color);padding-top:8px;}
@@ -5504,25 +6188,26 @@ class FpDiaperCard extends HTMLElement {
         font-size:.78rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--secondary-text-color);}
       .fd-wk td{padding:7px 6px;}
       .fd-wk-n{display:flex;align-items:center;gap:6px;}
-      .fd-wk-track{flex:1;height:8px;border-radius:4px;background:var(--secondary-background-color);overflow:hidden;}
-      .fd-wk-bar{display:block;height:100%;border-radius:4px;background:var(--fd-a);}
-      .fd-wk-bar.fd-voll{background:#a0703c;}
+      .fd-wk-track{flex:1;height:8px;border-radius:4px;background:var(--fd-s2);overflow:hidden;}
+      .fd-wk-bar{display:block;height:100%;border-radius:4px;background:var(--fd-nass);}   /* nass und voll in den Tätigkeitsfarben des Themes */
+      .fd-wk-bar.fd-voll{background:var(--fd-voll);}
 
       .fd-ov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;}
-      .fd-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:18px;padding:18px;
+      .fd-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--fd-r);padding:18px;
         width:100%;max-width:380px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
       .fd-mhead{font-size:1.1rem;font-weight:700;margin-bottom:12px;}
       .fd-lbl{display:block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--secondary-text-color);margin:12px 0 6px;}
-      .fd-seg{display:flex;background:var(--secondary-background-color);border-radius:10px;padding:3px;gap:2px;}
-      .fd-seg button{flex:1;border:none;background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;padding:8px 6px;border-radius:8px;cursor:pointer;}
-      .fd-seg button.fd-on{background:var(--card-background-color,#fff);color:var(--fd-a);box-shadow:0 1px 3px rgba(0,0,0,.12);}
-      .fd-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:10px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .fd-in[type=date],.fd-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fd-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .fd-seg{display:flex;background:var(--fd-s);border-radius:var(--fd-rs);padding:3px;gap:2px;}
+      .fd-seg button{flex:1;border:none;background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;padding:8px 6px;border-radius:calc(var(--fd-rs) - 3px);cursor:pointer;}
+      .fd-seg button.fd-on{background:var(--fd-s2);color:var(--fd-at);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12);}
+      .fd-in{width:100%;box-sizing:border-box;padding:11px;border:1px solid var(--divider-color);border-radius:var(--fd-rs);
+        background:var(--fd-s);color:var(--primary-text-color);font-size:1rem;}
+      .fd-in[type=date],.fd-in[type=time]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;} .fd-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum/Uhrzeit sonst breiter als der Dialog */
+      .fd-dark .fd-in[type=date],.fd-dark .fd-in[type=time]{color-scheme:dark;}
       .fd-mfoot{display:flex;gap:8px;margin-top:18px;align-items:center;}
       .fd-flex{flex:1;}
-      .fd-mbtn{border:none;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;background:var(--secondary-background-color);color:var(--primary-text-color);}
-      .fd-ok{background:var(--fd-a);color:#fff;}
+      .fd-mbtn{border:none;border-radius:var(--fd-rs);padding:11px 16px;font-weight:600;cursor:pointer;background:var(--fd-s);color:var(--primary-text-color);}
+      .fd-ok{background:var(--fd-a);color:var(--fd-on);}
       .fd-del{background:transparent;color:var(--error-color,#c0392b);padding-left:4px;padding-right:4px;}
     </style>`;
   }
@@ -5535,7 +6220,7 @@ if (!customElements.get("fp-diaper-card")) {
 }
 })();
 
-/* ===== fp-milestone-card v2 (Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
+/* ===== fp-milestone-card v3 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
 // Ein erreichter Meilenstein = ein Ganztagstermin im eigenen Kalender an dem Tag,
 // an dem es passiert ist: Titel "🐢 Kind A: Krabbelt", Beschreibung
 // {"typ":"meilenstein","kind":"kind_a","id":"krabbeln"}, dazu optional notiz,
@@ -5782,6 +6467,7 @@ class FpMilestoneCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    this.classList.toggle("fm-dark", !!(hass && hass.themes && hass.themes.darkMode));   // hell oder dunkel entscheidet das Gerät; am Host, damit auch der Dialog es sieht
     if (!this._built) { this._build(); this._load(); }
   }
   connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._load(), 5 * 60000); }
@@ -5812,8 +6498,7 @@ class FpMilestoneCard extends HTMLElement {
     el.style.setProperty("--fm-k1", this._tint(c, .12));
     el.style.setProperty("--fm-k2", this._tint(c, .24));
     el.style.setProperty("--fm-k3", this._tint(c, .36));
-    // Schrift in Kinderfarbe: mit der Textfarbe gemischt, damit sie hell wie dunkel lesbar bleibt.
-    el.style.setProperty("--fm-kt", `color-mix(in srgb, ${c} 62%, var(--primary-text-color))`);
+    // --fm-kt (Schrift und dünne Linien in Kinderfarbe) kommt aus dem CSS: hell die reine Farbe, im Dunkeln mit der Textfarbe aufgehellt.
   }
   _info(id, h) {
     if (id.startsWith("eigen_")) return { e: (h && h.e) || "✨", t: (h && h.t) || "Eigener Moment" };
@@ -6210,6 +6895,13 @@ class FpMilestoneCard extends HTMLElement {
 
   _styles() {
     return `<style>
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fm-card,.fm-ov{--fm-kt:var(--fm-k);--fm-s:var(--fp-surface,var(--secondary-background-color));--fm-s2:var(--fp-surface-2,var(--divider-color));
+        --fm-r:var(--fp-radius,16px);--fm-rs:var(--fp-radius-sm,12px);}
+      /* fm-dark (am Host, folgt hass.themes.darkMode): --fm-kt, die Kinderfarbe für Schrift und dünne Linien, wird mit der Textfarbe aufgehellt,
+         sonst ist das dunkle Grün oder Lila auf dunklem Grund unlesbar. Flächen und Punkte bleiben in der reinen Kinderfarbe (--fm-k). */
+      .fm-dark .fm-card,.fm-dark .fm-ov{--fm-kt:color-mix(in srgb,var(--fm-k) 55%,var(--primary-text-color));}
       .fm-card{padding:16px 16px 14px;container-type:inline-size;}
       .fm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
       .fm-title{font-size:1.25rem;font-weight:700;letter-spacing:-.01em;}
@@ -6219,32 +6911,33 @@ class FpMilestoneCard extends HTMLElement {
       @keyframes fm-bump{40%{transform:scale(1.25);}}
       .fm-kids{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;} .fm-kids:empty{display:none;}
       .fm-kid{display:flex;align-items:center;gap:8px;border:2px solid transparent;border-radius:999px;padding:3px 14px 3px 3px;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.95rem;font-weight:700;}
-      .fm-kid.fm-sel{border-color:var(--c);background:var(--c1);}
+        --ct:var(--c);background:var(--fm-s);color:var(--primary-text-color);font-size:.95rem;font-weight:700;}
+      .fm-dark .fm-kid{--ct:color-mix(in srgb,var(--c) 55%,var(--primary-text-color));}
+      .fm-kid.fm-sel{border-color:var(--ct);background:var(--c1);}
       .fm-av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.9rem;font-weight:800;flex:none;}
       .fm-kage{font-size:.78rem;font-weight:600;color:var(--secondary-text-color);}
-      .fm-tabs{display:flex;background:var(--secondary-background-color);border-radius:12px;padding:3px;gap:2px;margin-bottom:16px;} .fm-tabs:empty{display:none;}
-      .fm-tabs button{flex:1;border:none;background:transparent;color:var(--secondary-text-color);font-size:.92rem;font-weight:700;padding:9px 6px;border-radius:9px;cursor:pointer;white-space:nowrap;}
-      .fm-tabs button.fm-sel{background:var(--card-background-color,#fff);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
+      .fm-tabs{display:flex;background:var(--fm-s);border-radius:var(--fm-rs);padding:3px;gap:2px;margin-bottom:16px;} .fm-tabs:empty{display:none;}
+      .fm-tabs button{flex:1;border:none;background:transparent;color:var(--secondary-text-color);font-size:.92rem;font-weight:700;padding:9px 6px;border-radius:calc(var(--fm-rs) - 3px);cursor:pointer;white-space:nowrap;}
+      .fm-tabs button.fm-sel{background:var(--fm-s2);color:var(--primary-text-color);box-shadow:0 1px 3px rgba(0,0,0,.12);}
       @container (max-width: 420px){ .fm-tabs button{font-size:.8rem;padding:9px 2px;} }
-      .fm-hint{background:var(--fm-k1);border-radius:14px;padding:10px 14px;font-size:.88rem;line-height:1.4;margin-bottom:14px;}
+      .fm-hint{background:var(--fm-k1);border-radius:var(--fm-rs);padding:10px 14px;font-size:.88rem;line-height:1.4;margin-bottom:14px;}
       .fm-grp{margin-bottom:18px;}
       .fm-gh{display:flex;align-items:center;justify-content:space-between;font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--secondary-text-color);margin:0 2px 8px;}
       .fm-gn{color:var(--fm-kt,var(--fm-k));letter-spacing:0;text-transform:none;font-size:.82rem;}
 
       /* Erste Male: offene Plätze im Album gestrichelt, Gesammeltes als Sticker in der Kinderfarbe */
       .fm-stickers{display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));gap:10px;}
-      .fm-st{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;min-height:112px;padding:12px 6px 10px;border-radius:18px;cursor:pointer;
+      .fm-st{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;min-height:112px;padding:12px 6px 10px;border-radius:var(--fm-rs);cursor:pointer;
         border:2px dashed var(--divider-color);background:transparent;color:var(--primary-text-color);font:inherit;transition:transform .15s;-webkit-tap-highlight-color:transparent;}
       .fm-st:active{transform:scale(.93);}
       .fm-st-e{font-size:2.1rem;line-height:1.15;opacity:.55;filter:saturate(.5);}
       .fm-st-t{font-size:.76rem;font-weight:600;line-height:1.15;text-align:center;color:var(--secondary-text-color);}
-      .fm-st.fm-on{border:2px solid var(--fm-k);background:linear-gradient(160deg,var(--fm-k1),var(--fm-k2));box-shadow:0 3px 10px var(--fm-k2);}
-      .fm-st.fm-on .fm-st-e{opacity:1;transform:rotate(-6deg);filter:drop-shadow(0 0 1px #fff) drop-shadow(0 3px 3px rgba(0,0,0,.2));}
+      .fm-st.fm-on{border:2px solid var(--fm-kt,var(--fm-k));background:linear-gradient(160deg,var(--fm-k1),var(--fm-k2));box-shadow:0 3px 10px var(--fm-k2);}
+      .fm-st.fm-on .fm-st-e{opacity:1;transform:rotate(-6deg);filter:drop-shadow(0 0 1px var(--card-background-color,#fff)) drop-shadow(0 3px 3px rgba(0,0,0,.2));}
       .fm-st.fm-on .fm-st-t{color:var(--primary-text-color);font-weight:700;}
       .fm-st-d{margin-top:auto;font-size:.7rem;font-weight:800;color:var(--fm-kt,var(--fm-k));background:var(--card-background-color,#fff);border-radius:999px;padding:1px 8px;}
       .fm-st-star{position:absolute;top:-9px;right:-5px;font-size:1.15rem;transform:rotate(14deg);}
-      .fm-add{border-style:dashed;border-color:var(--fm-k3);}
+      .fm-add{border-style:dashed;border-color:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 36%,transparent);}
       .fm-add .fm-st-e{opacity:1;filter:none;color:var(--fm-kt,var(--fm-k));font-weight:400;}
       .fm-add .fm-st-t{color:var(--fm-kt,var(--fm-k));font-weight:700;}
       .fm-others{position:absolute;top:6px;left:6px;display:flex;gap:2px;}
@@ -6256,21 +6949,21 @@ class FpMilestoneCard extends HTMLElement {
       .fm-bands{position:relative;display:flex;gap:6px;overflow-x:auto;padding:10px 2px 8px;margin:-10px -2px 4px;scrollbar-width:none;}
       .fm-bands::-webkit-scrollbar{display:none;}
       .fm-band{position:relative;flex:none;border:2px solid transparent;border-radius:999px;padding:7px 13px;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:.88rem;font-weight:700;}
+        background:var(--fm-s);color:var(--primary-text-color);font-size:.88rem;font-weight:700;}
       .fm-band small{color:var(--fm-kt,var(--fm-k));font-weight:800;font-size:.78rem;}
-      .fm-band.fm-sel{border-color:var(--fm-k);background:var(--fm-k1);}
+      .fm-band.fm-sel{border-color:var(--fm-kt,var(--fm-k));background:var(--fm-k1);}
       .fm-jetzt{position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--fm-k);color:#fff;font-size:.56rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:1px 6px;}
       .fm-bandhead{margin:6px 2px 12px;}
       .fm-bt{font-size:1.1rem;font-weight:800;}
       .fm-bs{font-size:.86rem;font-weight:700;color:var(--fm-kt,var(--fm-k));margin-top:2px;}
-      .fm-alles{background:linear-gradient(90deg,var(--fm-k1),var(--fm-k2));border-radius:14px;padding:10px 14px;font-weight:800;margin-bottom:12px;}
+      .fm-alles{background:linear-gradient(90deg,var(--fm-k1),var(--fm-k2));border-radius:var(--fm-rs);padding:10px 14px;font-weight:800;margin-bottom:12px;}
       .fm-area{margin-bottom:14px;}
-      .fm-row{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;border:1.5px solid var(--divider-color);border-radius:14px;padding:10px 12px;margin-bottom:6px;cursor:pointer;
+      .fm-row{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;border:1.5px solid var(--divider-color);border-radius:var(--fm-rs);padding:10px 12px;margin-bottom:6px;cursor:pointer;
         background:transparent;color:var(--primary-text-color);font:inherit;font-size:.92rem;line-height:1.3;transition:transform .12s;-webkit-tap-highlight-color:transparent;}
       .fm-row:active{transform:scale(.98);}
       .fm-bub{flex:none;width:28px;height:28px;box-sizing:border-box;border-radius:50%;border:2px dashed var(--secondary-text-color);opacity:.5;
         display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:.95rem;}
-      .fm-row.fm-on{background:linear-gradient(100deg,var(--fm-k2),var(--fm-k1));border-color:var(--fm-k3);}
+      .fm-row.fm-on{background:linear-gradient(100deg,var(--fm-k2),var(--fm-k1));border-color:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 36%,transparent);}
       .fm-row.fm-on .fm-bub{border:none;opacity:1;background:var(--fm-k);box-shadow:0 2px 6px var(--fm-k3);}
       .fm-rt{flex:1;min-width:0;}
       .fm-rd{flex:none;font-size:.78rem;font-weight:800;color:var(--fm-kt,var(--fm-k));}
@@ -6279,8 +6972,8 @@ class FpMilestoneCard extends HTMLElement {
       /* Bewegung: Zeitfenster als Balken, Punkte zeigen, wann es so weit war */
       .fm-motor{display:flex;flex-direction:column;gap:8px;}
       .fm-mo,.fm-axis{display:grid;grid-template-columns:1fr;column-gap:14px;row-gap:8px;}
-      .fm-mo{width:100%;border:none;border-radius:14px;padding:10px 14px;cursor:pointer;text-align:left;font:inherit;
-        background:var(--secondary-background-color);color:var(--primary-text-color);-webkit-tap-highlight-color:transparent;}
+      .fm-mo{width:100%;border:none;border-radius:var(--fm-rs);padding:10px 14px;cursor:pointer;text-align:left;font:inherit;
+        background:var(--fm-s);color:var(--primary-text-color);-webkit-tap-highlight-color:transparent;}
       .fm-mo:active{transform:scale(.99);}
       .fm-axis{padding:0 14px;}
       .fm-axl{display:none;font-size:.7rem;color:var(--secondary-text-color);text-align:right;}
@@ -6289,7 +6982,7 @@ class FpMilestoneCard extends HTMLElement {
       .fm-mi{font-size:1.35rem;flex:none;}
       .fm-mt{min-width:0;}
       .fm-md{margin-left:auto;font-size:.76rem;font-weight:800;color:var(--fm-kt,var(--fm-k));white-space:nowrap;}
-      .fm-track{position:relative;height:28px;border-radius:14px;background:var(--card-background-color,#fff);}
+      .fm-track{position:relative;height:28px;border-radius:14px;background:var(--fm-s2);}
       .fm-win{position:absolute;top:5px;bottom:5px;border-radius:9px;--w1:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 18%,transparent);--w2:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 42%,transparent);
         background:linear-gradient(90deg,var(--w1,var(--fm-k1)),var(--w2,var(--fm-k3)) 50%,var(--w1,var(--fm-k1)));}
       .fm-mo.fm-on .fm-win{--w1:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 30%,transparent);}
@@ -6305,7 +6998,7 @@ class FpMilestoneCard extends HTMLElement {
       /* Dialog */
       .fm-ov{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fm-fade .2s;}
       @keyframes fm-fade{from{opacity:0;}}
-      .fm-sheet{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:24px;width:100%;max-width:420px;max-height:calc(100vh - 32px);overflow:auto;
+      .fm-sheet{background:var(--card-background-color,#fff);color:var(--primary-text-color);border-radius:var(--fm-r);width:100%;max-width:420px;max-height:calc(100vh - 32px);overflow:auto;
         box-shadow:0 16px 50px rgba(0,0,0,.3);animation:fm-up .4s cubic-bezier(.3,1.4,.5,1);}
       @keyframes fm-up{from{transform:translateY(30px) scale(.94);opacity:0;}}
       .fm-sh-top{position:relative;overflow:hidden;text-align:center;padding:22px 18px 16px;background:linear-gradient(170deg,var(--fm-k3),var(--fm-k1) 65%,transparent);}
@@ -6321,20 +7014,21 @@ class FpMilestoneCard extends HTMLElement {
       .fm-opt{text-transform:none;letter-spacing:0;font-weight:600;opacity:.8;}
       .fm-two{display:flex;gap:10px;} .fm-emo{flex:0 0 76px;} .fm-emo .fm-in{text-align:center;font-size:1.3rem;padding:7px;} .fm-grow{flex:1;min-width:0;}
       .fm-when{display:flex;gap:6px;}
-      .fm-when button{flex:none;border:2px solid transparent;border-radius:10px;padding:8px 12px;font-weight:700;font-size:.9rem;cursor:pointer;
-        background:var(--secondary-background-color);color:var(--primary-text-color);}
-      .fm-when button.fm-sel{border-color:var(--fm-k);background:var(--fm-k1);}
+      .fm-when button{flex:none;border:2px solid transparent;border-radius:var(--fm-rs);padding:8px 12px;font-weight:700;font-size:.9rem;cursor:pointer;
+        background:var(--fm-s);color:var(--primary-text-color);}
+      .fm-when button.fm-sel{border-color:var(--fm-kt,var(--fm-k));background:var(--fm-k1);}
       .fm-when .fm-in{flex:1;}
-      .fm-in{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--divider-color);border-radius:10px;
-        background:var(--secondary-background-color);color:var(--primary-text-color);font-size:1rem;}
-      .fm-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;} .fm-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum sonst breiter als der Dialog */
+      .fm-in{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--divider-color);border-radius:var(--fm-rs);
+        background:var(--fm-s);color:var(--primary-text-color);font-size:1rem;}
+      .fm-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;} .fm-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum sonst breiter als der Dialog */
+      .fm-dark .fm-in[type=date]{color-scheme:dark;}
       textarea.fm-in{resize:vertical;}
       .fm-age{min-height:1.1em;font-size:.84rem;font-weight:700;color:var(--fm-kt,var(--fm-k));margin-top:7px;}
       .fm-check{display:flex;align-items:center;gap:9px;font-size:.9rem;margin-top:9px;cursor:pointer;}
       .fm-check input{width:19px;height:19px;margin:0;accent-color:var(--fm-k);flex:none;}
       .fm-foot{display:flex;gap:8px;align-items:center;padding:18px;}
       .fm-flex{flex:1;}
-      .fm-btn{border:none;border-radius:12px;padding:12px 16px;font-weight:700;font-size:.95rem;cursor:pointer;background:var(--secondary-background-color);color:var(--primary-text-color);}
+      .fm-btn{border:none;border-radius:var(--fm-rs);padding:12px 16px;font-weight:700;font-size:.95rem;cursor:pointer;background:var(--fm-s);color:var(--primary-text-color);}
       .fm-ok{background:var(--fm-k);color:#fff;box-shadow:0 4px 12px var(--fm-k3);}
       .fm-del{background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;padding-left:2px;padding-right:2px;}
 
@@ -6355,12 +7049,12 @@ if (!customElements.get("fp-milestone-card")) {
 })();
 
 
-/* ===== fp-baby-overview-card v6 (aufgeräumtes Raster: Spalten aus festen Bausteinen, am Tablet mit gemeinsamen Zeilenhöhen; feste Jetzt-Karten Schlaf, Stillen, Fläschchen, Windel mit Stuhl, gleich hoch; Tageszahlen immer gleich viele; ältere Werte mit Wochentag; Schlafknöpfe so kräftig wie die Schnellknöpfe, schlafend dunkel mit Leuchtrand, am Handy in zwei Reihen; Schlaf wie bei Napper und Buma: Knöpfe „Beide schlafen“ und je Kind, Schalter und Protokoll-Automation wie beim Stillen, Wachzeit und nächster Schlaf aus den eigenen Wachphasen, Schlaf im Tagesstreifen, in Tageszahlen, Einträgen, Muster und „Frag nach“, Nachtragen und Ändern im Blatt; Abstand statt „nach dieser Tageszeit“ in „Nächste Mahlzeit“; Wachstum als eigene Ansicht statt Sprung in einen anderen Tab: aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern aus growth_data, Bemerktes, Messungen, Wiegen und Ändern im Blatt; im Stil von Buma: dunkle Ansicht mit Nachthimmel, Kind mit Alter, ✦ öffnet „Frag nach“, ‹ Heute › zum Blättern; farbige Schnellknöpfe Stillen/Windel/Fläschchen, Karte „Nächste Mahlzeit“, Jetzt-Karten mit her/Nächste/Fällig, Tageszahlen, Tagesstreifen, Einträge; Ansicht Muster: Zusammenfassung, Filter, Tagesschnitt, eine Zeile je Tag; Leiste unten mit Heute/Muster/Wachstum/Momente; hell, dunkel oder nach Theme) ===== */
+/* ===== fp-baby-overview-card v17 (startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card), Windeln
 // (fp-diaper-card), Gewicht (fp-weight-card) und Meilensteine (fp-milestone-card), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
-// Schreibt selbst Windeln, Fläschchen und Gewichte im Format jener Karten und schaltet den
-// Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
+// Schreibt selbst Windeln, Fläschchen, Gewichte und nachgetragenes oder geändertes Stillen im Format
+// jener Karten und schaltet den Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
 (() => {
 const U = window.__fpUtils;
 const MIN = 60000, STD = 3600000, TAG = 86400000;
@@ -6373,6 +7067,7 @@ const ICO = {
   muster: '<rect x="4" y="11" width="4" height="9" rx="1.5"/><rect x="10" y="5" width="4" height="15" rx="1.5"/><rect x="16" y="8" width="4" height="12" rx="1.5"/>',
   wachstum: '<path d="M3 20h18" stroke-width="2" stroke="currentColor" fill="none"/><path d="m4 16 5-5 4 3 7-8" stroke-width="2.4" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   momente: '<rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="2" fill="var(--b-bar)"/><path d="m5 18 5-5 3 3 2-2 4 4z" fill="var(--b-bar)"/>',
+  protokoll: '<rect x="4.5" y="4" width="15" height="17" rx="3"/><rect x="8.5" y="2.5" width="7" height="4" rx="1.5"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4" stroke="var(--b-bar)" stroke-width="1.8" stroke-linecap="round" fill="none"/>',
 };
 const SPARK = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2c.7 5.2 4.5 9.1 10 10-5.5.9-9.3 4.8-10 10-.7-5.2-4.5-9.1-10-10 5.5-.9 9.3-4.8 10-10Z"/></svg>';
 
@@ -6382,14 +7077,17 @@ class FpBabyOverviewCard extends HTMLElement {
     this.config = Object.assign({
       weight_calendar: "",       // Kalender der fp-weight-card (alle Kinder)
       milestone_calendar: "",    // Kalender der fp-milestone-card (alle Kinder)
-      appearance: "dark",        // dark (wie Buma), light oder auto (folgt dem Theme)
       chat: true,                // ✦ „Frag nach“
       ai_entity: "",             // ai_task-Entity für den Chat; leer = die in HA voreingestellte
       days: 14,                  // so viele Tage bekommt die KI
       growth_data: "",           // optional: Perzentilkurven wie bei der fp-weight-card (dazu je Kind birth, ga, sex)
-      memories_path: "",         // optional: Tab mit der Meilensteinkarte, erscheint unten als „Momente“
+      memories_path: "",         // nur noch Rückfall ohne milestone_calendar: Tab, zu dem „Momente“ springt
       bottle_presets: [40, 60, 90, 120],
-      reminder_hours: 3,         // ab hier ist die Mahlzeit „fällig“, wie in der Stillkarte
+      reminder_hours: 3,         // ab hier ist die Mahlzeit „fällig“, wie in der Stillkarte (Rückfall ohne Helfer)
+      reminder_entity: "",       // optional: input_number (Stunden) tagsüber, dieselben Helfer wie Stillkarte und Automation
+      reminder_night_entity: "", // optional: input_number (Stunden) nachts
+      night_start: 22, night_end: 6,
+      meal_pause_entity: "",     // optional: input_number (Minuten), überschreibt meal_pause_minutes
       meal_pause_minutes: 45,    // höchstens so viel Pause zwischen zwei Einträgen derselben Mahlzeit
       bottle_minutes: 15,        // Fläschchen stehen mit „fertig um“: so viel früher war ihr Beginn
     }, config);
@@ -6400,12 +7098,13 @@ class FpBabyOverviewCard extends HTMLElement {
     this._pfx = `fp-overview:${this.config.kids.map(k => k.key).join(",")}`;
     this._kind = this._pref("kind", "");
     if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
-    const v = this._pref("view", "heute");
-    this._view = v === "muster" || v === "wachstum" ? v : "heute";
+    this._view = "heute";   // beim Öffnen des Tabs immer „Heute“; die Ansicht wird nicht gemerkt
     this._filter = this._pref("filter", "alle");
     this._spanne = this._pref("spanne", "7") === "14" ? 14 : 7;
     this._off = 0;   // 0 = heute, -1 = gestern …
     this._wAlle = false;   // Wachstum: alle Messungen statt der letzten
+    this._eAlle = false;   // Heute: alle Einträge des Tages statt der letzten fünf
+    this._emb = {};        // Protokoll: eingebettete Still- und Windelkarte je Kind, einmal angelegt
     this._ref = null;
     if (this.config.growth_data) this._loadRef();
   }
@@ -6424,11 +7123,15 @@ class FpBabyOverviewCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    if (this._ms) this._ms.hass = hass;
+    Object.values(this._emb).forEach(e => { if (e.feed) e.feed.hass = hass; if (e.diaper) e.diaper.hass = hass; });
     // Verglichen wird mit dem, was die Karte zuletzt gesehen hat — nicht mit dem vorigen hass-Objekt.
     const kids = this.config.kids, lauf = kids.map(k => this._laeuft(k)), schlaf = kids.map(k => this._schlaeft(k));
-    const sig = JSON.stringify([lauf, schlaf, kids.map((k, i) => [this._seite(k), lauf[i] ? this._beginn(k) : 0, schlaf[i] ? this._schlafBeginn(k) : 0]), this._dunkel()]);
+    const sig = JSON.stringify([lauf, schlaf, kids.map((k, i) => [this._seite(k), lauf[i] ? this._beginn(k) : 0, schlaf[i] ? this._schlafBeginn(k) : 0]), this._dunkel(),
+      this._pauseMin(), kids.map(k => this._grenze(k, Date.now()))]);   // Erinnerung und Pause aus den Helfern (⚙)
     const vorher = this._lauf, vorherS = this._schlaf;
     this._lauf = lauf; this._schlaf = schlaf;
+    if (this._einstOffen) this._einstZeichne();   // das Einstellungsblatt folgt dem Zustand der Helfer
     if (!this._built) { this._swSig = sig; this._build(); this._load(); return; }
     // Beim Stopp schreibt die Automation den Termin erst nach ein paar Sekunden — mehrfach nachladen.
     const gestoppt = (alt, neu) => alt && alt.some((v, i) => v && !neu[i]);
@@ -6440,11 +7143,20 @@ class FpBabyOverviewCard extends HTMLElement {
     this._nachT = zeiten.map(ms => setTimeout(() => this._load(), ms));
   }
   connectedCallback() {
+    // Home Assistant hängt die Karte beim Tabwechsel ab und wieder an: wer zurückkehrt, landet auf „Heute“ am heutigen Tag.
+    // Kind, Muster-Spanne, eingebettete Karten und Daten bleiben.
+    if (this._abgehaengt) {
+      this._abgehaengt = false;
+      this._closeSheet();
+      this._view = "heute"; this._off = 0; this._eAlle = false;
+      if (this._built) this._paint(true);
+    }
     if (!this._timer) this._timer = setInterval(() => this._tick(), 1000);
     // Die Wachstumskurve wird für ihre echte Breite gezeichnet, sonst schrumpft am Handy die Schrift mit.
     if (!this._ro && window.ResizeObserver) { this._ro = new ResizeObserver(() => { if (this._view === "wachstum") this._zeichne(); }); this._ro.observe(this); }
   }
   disconnectedCallback() {
+    this._abgehaengt = true;
     clearInterval(this._timer); this._timer = null; (this._nachT || []).forEach(clearTimeout);
     if (this._ro) { this._ro.disconnect(); this._ro = null; }
   }
@@ -6456,12 +7168,7 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this._t % 30 === 0) this._paint();
     if (this._t % 60 === 0) this._load();
   }
-  _dunkel() {
-    const a = this.config.appearance;
-    if (a === "light") return false;
-    if (a === "auto") return !!(this._hass && this._hass.themes && this._hass.themes.darkMode);
-    return true;
-  }
+  _dunkel() { return !!(this._hass && this._hass.themes && this._hass.themes.darkMode); }   // hell oder dunkel entscheidet das Gerät
   _pref(n, d) { try { return localStorage.getItem(`${this._pfx}:${n}`) || d; } catch (e) { return d; } }
   _setPref(n, v) { try { localStorage.setItem(`${this._pfx}:${n}`, v); } catch (e) { /* nur Komfort */ } }
 
@@ -6537,12 +7244,12 @@ class FpBabyOverviewCard extends HTMLElement {
     let ml = Number(meta.ml) || 0;
     if (!ml) { const m = sum.match(/(\d+)\s*ml/i); if (m) ml = Number(m[1]); }
     const seite = meta.seite || (/rechts/i.test(sum) ? "rechts" : /links/i.test(sum) ? "links" : "");
-    return { start: this._start(ev), end: this._ende(ev), typ, ml, seite };
+    return { uid: ev.uid, start: this._start(ev), end: this._ende(ev), typ, ml, seite };
   }
   _parseDiaper(ev) {
     const meta = this._meta(ev), sum = String(ev.summary || "");
     const art = meta.art || (/beides|\+/.test(sum) ? "beides" : /voll/i.test(sum) ? "voll" : "nass");
-    return { start: this._start(ev), art };
+    return { uid: ev.uid, start: this._start(ev), art };
   }
   _parseSleep(ev) {
     const meta = this._meta(ev);
@@ -6599,8 +7306,18 @@ class FpBabyOverviewCard extends HTMLElement {
   }
 
   // Mahlzeiten wie in der Stillkarte: Einträge mit höchstens meal_pause_minutes Pause gehören zusammen.
+  // Zahl aus einem Helfer, sonst der Rückfallwert — wie in der Stillkarte.
+  _zahl(e, d) { const st = e && this._hass && this._hass.states[e], n = st ? Number(st.state) : NaN; return isFinite(n) && n > 0 ? n : Number(d); }
+  // Erinnerungsgrenze in Stunden zu einem Zeitpunkt, nachts eine eigene (wie Stillkarte und Erinnerungs-Automation).
+  _grenze(kid, t) {
+    const c = this.config, h = new Date(t).getHours();
+    const nacht = c.night_start > c.night_end ? (h >= c.night_start || h < c.night_end) : (h >= c.night_start && h < c.night_end);
+    const tag = this._zahl(c.reminder_entity, kid.reminder_hours || c.reminder_hours);
+    return nacht ? this._zahl(c.reminder_night_entity, tag) : tag;
+  }
+  _pauseMin() { return this._zahl(this.config.meal_pause_entity, this.config.meal_pause_minutes); }
   _mahlzeiten(feeds) {
-    const pause = Number(this.config.meal_pause_minutes) * MIN, flasche = Number(this.config.bottle_minutes) * MIN, out = [];
+    const pause = this._pauseMin() * MIN, flasche = Number(this.config.bottle_minutes) * MIN, out = [];
     let ende = 0;
     feeds.map(e => ({ e, ab: e.typ === "flasche" ? +e.start - flasche : +e.start })).sort((a, b) => a.ab - b.ab).forEach(({ e, ab }) => {
       if (!out.length || ab - ende > pause) out.push({ start: ab, end: ab, geschaetzt: e.typ === "flasche", evs: [] });
@@ -6772,10 +7489,12 @@ class FpBabyOverviewCard extends HTMLElement {
     if (m < 24) return `${m} Mon.${t ? ` ${t} T.` : ""}`;
     return `${Math.floor(m / 12)} J. ${m % 12} Mon.`;
   }
-  _alterZeile(kid) {
+  // Alter und, bei Frühgeborenen, das korrigierte Alter getrennt (der Kindschalter am Handy braucht dafür zwei Zeilen).
+  _alterTeile(kid) {
     const a = this._alterKurz(kid, false), k = this._frueh(kid) ? this._alterKurz(kid, true) : "";
-    return a ? `${a}${k && k !== a ? ` · korr. ${k.replace(/ \d+ T\.$/, "")}` : ""}` : "";
+    return [a, a && k && k !== a ? `korr. ${k.replace(/ \d+ T\.$/, "")}` : ""];
   }
+  _alterZeile(kid) { return this._alterTeile(kid).filter(Boolean).join(" · "); }
   _avatar(kid, px) {
     let bild = kid.picture || "";
     const st = !bild && kid.entity && this._hass && this._hass.states[kid.entity];
@@ -6854,19 +7573,61 @@ class FpBabyOverviewCard extends HTMLElement {
         <div class="fo-sky"></div>
         <div class="fo-top"></div>
         <div class="fo-body"><div class="fo-laden">Einträge werden geladen …</div></div>
-        <nav class="fo-tabbar"></nav>
+        <div class="fo-dock"><div class="fo-act"></div><nav class="fo-tabbar"></nav></div>
       </ha-card>${this._styles()}`;
     this._card = this.querySelector(".fo-card");
+    this._card.classList.toggle("fo-dark", this._dunkel());
     this._card.addEventListener("click", ev => this._klick(ev));
+    this._wischen(this.querySelector(".fo-body"));
+  }
+  // Kind wählen (Schalter im Kopf, Wischen) — die Ansichten zeichnen sich danach für das neue Kind.
+  _kindWahl(key) {
+    if (key === this._kind || !this.config.kids.some(k => k.key === key)) return;
+    this._kind = key; this._setPref("kind", key); this._paint(true);
+  }
+  // Ist nur eine Spalte zu sehen? Dieselbe Grenze wie die Container-Query im CSS: 680 px Inhaltsbreite (ohne 2 × 16 px Rand).
+  _eineSpalte() { return this.config.kids.length > 1 && this._card.clientWidth - 32 < 680; }
+  // Waagrechtes Wischen über dem Inhalt wechselt das Kind: nach links das nächste, nach rechts das vorige.
+  // Nicht in Bereichen, die selbst wischen oder tippen (Chips, Blätter, eingebettete Karten, Eingabefelder).
+  _wischen(body) {
+    let von = null;
+    body.addEventListener("touchstart", ev => {
+      const t = ev.touches.length === 1 && ev.touches[0];
+      von = t && !(ev.target.closest && ev.target.closest(".fo-chips,.fo-sheet,.fo-emb,.fo-ms-host,input,textarea")) ? { x: t.clientX, y: t.clientY } : null;
+    }, { passive: true });
+    body.addEventListener("touchcancel", () => { von = null; }, { passive: true });
+    body.addEventListener("touchend", ev => {
+      const t = von && ev.changedTouches[0]; if (!t) return;
+      const dx = t.clientX - von.x, dy = t.clientY - von.y; von = null;
+      if (!this._eineSpalte() || Math.abs(dx) <= 70 || Math.abs(dx) <= 2 * Math.abs(dy)) return;
+      const kids = this.config.kids, i = kids.findIndex(k => k.key === this._kind), j = i + (dx < 0 ? 1 : -1);   // am Ende nicht herumspringen
+      if (j >= 0 && j < kids.length) this._kindWahl(kids[j].key);
+    }, { passive: true });
   }
   _klick(ev) {
     const z = sel => ev.target.closest(sel);
     let b;
+    // Klicks in eingebetteten Karten (Momente, Protokoll) gehören der jeweiligen Karte, die Übersicht ignoriert sie.
+    // Die Karten bauen dabei Teile neu auf, der angeklickte Knopf hängt danach nicht mehr im Dokument —
+    // deshalb über den Pfad beim Auslösen prüfen. Hat die Meilensteinkarte das Kind gewechselt, zieht der Kopf nach.
+    const pfad = ev.composedPath ? ev.composedPath() : [];
+    if (pfad.some(el => el.classList && el.classList.contains("fo-emb"))) {
+      if (this._ms && pfad.includes(this._ms)) {
+        const k = this.config.kids.find(x => (x.milestone_key || x.key) === this._ms._kind);
+        if (k && k.key !== this._kind) { this._kind = k.key; this._setPref("kind", k.key); this.querySelector(".fo-top").innerHTML = this._kopf(); }
+      }
+      return;
+    }
     if ((b = z(".fo-spark"))) { this._openChat(); return; }
-    if ((b = z(".fo-kidbtn"))) { const m = this.querySelector(".fo-menu"); if (m) m.hidden = !m.hidden; return; }
-    if ((b = z("[data-kind-sel]"))) { this._kind = b.dataset.kindSel; this._setPref("kind", this._kind); this._paint(true); return; }
-    if ((b = z("[data-off]"))) { this._off = Math.min(0, Math.max(-(LADETAGE - 1), this._off + Number(b.dataset.off))); this._paint(true); return; }
-    if ((b = z("[data-view]"))) { this._view = b.dataset.view; this._setPref("view", this._view); this._off = 0; this._paint(true); window.scrollTo && this._card.scrollIntoView({ block: "start", behavior: "smooth" }); return; }
+    if ((b = z(".fo-gear"))) { this._sheetEinst(); return; }
+    if ((b = z("[data-kind-sel]"))) { this._kindWahl(b.dataset.kindSel); return; }
+    if ((b = z("[data-off]"))) { this._off = Math.min(0, Math.max(-(LADETAGE - 1), this._off + Number(b.dataset.off))); this._eAlle = false; this._paint(true); return; }
+    if ((b = z("[data-view]"))) {
+      const vorher = this._view;
+      this._view = b.dataset.view; this._off = 0; this._paint(true);
+      if (vorher === "protokoll" && this._view !== vorher) this._load();   // was dort eingetragen wurde, soll gleich in den anderen Ansichten stehen
+      window.scrollTo && this._card.scrollIntoView({ block: "start", behavior: "smooth" }); return;
+    }
     if ((b = z("[data-nav]"))) { const p = this.config[b.dataset.nav]; if (p) { history.pushState(null, "", p); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); } return; }
     if ((b = z("[data-f]"))) { this._filter = b.dataset.f; this._setPref("filter", this._filter); this._paint(true); return; }
     if ((b = z("[data-sp]"))) { this._spanne = Number(b.dataset.sp); this._setPref("spanne", String(this._spanne)); this._paint(true); return; }
@@ -6877,6 +7638,15 @@ class FpBabyOverviewCard extends HTMLElement {
       if (e) this._sheetSchlaf(kid, e); return;
     }
     if ((b = z("[data-walle]"))) { this._wAlle = !this._wAlle; this._paint(true); return; }
+    if ((b = z("[data-ealle]"))) { this._eAlle = !this._eAlle; this._paint(true); return; }
+    if ((b = z("[data-euid]"))) {
+      // Stillen und Fläschchen liegen im Stillkalender, Windeln im Windelkalender
+      const kid = this._kid(b.dataset.kind), raw = this._d && this._d.kids[kid.key], windel = b.dataset.ek === "w";
+      const e = raw && (windel ? raw.diapers : raw.feeds).find(x => x.uid === b.dataset.euid);
+      if (e) this._sheetEintrag(kid, windel ? "windel" : e.typ, e);
+      return;
+    }
+    if ((b = z("[data-nt]"))) { this._sheetNachtrag(this._kid(b.dataset.kind)); return; }
     if ((b = z("[data-wuid]"))) { const w = ((this._d && this._d.weights) || []).find(x => x.uid === b.dataset.wuid); if (w) this._sheetWiegen(this._kid(w.kind), w); return; }
     if ((b = z("[data-act]"))) {
       const kid = this._kid(b.dataset.kind);
@@ -6886,20 +7656,19 @@ class FpBabyOverviewCard extends HTMLElement {
       if (b.dataset.act === "wiegen") this._sheetWiegen(kid, null);
       return;
     }
-    const m = this.querySelector(".fo-menu"); if (m && !m.hidden) m.hidden = true;
   }
 
   _paint(force) {
     if (!this._built || !this._d) return;
-    if (this._view === "wachstum" && !this.config.weight_calendar) this._view = "heute";
+    if ((this._view === "protokoll" && !this._hatProtokoll()) || (this._view === "wachstum" && !this.config.weight_calendar) || (this._view === "momente" && !this.config.milestone_calendar)) this._view = "heute";
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
-    const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
+    const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, this._eAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
       kids.map(k => [this._laeuft(k), this._seite(k), this._schlaeft(k)]),
-      vms.map(v => [v.raw.feeds.length, v.raw.diapers.length, v.letzte && v.letzte.start, v.windel && +v.windel.start, v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length,
+      vms.map(v => [v.raw.feeds.map(e => `${e.uid}:${+e.start}:${+e.end}:${e.typ}:${e.ml}:${e.seite}`).join(), v.raw.diapers.map(e => `${e.uid}:${+e.start}:${e.art}`).join(), v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length,
         v.schlaf.filter(x => !x.laeuft).map(x => `${x.uid}:${+x.start}:${+x.end}`).join()])]);
     if (!force && sig === this._sig) return;
     this._sig = sig;
-    this._card.classList.toggle("fo-light", !dunkel);
+    this._card.classList.toggle("fo-dark", dunkel);
     this._card.classList.toggle("fo-multi", kids.length > 1);
     this.querySelector(".fo-top").innerHTML = this._kopf();
     const body = this.querySelector(".fo-body");
@@ -6911,25 +7680,35 @@ class FpBabyOverviewCard extends HTMLElement {
       ${multi ? `<div class="fo-blk"><div class="fo-colhead">${this._avatar(vm.kid, 30)}<b>${U.esc(vm.kid.name)}</b><small>${this._alterZeile(vm.kid)}</small></div></div>` : ""}
       ${Array.from({ length: n }, (_, j) => `<div class="fo-blk">${teile[i][j] || ""}</div>`).join("")}</section>`).join("");
     const kopf = this._view === "muster" ? this._musterKopf() : this._view === "wachstum" ? this._wachstumKopf() : this._tagNav() + (this._off === 0 ? this._schlafLeiste() : "");
-    body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
-    const views = [["heute", "Heute"], ["muster", "Muster"]];
+    if (this._view === "momente") this._zeigeMomente(body);
+    else if (this._view === "protokoll") this._zeigeProtokoll(body);
+    else body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
+    const views = [["heute", "Heute"]];
+    if (this._hatProtokoll()) views.push(["protokoll", "Protokoll"]);
+    views.push(["muster", "Muster"]);
     if (this.config.weight_calendar) views.push(["wachstum", "Wachstum"]);
+    if (this.config.milestone_calendar) views.push(["momente", "Momente"]);
     const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
-    if (this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
+    if (!this.config.milestone_calendar && this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
     this.querySelector(".fo-tabbar").innerHTML = tabs.join("");
+    this.querySelector(".fo-act").innerHTML = this._aktionsleiste();   // in jeder Ansicht; am Tablet per CSS aus
     if (this._view === "wachstum") this._zeichne();
   }
 
-  // Kopf wie in Buma: Foto, Name mit ⌄ zum Wechseln, Alter; rechts ✦ für „Frag nach“.
-  // Am Tablet stehen Zwillinge nebeneinander — dann zeigt der Kopf beide.
+  // Kopf wie in Buma: Foto, Name, Alter; rechts ⚙ (nur mit Helfern) und ✦ für „Frag nach“.
+  // Bei mehreren Kindern steht statt des Namens ein Schalter mit einem großen Knopf je Kind (Foto, Name, Alter);
+  // der gewählte ist in der Kinderfarbe gefüllt. Am Tablet stehen Zwillinge nebeneinander — dann zeigt der Kopf beide.
   _kopf() {
     const kids = this.config.kids, k = this._kid(this._kind);
     const gleichAlt = kids.every(x => x.birth === kids[0].birth && x.ga === kids[0].ga);
-    const einer = `<div class="fo-who fo-who-one"><button class="fo-kidbtn" type="button">${this._avatar(k, 46)}<span class="fo-wn"><b>${U.esc(k.name)}${kids.length > 1 ? `<i class="fo-caret">⌄</i>` : ""}</b><small>${this._alterZeile(k)}</small></span></button>
-      ${kids.length > 1 ? `<div class="fo-menu" hidden>${kids.map(x => `<button type="button" data-kind-sel="${U.esc(x.key)}" class="${x.key === k.key ? "fo-on" : ""}">${this._avatar(x, 28)}${U.esc(x.name)}</button>`).join("")}</div>` : ""}</div>`;
+    const einer = kids.length > 1
+      ? `<div class="fo-who fo-who-one fo-kseg">${kids.map(x => `<button type="button" class="fo-kb${x.key === k.key ? " fo-on" : ""}" data-kind-sel="${U.esc(x.key)}" style="--k:${U.esc(x.color)};--k2:${U.esc(this._tint(x.color, .22))}" aria-pressed="${x.key === k.key}">${this._avatar(x, 30)}<span class="fo-kbn"><b>${U.esc(x.name)}</b><small>${this._alterTeile(x).filter(Boolean).join("<br>")}</small></span></button>`).join("")}</div>`
+      : `<div class="fo-who fo-who-one">${this._avatar(k, 46)}<span class="fo-wn"><b>${U.esc(k.name)}</b><small>${this._alterZeile(k)}</small></span></div>`;
     const alle = kids.length > 1 ? `<div class="fo-who fo-who-all"><span class="fo-avs">${kids.map(x => this._avatar(x, 46)).join("")}</span>
       <span class="fo-wn"><b>${kids.map(x => U.esc(x.name)).join(" & ")}</b><small>${gleichAlt ? this._alterZeile(kids[0]) : ""}</small></span></div>` : "";
-    return einer + alle + (this.config.chat ? `<button class="fo-spark" type="button" aria-label="Frag nach" title="Frag nach">${SPARK}</button>` : "");
+    const c = this.config, gear = c.reminder_entity || c.reminder_night_entity || c.meal_pause_entity
+      ? `<button class="fo-gear" type="button" aria-label="Einstellungen" title="Einstellungen">⚙\uFE0E</button>` : "";
+    return einer + alle + gear + (c.chat ? `<button class="fo-spark" type="button" aria-label="Frag nach" title="Frag nach">${SPARK}</button>` : "");
   }
   _tagNav() {
     const d = this._mitternacht(new Date(), this._off);
@@ -6938,18 +7717,27 @@ class FpBabyOverviewCard extends HTMLElement {
       <span>${name}</span><button type="button" data-off="1" aria-label="Tag vor" ${this._off >= 0 ? "disabled" : ""}>›</button></div>`;
   }
 
-  // Schlaf wie bei Napper und Buma per Knopf: „Beide schlafen“ und je Kind, über den Spalten,
-  // damit am Handy auch das gerade nicht gezeigte Kind erreichbar ist. Schläft ein Kind, ist sein
-  // Knopf gefüllt und zeigt die Dauer; die kleine Zeile sagt, was der nächste Tipp tut.
+  // Schlaf wie bei Napper und Buma per Knopf: „Beide schlafen“ und je Kind, über den Spalten.
+  // Schläft ein Kind, ist sein Knopf gefüllt und zeigt die Dauer; die kleine Zeile sagt, was der nächste Tipp tut.
+  // Am Handy bleibt oben nur „Beide schlafen“ mit dem Zustand der nicht gewählten Kinder; das gewählte Kind
+  // schaltet die Aktionsleiste unten (_aktionsleiste).
   _schlafLeiste() {
     const kids = this.config.kids.filter(k => k.sleep_switch);
     if (!kids.length) return "";
     const jetzt = Date.now(), an = kids.filter(k => this._schlaeft(k)), alle = an.length === kids.length;
-    const knopf = (key, emoji, text, sub, aktiv) => `<button type="button" class="fo-sl${aktiv ? " fo-sl-an" : ""}" data-schlaf="${U.esc(key)}">
-      <span class="fo-sle">${emoji}</span><span class="fo-slx"><span class="fo-slt">${text}</span>${sub ? `<span class="fo-sls">${sub}</span>` : ""}</span></button>`;
+    const knopf = (key, emoji, text, sub, aktiv, subCls) => `<button type="button" class="fo-sl${aktiv ? " fo-sl-an" : ""}" data-schlaf="${U.esc(key)}">
+      <span class="fo-sle">${emoji}</span><span class="fo-slx"><span class="fo-slt">${text}</span>${sub ? `<span class="fo-sls${subCls ? ` ${subCls}` : ""}">${sub}</span>` : ""}</span></button>`;
     const zwei = kids.length === 2, beideText = zwei ? "Beide schlafen" : "Alle schlafen";
+    // Die kleine Zeile unter „Beide schlafen“ hat zwei Fassungen, die das CSS umschaltet: am Tablet wie bisher,
+    // am Handy der Zustand der nicht gewählten Kinder. Schlafen alle, gilt für beide derselbe Text.
+    const tablet = alle ? `☀️ ${zwei ? "Beide" : "Alle"} aufgewacht` : an.length ? `${an.map(k => U.esc(k.name)).join(", ")} schläft schon` : "";
+    const handy = alle ? "" : kids.filter(k => k.key !== this._kind).map(k => {
+      if (this._schlaeft(k)) { const ab = this._schlafBeginn(k); return `${U.esc(k.name)} schläft · <span class="fo-dauer" data-ab="${ab}">${this._hDauer(jetzt - ab)}</span>`; }
+      const w = this._wachSeit(k, jetzt);
+      return `${U.esc(k.name)} wach${w ? ` seit ${w}` : ""}`;
+    }).join(" · ");
     const beide = kids.length > 1 ? knopf("*", alle ? "💤" : "😴", beideText,
-      alle ? `☀️ ${zwei ? "Beide" : "Alle"} aufgewacht` : an.length ? `${an.map(k => U.esc(k.name)).join(", ")} schläft schon` : "", alle) : "";
+      alle ? tablet : `<span class="fo-vt">${tablet}</span><span class="fo-vh">${handy}</span>`, alle, !alle && !tablet ? "fo-sls-h" : "") : "";
     const einzeln = kids.map(k => {
       if (this._schlaeft(k)) {
         const ab = this._schlafBeginn(k);
@@ -6959,19 +7747,51 @@ class FpBabyOverviewCard extends HTMLElement {
       return knopf(k.key, "😴", `${U.esc(k.name)} schläft`, wach, false);
     }).join("");
     const plus = this.config.kids.some(k => k.sleep_calendar) ? `<button type="button" class="fo-sl-plus" data-schlaf-neu aria-label="Schlaf nachtragen" title="Schlaf nachtragen">＋</button>` : "";
-    // Am Handy zwei Reihen (oben „Beide schlafen“, darunter je Kind), am Tablet eine.
-    return `<div class="fo-sleep">${beide ? `<div class="fo-sl-row">${beide}${plus}</div><div class="fo-sl-row">${einzeln}</div>` : `<div class="fo-sl-row">${einzeln}${plus}</div>`}</div>`;
+    // Zwei Reihen (oben „Beide schlafen“, darunter je Kind; am Handy blendet das CSS die zweite aus), am Tablet eine.
+    // Gibt es nur ein Kind, steht Schlaf am Handy in der Aktionsleiste: dort entfällt die ganze Leiste.
+    const solo = !beide && this.config.kids.length === 1;
+    return `<div class="fo-sleep${solo ? " fo-sleep-solo" : ""}">${beide ? `<div class="fo-sl-row">${beide}${plus}</div><div class="fo-sl-row">${einzeln}</div>` : `<div class="fo-sl-row">${einzeln}${plus}</div>`}</div>`;
+  }
+  // Wie lange das Kind schon wach ist („H:MM h“), solange die letzte Schlafphase weniger als einen Tag zurückliegt; sonst leer.
+  _wachSeit(kid, jetzt) {
+    const raw = this._d && this._d.kids[kid.key], s = (raw && raw.sleeps) || [], l = s[s.length - 1];
+    return l && jetzt - l.end < TAG ? this._hDauer(jetzt - l.end) : "";
+  }
+
+  // Aktionsleiste unten am Handy, in jeder Ansicht: Schlaf, Stillen, Windel und Fläschchen für das gewählte Kind,
+  // nur was konfiguriert ist. Die Knöpfe tragen dieselben data-Attribute wie Schnellknöpfe und Schlafleiste,
+  // _klick behandelt sie also mit. Am Tablet ist die Leiste per CSS aus (dort stehen die Schnellknöpfe in der Spalte).
+  _aktionsleiste() {
+    const k = this._kid(this._kind), jetzt = Date.now(), key = U.esc(k.key), name = U.esc(k.name), out = [];
+    const knopf = (farbe, attr, cls, label, emoji, text, sub) => `<button type="button" class="fo-q fo-qa${cls ? ` ${cls}` : ""}" style="--q:${farbe}" ${attr} data-kind="${key}" aria-label="${label} · ${name}">
+      <span class="fo-qe">${emoji}</span><span class="fo-qt">${text}</span>${sub ? `<span class="fo-qs">${sub}</span>` : ""}</button>`;
+    if (k.sleep_switch) {
+      if (this._schlaeft(k)) {
+        const ab = this._schlafBeginn(k);
+        out.push(knopf("var(--c-sleep)", `data-schlaf="${key}"`, "fo-qa-an", "Schlaf beenden", "💤", `<span class="fo-dauer" data-ab="${ab}">${this._hDauer(jetzt - ab)}</span>`, "Aufgewacht"));
+      } else {
+        const wach = this._wachSeit(k, jetzt);
+        out.push(knopf("var(--c-sleep)", `data-schlaf="${key}"`, "", "Schlaf", "😴", "Schläft", wach ? `wach ${wach}` : ""));
+      }
+    }
+    if (k.switch) {
+      const lauf = this._laeuft(k);
+      out.push(knopf("var(--c-nurse)", `data-act="still"`, lauf ? "fo-q-run" : "", lauf ? "Stillen stoppen" : "Stillen", lauf ? "■" : "🤱", lauf ? "Stopp" : "Stillen", ""));
+    }
+    if (k.diaper_calendar) out.push(knopf("var(--c-diaper)", `data-act="windel"`, "", "Windel", "💩", "Windel", ""));
+    if (k.feeding_calendar) out.push(knopf("var(--c-bottle)", `data-act="flasche"`, "", "Fläschchen", "🍼", "Fläschchen", ""));
+    return out.join("");
   }
 
   // ---------- Heute ----------
-  // Feste Bausteine: Schnellknöpfe, Hauptkarte, Jetzt, Tageszahlen, Streifen, Wachstum/Momente, Einträge.
+  // Feste Bausteine (sechs): Schnellknöpfe, Hauptkarte, Jetzt, Tag, Chips (Wachstum, Momente), Einträge.
   _heuteSpalte(vm) {
-    const k = vm.kid, jetzt = Date.now(), heute = this._off === 0, tag = this._mitternacht(new Date(), this._off);
+    const k = vm.kid, heute = this._off === 0, tag = this._mitternacht(new Date(), this._off);
     const b = ["", "", ""];
     if (heute) {
       const lauf = this._laeuft(k), ab = lauf ? this._beginn(k) : 0;
       b[0] = `<div class="fo-quick">
-        ${k.switch ? `<button class="fo-q${lauf ? " fo-q-run" : ""}" style="--q:var(--c-nurse)" data-act="still" data-kind="${U.esc(k.key)}"><span class="fo-qe">${lauf ? "⏸" : "🤱"}</span>${lauf ? `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>` : "<span>Stillen</span>"}</button>` : ""}
+        ${k.switch ? `<button class="fo-q${lauf ? " fo-q-run" : ""}" style="--q:var(--c-nurse)" data-act="still" data-kind="${U.esc(k.key)}"><span class="fo-qe">${lauf ? "■" : "🤱"}</span><span>${lauf ? "Stopp" : "Stillen"}</span></button>` : ""}
         ${k.diaper_calendar ? `<button class="fo-q" style="--q:var(--c-diaper)" data-act="windel" data-kind="${U.esc(k.key)}"><span class="fo-qe">💩</span><span>Windel</span></button>` : ""}
         ${k.feeding_calendar ? `<button class="fo-q" style="--q:var(--c-bottle)" data-act="flasche" data-kind="${U.esc(k.key)}"><span class="fo-qe">🍼</span><span>Fläschchen</span></button>` : ""}
       </div>`;
@@ -6984,16 +7804,17 @@ class FpBabyOverviewCard extends HTMLElement {
     const wi = vm.raw.diapers.filter(e => +e.start >= t0 && +e.start < t1);
     const still = fe.filter(e => e.typ === "stillen").reduce((s, e) => s + Math.max(0, e.end - e.start), 0), ml = fe.filter(e => e.typ === "flasche").reduce((s, e) => s + (e.ml || 0), 0);
     const schlafTag = vm.schlaf.reduce((s, e) => s + this._ueber(+e.start, +e.end, t0, t1), 0), sl = vm.schlaf.filter(e => +e.start >= t0 && +e.start < t1);
-    // Immer dieselben Zahlen (nach Konfiguration, nicht nach Daten), gleich breit
-    const pills = [
-      k.feeding_calendar ? `<div><b>${still ? this._hDauer(still) : "–"}</b><span>gestillt</span></div>` : "",
-      k.feeding_calendar ? `<div><b>${meals.length}</b><span>${meals.length === 1 ? "Mahlzeit" : "Mahlzeiten"}</span></div>` : "",
-      k.feeding_calendar ? `<div><b>${ml ? `${ml} ml` : "–"}</b><span>Fläschchen</span></div>` : "",
-      k.diaper_calendar ? `<div><b>${wi.length}</b><span>${wi.length === 1 ? "Windel" : "Windeln"}</span></div>` : "",
-      k.sleep_calendar || k.sleep_switch ? `<div><b>${schlafTag ? this._hDauer(schlafTag) : "–"}</b><span>geschlafen</span></div>` : "",
+    // Immer dieselben Zahlen (nach Konfiguration, nicht nach Daten): Zahl fett, Wort leise, ohne Trennzeichen (Abstand per gap)
+    const zahl = (z, w) => `<span><b>${z}</b> ${w}</span>`;
+    const zahlen = [
+      k.feeding_calendar ? zahl(meals.length, meals.length === 1 ? "Mahlzeit" : "Mahlzeiten") : "",
+      k.feeding_calendar ? zahl(still ? this._hDauer(still) : "–", "gestillt") : "",
+      k.feeding_calendar ? zahl(ml ? `${ml} ml` : "–", "Fläschchen") : "",
+      k.diaper_calendar ? zahl(wi.length, wi.length === 1 ? "Windel" : "Windeln") : "",
+      k.sleep_calendar || k.sleep_switch ? zahl(schlafTag ? this._hDauer(schlafTag) : "–", "Schlaf") : "",
     ].filter(Boolean);
-    return [...b, `<div class="fo-pills" style="--n:${pills.length}">${pills.join("")}</div>`, this._streifen(vm, tag, "alle", true),
-      heute ? this._miniKarten(vm) : "", this._liste(vm, fe, wi, sl)];
+    const tagKarte = `<div class="fo-sec">Tag</div><div class="fo-box fo-tag">${this._streifen(vm, tag, "alle", true)}${zahlen.length ? `<div class="fo-zahlen">${zahlen.join("")}</div>` : ""}</div>`;
+    return [...b, tagKarte, heute ? this._chips(vm) : "", this._liste(vm, fe, wi, sl)];
   }
 
   // Die hervorgehobene Karte — bei Buma „Next sleep“, hier die nächste Mahlzeit.
@@ -7010,57 +7831,70 @@ class FpBabyOverviewCard extends HTMLElement {
     if (!l) return `<div class="fo-next"><div class="fo-nl">Mahlzeiten</div><div class="fo-nb">–</div><div class="fo-ns">Noch nichts eingetragen</div></div>`;
     const seit = jetzt - l.start;
     if (!p || seit > 8 * STD) {
-      return `<div class="fo-next"><div class="fo-nl">Letzte Mahlzeit</div><div class="fo-nb">${this._her(seit)} her</div><div class="fo-nf">${U.esc(zuletzt)}</div></div>`;
+      return `<div class="fo-next"><div class="fo-nl">Letzte Mahlzeit</div><div class="fo-nb">${this._her(seit)}</div><div class="fo-nf">${U.esc(zuletzt)}</div></div>`;
     }
     const big = jetzt < p.lo ? `${this._hm(new Date(p.lo))} – ${this._hm(new Date(p.hi))}` : jetzt <= p.hi ? `jetzt – ${this._hm(new Date(p.hi))}` : "Fällig";
     return `<div class="fo-next${jetzt > p.hi ? " fo-next-due" : ""}"><div class="fo-nl">Nächste Mahlzeit</div>
       <div class="fo-nb">${big}</div>
-      <div class="fo-ns">satt seit ${this._hDauer(seit)} · Abstand ${p.teil ? `${p.teil} ` : ""}meist ~${this._hDauer(p.med)}</div>
-      <div class="fo-nf">Zuletzt ${U.esc(zuletzt)}</div></div>`;
+      <div class="fo-ns">satt seit ${this._hDauer(seit)} · Abstand ${p.teil ? `${p.teil} ` : ""}meist ~${this._hDauer(p.med)}</div></div>`;
   }
 
-  // „Right now“: je Art, wie lange es her ist, und wann es wieder so weit sein dürfte.
+  // „Jetzt“ als Liste: je Tätigkeit eine Zeile mit farbigem Symbol, dem Wert (wie lange es her ist) und einer kleinen Zeile
+  // „Tätigkeit · Detail“; rechts optional, wann es wieder so weit sein dürfte oder „Fällig“.
   _jetztKarten(vm, lauf, ab) {
-    const k = vm.kid, jetzt = Date.now(), karten = [];
-    // Welche Karten es gibt, hängt nur an der Konfiguration — so stehen sie bei Zwillingen auf einer Linie.
-    // Die untere Zeile ist immer da (notfalls leer), damit alle Karten gleich hoch sind.
-    const karte = (farbe, titel, wert, unter, naechst, faellig) => `<div class="fo-nc${faellig ? " fo-due" : ""}">
-      <div class="fo-ncl"><i style="background:${farbe}"></i>${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div>
-      <div class="fo-ncn">${naechst || "&nbsp;"}</div></div>`;
-    const spanne = p => `Nächste ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}`;
-    // Unter einem Tag „1:47 h her“, sonst Wochentag und Uhrzeit statt „2 T. 11 h“
-    const her = t => { const d = jetzt - t; if (d < TAG) return [this._her(d), "her"]; const n = Math.floor(d / TAG); return [`${WT[new Date(t).getDay()]} ${this._hm(new Date(t))}`, `vor ${n} ${n === 1 ? "Tag" : "Tagen"}`]; };
-    const leer = (farbe, titel, text) => karte(farbe, titel, "–", text, "");
+    const k = vm.kid, jetzt = Date.now(), zeilen = [];
+    // Welche Zeilen es gibt, hängt nur an der Konfiguration — so stehen sie bei Zwillingen auf einer Linie.
+    // Stillen und Fläschchen führen per Tipp ins Stillprotokoll (Ansicht „Protokoll“).
+    const proto = this._hatProtokoll() ? ` data-view="protokoll"` : "";
+    // alarm: Wert in Alarmfarbe; rechts: HTML der rechten Spalte (oder leer)
+    const zeile = (farbe, emoji, wert, unter, rechts, link, alarm) => `<div class="fo-nr"${link ? proto : ""} style="--nr:${farbe}">
+      <span class="fo-nrk">${emoji}</span><div class="fo-nrm"><b${alarm ? ` class="fo-nr-due"` : ""}>${wert}</b><small>${unter}</small></div>${rechts ? `<div class="fo-nrr">${rechts}</div>` : ""}</div>`;
+    const faellig = `<span class="fo-nr-due">Fällig</span>`;
+    // Unter einem Tag nur „1:47 h“, sonst Wochentag und Uhrzeit statt „2 T. 11 h“, dazu „vor n Tagen“
+    const her = t => { const d = jetzt - t; if (d < TAG) return [this._her(d), ""]; const n = Math.floor(d / TAG); return [`${WT[new Date(t).getDay()]} ${this._hm(new Date(t))}`, `vor ${n} ${n === 1 ? "Tag" : "Tagen"}`]; };
+    const leer = (farbe, emoji, text, link) => zeile(farbe, emoji, "–", text, "", link);
     if (k.sleep_calendar || k.sleep_switch) {
       const l = vm.schlaf[vm.schlaf.length - 1], p = vm.schlafProg;
-      if (vm.schlaeft) karten.push(karte("var(--c-sleep)", "Schlaf", `<span class="fo-dauer" data-ab="${vm.schlafAb}">${this._hDauer(jetzt - vm.schlafAb)}</span>`, `schläft seit ${this._hm(new Date(vm.schlafAb))}`, ""));
-      else if (l && jetzt - l.end < TAG) {
-        const lang = p && jetzt > p.hi && jetzt - l.end <= 8 * STD;
-        karten.push(karte("var(--c-sleep)", "Schlaf", this._her(jetzt - l.end), `wach seit ${this._hm(new Date(l.end))}`,
-          lang ? `<span class="fo-due-t">Länger wach als sonst</span>` : p ? `Schlaf ~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}` : "", lang));
-      } else karten.push(leer("var(--c-sleep)", "Schlaf", l ? "länger nichts eingetragen" : "noch nichts eingetragen"));
+      if (vm.schlaeft) {
+        // Die laufende Zeit steht im Schlafknopf. Die Zeile nennt den Beginn und, wie lange es sonst dauert.
+        const dauern = vm.schlaf.filter(x => !x.laeuft && +x.end > +x.start && +x.end >= jetzt - 72 * STD).map(x => +x.end - +x.start);
+        zeilen.push(zeile("var(--c-sleep)", "😴", `seit ${this._hm(new Date(vm.schlafAb))}`, dauern.length >= 3 ? `Schlaf · meist ~${this._hDauer(this._median(dauern))}` : "Schlaf"));
+      } else if (l && jetzt - l.end < TAG) {
+        // Wach: der Ausblick auf den nächsten Schlaf (Spanne aus den eigenen Wachphasen), ohne Prognose nur „wach seit“
+        const wach = `wach seit ${this._hm(new Date(l.end))}`;
+        if (!p) zeilen.push(zeile("var(--c-sleep)", "😴", wach, "Schlaf"));
+        else if (jetzt <= p.hi) zeilen.push(zeile("var(--c-sleep)", "😴", jetzt < p.lo ? `~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}` : `jetzt – ${this._hm(new Date(p.hi))}`, `nächster Schlaf · ${wach}`));
+        else zeilen.push(zeile("var(--c-sleep)", "😴", "Länger wach", `als sonst · ${wach}`, "", false, jetzt - l.end <= 8 * STD));
+      } else zeilen.push(leer("var(--c-sleep)", "😴", l ? "Schlaf · länger nichts eingetragen" : "Schlaf · noch nichts eingetragen"));
     }
     if (k.feeding_calendar || k.switch) {
       const st = vm.raw.feeds.filter(e => e.typ === "stillen").pop(), l = vm.letzte;
-      const ziel = Number(k.reminder_hours || this.config.reminder_hours) * STD, faellig = !lauf && l && jetzt - l.start >= ziel && jetzt - l.start <= 8 * STD;
-      if (lauf) karten.push(karte("var(--c-nurse)", "Stillen", `<span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>`, "läuft gerade", ""));
-      else if (st) { const [w, u] = her(+st.start); karten.push(karte("var(--c-nurse)", "Stillen", w, u, faellig ? `<span class="fo-due-t">Fällig</span>` : vm.prog && jetzt < vm.prog.hi ? spanne(vm.prog) : "", faellig)); }
-      else karten.push(leer("var(--c-nurse)", "Stillen", "noch nichts eingetragen"));
+      const ziel = this._grenze(k, jetzt) * STD, due = !lauf && l && jetzt - l.start >= ziel && jetzt - l.start <= 8 * STD;
+      if (lauf) {
+        // Die laufende Uhr steht nur in der Hauptkarte. Die Zeile nennt die Seite und den Beginn.
+        const sd = this._seite(k);
+        zeilen.push(zeile("var(--c-nurse)", "🤱", sd ? U.esc(sd.charAt(0).toUpperCase() + sd.slice(1)) : "läuft", `Stillen · seit ${this._hm(new Date(ab))}`, "", true));
+      } else if (st) {
+        // Die Spanne der nächsten Mahlzeit steht nur in der Hauptkarte. Unter einem Tag: Seite und Dauer des letzten Stillens.
+        const [w, u] = her(+st.start), davon = U.esc([st.seite, this._minText(+st.end - +st.start)].filter(Boolean).join(" "));
+        zeilen.push(zeile("var(--c-nurse)", "🤱", w, `Stillen${jetzt - st.start < TAG ? (davon ? ` · ${davon}` : "") : ` · ${u}`}`, due ? faellig : "", true));
+      } else zeilen.push(leer("var(--c-nurse)", "🤱", "Stillen · noch nichts eingetragen", true));
     }
     if (k.feeding_calendar) {
       const fl = vm.raw.feeds.filter(e => e.typ === "flasche").pop();
-      if (fl) { const [w, u] = her(+fl.start); karten.push(karte("var(--c-bottle)", "Fläschchen", w, `${u}${fl.ml ? ` · ${fl.ml} ml` : ""}`, "")); }
-      else karten.push(leer("var(--c-bottle)", "Fläschchen", "noch keins"));
+      if (fl) { const [w, u] = her(+fl.start); zeilen.push(zeile("var(--c-bottle)", "🍼", w, ["Fläschchen", u, fl.ml ? `${fl.ml} ml` : ""].filter(Boolean).join(" · "), "", true)); }
+      else zeilen.push(leer("var(--c-bottle)", "🍼", "Fläschchen · noch keins", true));
     }
     if (k.diaper_calendar) {
       if (vm.windel) {
-        const p = this._prognoseWindel(vm.raw.diapers, jetzt), faellig = p && jetzt > p.hi && jetzt - vm.windel.start <= 8 * STD, [w, u] = her(+vm.windel.start);
-        // Stuhl als Zeile in der Windelkarte statt als fünfte Karte
-        const stuhl = !vm.stuhl ? "noch kein Stuhl" : vm.stuhl === vm.windel ? "mit Stuhl" : `Stuhl ${her(+vm.stuhl.start)[1] === "her" ? `vor ${this._her(jetzt - vm.stuhl.start)}` : her(+vm.stuhl.start)[0]}`;
-        karten.push(karte("var(--c-diaper)", "Windel", w, `${u} · ${stuhl}`, faellig ? `<span class="fo-due-t">Fällig</span>` : p ? spanne(p) : "", faellig));
-      } else karten.push(leer("var(--c-diaper)", "Windel", "noch nichts eingetragen"));
+        const p = this._prognoseWindel(vm.raw.diapers, jetzt), due = p && jetzt > p.hi && jetzt - vm.windel.start <= 8 * STD, [w, u] = her(+vm.windel.start);
+        // Stuhl als Zusatz in der Windelzeile statt als eigene Zeile
+        const stuhl = !vm.stuhl ? "noch kein Stuhl" : vm.stuhl === vm.windel ? "mit Stuhl" : `Stuhl ${jetzt - vm.stuhl.start < TAG ? `vor ${this._her(jetzt - vm.stuhl.start)}` : her(+vm.stuhl.start)[0]}`;
+        zeilen.push(zeile("var(--c-diaper)", "💩", w, ["Windel", u, stuhl].filter(Boolean).join(" · "),
+          due ? faellig : p ? `<span>Nächste</span><span>~${this._hm(new Date(p.lo))}–${this._hm(new Date(p.hi))}</span>` : ""));
+      } else zeilen.push(leer("var(--c-diaper)", "💩", "Windel · noch nichts eingetragen"));
     }
-    return karten.length ? `<div class="fo-sec">Jetzt</div><div class="fo-nowgrid">${karten.join("")}</div>` : "";
+    return zeilen.length ? `<div class="fo-sec">Jetzt</div><div class="fo-box fo-now">${zeilen.join("")}</div>` : "";
   }
 
   // Ein Tag als Streifen von 0 bis 24 Uhr: Stillen rosa, Fläschchen orange, Windeln als schmale Striche.
@@ -7086,35 +7920,40 @@ class FpBabyOverviewCard extends HTMLElement {
   _ticks() { return `<div class="fo-ticks">${[0, 6, 12, 18, 24].map(h => `<span style="left:${h / 24 * 100}%">${h}</span>`).join("")}</div>`; }
 
   _liste(vm, fe, wi, sl) {
+    // ek: s = Schlaf, f = Stillen/Fläschchen, w = Windel — jede Zeile mit uid lässt sich per Tipp ändern oder löschen
     const z = [
-      ...(sl || []).map(e => ({ t: +e.start, f: "var(--c-sleep)", s: e.laeuft ? "Schläft" : `Schlaf bis ${this._hm(e.end)}`, d: this._minText(e.end - e.start), uid: e.laeuft ? "" : e.uid })),
-      ...fe.map(e => ({ t: +e.start, f: this._farbe(e.typ), s: e.typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""}` : `Stillen${e.seite ? ` ${e.seite}` : ""}`, d: e.typ === "flasche" ? "" : this._minText(e.end - e.start) })),
-      ...wi.map(e => ({ t: +e.start, f: this._farbe(e.art), s: `Windel ${e.art === "beides" ? "nass + voll" : e.art}`, d: "" })),
+      ...(sl || []).map(e => ({ t: +e.start, f: "var(--c-sleep)", s: e.laeuft ? "Schläft" : `Schlaf bis ${this._hm(e.end)}`, d: this._minText(e.end - e.start), uid: e.laeuft ? "" : e.uid, ek: "s" })),
+      ...fe.map(e => ({ t: +e.start, f: this._farbe(e.typ), s: e.typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""}` : `Stillen${e.seite ? ` ${e.seite}` : ""}`, d: e.typ === "flasche" ? "" : this._minText(e.end - e.start), uid: e.uid, ek: "f" })),
+      ...wi.map(e => ({ t: +e.start, f: this._farbe(e.art), s: `Windel ${e.art === "beides" ? "nass + voll" : e.art}`, d: "", uid: e.uid, ek: "w" })),
     ].sort((a, b) => b.t - a.t);
-    if (!z.length) return `<div class="fo-leer">An diesem Tag ist nichts eingetragen.</div>`;
-    // Schlafphasen lassen sich per Tipp ändern; Stillen und Windeln bleiben bei ihren Karten.
+    const kk = U.esc(vm.kid.key), plus = this._nachtragOptionen(vm.kid).length
+      ? `<button type="button" class="fo-plus" data-nt data-kind="${kk}">＋ Nachtragen</button>` : "";
+    const kopf = `<div class="fo-sec fo-sech"><span>Einträge</span>${plus}</div>`;
+    if (!z.length) return `${kopf}<div class="fo-leer">An diesem Tag ist nichts eingetragen.</div>`;
     const zeile = x => `<i style="background:${x.f}"></i><span>${U.esc(x.s)}</span><small>${x.d}</small><time>${this._hm(new Date(x.t))}</time>`;
-    return `<div class="fo-sec">Einträge</div><div class="fo-list">${z.map(x => x.uid
-      ? `<button type="button" class="fo-li fo-wli" data-suid="${U.esc(x.uid)}" data-kind="${U.esc(vm.kid.key)}">${zeile(x)}</button>`
-      : `<div class="fo-li">${zeile(x)}</div>`).join("")}</div>`;
+    const zeig = this._eAlle ? z : z.slice(0, 5);   // standardmäßig die letzten fünf
+    return `${kopf}<div class="fo-box">${zeig.map(x => !x.uid ? `<div class="fo-li">${zeile(x)}</div>`
+      : x.ek === "s" ? `<button type="button" class="fo-li fo-wli" data-suid="${U.esc(x.uid)}" data-kind="${kk}">${zeile(x)}</button>`
+      : `<button type="button" class="fo-li fo-wli" data-euid="${U.esc(x.uid)}" data-ek="${x.ek}" data-kind="${kk}">${zeile(x)}</button>`).join("")}</div>${z.length > 5 ? `<button class="fo-more" type="button" data-ealle>${this._eAlle ? "Weniger zeigen" : `Alle ${z.length} Einträge`}</button>` : ""}`;
   }
 
-  // Wachstum und Momente — in Buma eigene Bereiche, hier zwei kleine Karten.
-  _miniKarten(vm) {
+  // Wachstum und Momente — in Buma eigene Bereiche, hier zwei kleine Chips; ein Tipp öffnet die jeweilige Ansicht.
+  _chips(vm) {
     const w = vm.weights, wl = w[w.length - 1], vor = wl && (w.slice().reverse().find(x => wl.date - x.date >= 5 * TAG) || w[w.length - 2]), mz = vm.ms[vm.ms.length - 1];
-    const karten = [];
-    if (this.config.weight_calendar) karten.push(`<div class="fo-mini" data-view="wachstum"><span class="fo-mi">⚖️</span><div><small>Wachstum</small><b>${wl ? this._kg(wl.g) : "–"}</b>
-      <span>${wl ? `${vor ? `${wl.g - vor.g >= 0 ? "+" : "−"}${Math.abs(wl.g - vor.g)} g seit ${this._dm(vor.date)}` : `am ${this._dm(wl.date)}`}` : "noch nicht gewogen"}</span></div></div>`);
-    if (this.config.milestone_calendar) karten.push(`<div class="fo-mini"${this.config.memories_path ? ` data-nav="memories_path"` : ""}><span class="fo-mi">${mz ? U.esc(mz.e) : "⭐"}</span><div><small>Momente</small><b>${mz ? U.esc(mz.t) : "–"}</b>
-      <span>${mz ? `am ${this._dm(mz.date)}` : "noch kein Meilenstein"}</span></div></div>`);
-    return karten.length ? `<div class="fo-minis">${karten.join("")}</div>` : "";
+    const chips = [];
+    if (this.config.weight_calendar) chips.push(`<button type="button" class="fo-mchip" data-view="wachstum"><span>⚖️</span><span class="fo-mchip-t">${wl
+      ? `${this._kg(wl.g)}${vor ? ` · ${this._g(wl.g - vor.g)}` : ` · am ${this._dm(wl.date)}`}` : "noch nicht gewogen"}</span></button>`);
+    if (this.config.milestone_calendar) chips.push(`<button type="button" class="fo-mchip" data-view="momente"><span>${mz ? U.esc(mz.e) : "⭐"}</span><span class="fo-mchip-t">${mz
+      ? `<span class="fo-mchip-cut">${U.esc(mz.t)}</span><span class="fo-mchip-d">· ${this._dm(mz.date)}</span>` : "noch kein Meilenstein"}</span></button>`);
+    return chips.length ? `<div class="fo-mchips">${chips.join("")}</div>` : "";
   }
 
   // ---------- Muster ----------
   _musterKopf() {
     const chips = [["alle", "Alle", ""], ["stillen", "Stillen", "var(--c-nurse)"], ["flasche", "Fläschchen", "var(--c-bottle)"], ["windel", "Windel", "var(--c-diaper)"]];
     if (this.config.kids.some(k => k.sleep_calendar)) chips.push(["schlaf", "Schlaf", "var(--c-sleep)"]);
-    return `<div class="fo-mtitle"><b>Muster</b><span>Jeder Tag nebeneinander</span></div>
+    const bericht = this._hatProtokoll() ? `<div class="fo-bericht"><button type="button" data-view="protokoll">🖨 Bericht</button><span>Bericht je Kind im Stillprotokoll</span></div>` : "";
+    return `<div class="fo-mtitle"><b>Muster</b><span>Jeder Tag nebeneinander</span></div>${bericht}
       <div class="fo-mctl"><div class="fo-seg"><button type="button" data-sp="7" class="${this._spanne === 7 ? "fo-on" : ""}">Woche</button><button type="button" data-sp="14" class="${this._spanne === 14 ? "fo-on" : ""}">2 Wochen</button></div>
       <div class="fo-chips">${chips.map(([f, t, c]) => `<button type="button" data-f="${f}" class="${this._filter === f ? "fo-on" : ""}" style="--chip:${c || "var(--b-acc)"}">${c ? `<i></i>` : ""}${t}</button>`).join("")}</div></div>`;
   }
@@ -7138,11 +7977,84 @@ class FpBabyOverviewCard extends HTMLElement {
       rows.push(`<div class="fo-row"><span class="fo-rl">${i === 0 ? "Heute" : `${WT[d.getDay()]} ${d.getDate()}.`}</span>${this._streifen(vm, d, f, false)}<span class="fo-rt">${summe}</span></div>`);
     }
     const bem = this._bemerkt(vm);
-    return [`<div class="fo-mcard"><div class="fo-mh">${U.esc(txt.h)}</div><div class="fo-mt">${U.esc(txt.t)}</div></div>`,
-      `<div class="fo-avg"><b>${avg[0]}</b>${avg[1] ? `<span> ${avg[1]}</span>` : ""}</div>
-      <div class="fo-hint">Tage schwanken – der Trend zählt mehr als ein einzelner Tag.</div>`,
-      `<div class="fo-rows"><div class="fo-row fo-row-ticks"><span class="fo-rl"></span>${this._ticks()}<span class="fo-rt"></span></div>${rows.join("")}</div>`,
-      bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>` : ""];
+    // Drei Bausteine, alle als .fo-box: Zusammenfassung samt Tagesschnitt (unter einer Linie), die Tage, Bemerkt
+    return [`<div class="fo-box fo-mcard"><div class="fo-mh">${U.esc(txt.h)}</div><div class="fo-mt">${U.esc(txt.t)}</div>
+      <div class="fo-avgz"><div class="fo-avg"><b>${avg[0]}</b>${avg[1] ? `<span> ${avg[1]}</span>` : ""}</div>
+      <div class="fo-hint">Tage schwanken – der Trend zählt mehr als ein einzelner Tag.</div></div></div>`,
+      `<div class="fo-box fo-rows"><div class="fo-row fo-row-ticks"><span class="fo-rl"></span>${this._ticks()}<span class="fo-rt"></span></div>${rows.join("")}</div>`,
+      bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-box fo-ins">${bem.map(b => `<div>${b}</div>`).join("")}</div>` : ""];
+  }
+
+  // ---------- Momente ----------
+  // Die fp-milestone-card steckt als eigene Ansicht in der Übersicht, statt in einem eigenen Tab.
+  // Sie wird einmal angelegt und bleibt bestehen (gewählter Bereich, offener Dialog); die Farben der
+  // Übersicht bekommt sie über die Theme-Variablen ihres Rahmens.
+  _momente() {
+    if (!this._ms) {
+      if (!customElements.get("fp-milestone-card")) return null;
+      this._ms = document.createElement("fp-milestone-card");
+      this._ms.setConfig({ calendar: this.config.milestone_calendar, title: "",
+        kids: this.config.kids.map(k => ({ key: k.milestone_key || k.key, name: k.name, color: k.color, birth: k.birth, ga: k.ga })) });
+    }
+    if (this._hass) this._ms.hass = this._hass;
+    return this._ms;
+  }
+  _zeigeMomente(body) {
+    // Nur beim Wechsel in die Ansicht neu aufbauen; sonst würde jedes Neuzeichnen die Karte umhängen
+    // und einem offenen Dialog den Fokus nehmen.
+    let host = body.querySelector(":scope > .fo-ms-host");
+    if (!host) { body.innerHTML = `<div class="fo-mtitle"><b>Momente</b><span>Erste Male, Entwicklung und Bewegung</span></div><div class="fo-emb fo-ms-host"></div>`; host = body.querySelector(".fo-ms-host"); }
+    const ms = this._momente();
+    if (!ms) { host.innerHTML = `<div class="fo-leer">Die Meilensteinkarte ist nicht geladen.</div>`; return; }
+    if (ms.parentNode !== host) host.appendChild(ms);
+    // Gewähltes Kind der Übersicht übernehmen
+    const k = this._kid(this._kind), key = k.milestone_key || k.key;
+    if (ms._kind !== key && ms.config.kids.some(x => x.key === key)) { ms._kind = key; ms._band = null; if (ms._paint) ms._paint(true); }
+  }
+
+  // ---------- Protokoll ----------
+  // Stillprotokoll und Windeln als eigene Ansicht statt einer Unterseite im Dashboard: je Kind die fp-feeding-card
+  // (mit Bericht) und die fp-diaper-card, eingebettet wie die Meilensteinkarte und einmal angelegt. Ihre Konfiguration
+  // ergibt sich aus der der Übersicht; die Karten bringen Ändern, Nachtragen und Bericht selbst mit.
+  _hatProtokoll() { return this.config.kids.some(k => k.feeding_calendar || k.diaper_calendar); }
+  _protokollKarten(kid) {
+    const c = this.config, e = this._emb[kid.key] = this._emb[kid.key] || {};
+    const rein = o => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== "" && v != null));   // leere Werte nicht übergeben, die Karte hat eigene Vorgaben
+    if (!e.feed && kid.feeding_calendar && kid.switch && customElements.get("fp-feeding-card")) {
+      e.feed = document.createElement("fp-feeding-card");
+      e.feed.setConfig(rein({ name: kid.name, color: kid.color, calendar: kid.feeding_calendar, switch: kid.switch, side: kid.side, start: kid.start,
+        diaper_calendar: kid.diaper_calendar, weight_calendar: c.weight_calendar, weight_key: kid.weight_key || kid.key,
+        reminder_entity: c.reminder_entity, reminder_night_entity: c.reminder_night_entity, meal_pause_entity: c.meal_pause_entity }));
+    }
+    if (!e.diaper && kid.diaper_calendar && customElements.get("fp-diaper-card")) {
+      e.diaper = document.createElement("fp-diaper-card");
+      e.diaper.setConfig({ name: kid.name, color: kid.color, calendar: kid.diaper_calendar });
+    }
+    if (this._hass) { if (e.feed) e.feed.hass = this._hass; if (e.diaper) e.diaper.hass = this._hass; }
+    return e;
+  }
+  _zeigeProtokoll(body) {
+    const kids = this.config.kids;
+    // Nur beim Wechsel in die Ansicht neu aufbauen; sonst würde jedes Neuzeichnen die Karten umhängen
+    // und einem offenen Dialog darin den Fokus nehmen. Zwei Bausteine je Spalte (Stillen, Windeln), damit sie
+    // am Tablet Zeile für Zeile auf einer Höhe stehen; am Handy zeigt das CSS nur die Spalte des gewählten Kinds.
+    let grid = body.querySelector(":scope > .fo-pgrid");
+    if (!grid) {
+      body.innerHTML = `<div class="fo-mtitle"><b>Protokoll</b><span>Stillen und Windeln – zum Ändern, Nachtragen und für den Bericht</span></div>
+        <div class="fo-grid fo-pgrid" style="--rows:2">${kids.map(() => `<section class="fo-col"><div class="fo-blk fo-emb"></div><div class="fo-blk fo-emb"></div></section>`).join("")}</div>`;
+      grid = body.querySelector(".fo-pgrid");
+      kids.forEach((k, i) => {
+        const [stillen, windeln] = grid.children[i].children, alt = this._emb[k.key] || {}, bestand = [alt.feed, alt.diaper], e = this._protokollKarten(k);
+        // Beim Zurückkehren stehen die schon vorhandenen Karten noch mit altem Stand da — gleich neu lesen.
+        bestand.forEach(c => { if (c && c._load) c._load(); });
+        if (e.feed) stillen.appendChild(e.feed);
+        else if (k.feeding_calendar && k.switch) stillen.innerHTML = `<div class="fo-leer">Die Stillkarte ist nicht geladen.</div>`;
+        if (e.diaper) windeln.appendChild(e.diaper);
+        else if (k.diaper_calendar) windeln.innerHTML = `<div class="fo-leer">Die Windelkarte ist nicht geladen.</div>`;
+        if (!stillen.firstChild && !windeln.firstChild) stillen.innerHTML = `<div class="fo-leer">Für ${U.esc(k.name)} ist kein Protokoll eingerichtet.</div>`;
+      });
+    }
+    Array.from(grid.children).forEach((col, i) => col.classList.toggle("fo-sel", kids[i].key === this._kind));
   }
 
   // ---------- Wachstum ----------
@@ -7211,23 +8123,24 @@ class FpBabyOverviewCard extends HTMLElement {
       <div class="fo-ns">am ${this._dm(l.date)}${alt ? ` · ${alt}` : ""}${pzL != null ? ` · ${this._pzText(pzL)}` : ""}</div>
       ${vor ? `<div class="fo-nf">${this._g(l.g - vor.g)} seit ${this._dm(vor.date)} · Ø ${this._g((l.g - vor.g) / tage)} am Tag</div>` : ""}
       ${wiegen}</div>`];
-    // Kennzahlen: Zunahme seit der Geburt, Schnitt pro Woche, Perzentile jetzt und damals
-    const karte = (titel, wert, unter) => `<div class="fo-nc"><div class="fo-ncl">${titel}</div><div class="fo-ncb">${wert}</div><div class="fo-ncs">${unter}</div></div>`;
-    const karten = [], seit = geb ? "seit der Geburt" : `seit ${this._dm(erst.date)}`;
+    // Kennzahlen als Liste wie „Jetzt“ in „Heute“, nur ohne Symbolkreis: Wert groß, darunter klein „Titel · Unterzeile“.
+    // Zunahme seit der Geburt, Schnitt pro Woche, Perzentile jetzt und damals
+    const zeile = (titel, wert, unter) => `<div class="fo-nr"><div class="fo-nrm"><b>${wert}</b><small>${titel} · ${unter}</small></div></div>`;
+    const zeilen = [], seit = geb ? "seit der Geburt" : `seit ${this._dm(erst.date)}`;
     if (w.length > 1) {
-      karten.push(karte(geb ? "Seit der Geburt" : `Seit ${this._dm(erst.date)}`, this._g(l.g - erst.g), `${geb ? "Geburtsgewicht" : "erste Messung"} ${this._kg(erst.g)}`));
-      karten.push(karte("Pro Woche", `Ø ${this._g((l.g - erst.g) / Math.max(1, (l.date - erst.date) / TAG) * 7)}`, seit));
+      zeilen.push(zeile(geb ? "Seit der Geburt" : `Seit ${this._dm(erst.date)}`, this._g(l.g - erst.g), `${geb ? "Geburtsgewicht" : "erste Messung"} ${this._kg(erst.g)}`));
+      zeilen.push(zeile("Pro Woche", `Ø ${this._g((l.g - erst.g) / Math.max(1, (l.date - erst.date) / TAG) * 7)}`, seit));
     }
     const pzE = w.length > 1 ? this._pz(k, erst) : null;
-    if (pzL != null) karten.push(karte("Perzentile", this._pzText(pzL), pzE != null ? `${geb ? "bei der Geburt" : `am ${this._dm(erst.date)}`} ${this._pzText(pzE)}` : "nach Alter"));
-    b.push(karten.length ? `<div class="fo-nowgrid fo-gtiles">${karten.join("")}</div>` : "");
+    if (pzL != null) zeilen.push(zeile("Perzentile", this._pzText(pzL), pzE != null ? `${geb ? "bei der Geburt" : `am ${this._dm(erst.date)}`} ${this._pzText(pzE)}` : "nach Alter"));
+    b.push(zeilen.length ? `<div class="fo-box fo-kenn">${zeilen.join("")}</div>` : "");
     // Kurve: wird nach dem Einfügen für die echte Breite gezeichnet (_zeichne)
-    b.push(`<div class="fo-sec">Verlauf</div><div class="fo-gcard" style="${this._kidStyle(k)}"><div class="fo-gchart" data-kind="${kk}"></div>
+    b.push(`<div class="fo-sec">Verlauf</div><div class="fo-box fo-gcard" style="${this._kidStyle(k)}"><div class="fo-gchart" data-kind="${kk}"></div>
       ${this._hatRef(k) ? `<div class="fo-gleg"><span><i class="fo-gl-line"></i>${U.esc(k.name)}</span><span><i class="fo-gl-band"></i>P3–P97</span><span><i class="fo-gl-mid"></i>P50</span></div>` : ""}</div>`);
     const bem = this._wBemerkt(k, w, geb, l);
-    b.push(bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-ins">${bem.map(x => `<div>${x}</div>`).join("")}</div>` : "");
+    b.push(bem.length ? `<div class="fo-sec">Bemerkt</div><div class="fo-box fo-ins">${bem.map(x => `<div>${x}</div>`).join("")}</div>` : "");
     const liste = w.slice().reverse(), zeig = this._wAlle ? liste : liste.slice(0, 6);
-    b.push(`<div class="fo-sec">Messungen</div><div class="fo-list">${zeig.map(x => {
+    b.push(`<div class="fo-sec">Messungen</div><div class="fo-box">${zeig.map(x => {
       const i = w.indexOf(x), p = i > 0 ? w[i - 1] : null, pz = this._pz(k, x);
       return `<button class="fo-li fo-wli" type="button" data-wuid="${U.esc(x.uid)}"><i style="background:${U.esc(k.color)}"></i><span>${this._kg(x.g)}${x === geb ? "<em>Geburt</em>" : ""}</span>
         <small>${[p ? this._g(x.g - p.g) : "", this._pzText(pz)].filter(Boolean).join(" · ")}</small><time>${this._dm(x.date)}</time></button>`;
@@ -7322,7 +8235,17 @@ class FpBabyOverviewCard extends HTMLElement {
     const laeuft = this._laeuft(kid);
     if (laeuft && Date.now() - this._beginn(kid) < 30000) U.toast(this, "Unter 30 Sekunden – als Fehltipp verworfen, nicht protokolliert");
     this._hass.callService("input_boolean", laeuft ? "turn_off" : "turn_on", { entity_id: kid.switch })
-      .catch(() => U.toast(this, "Stillen konnte nicht umgeschaltet werden"));
+      .then(() => { if (!laeuft) this._rueckAus(`${kid.name}: Stillen gestartet`, [kid.switch]); }, () => U.toast(this, "Stillen konnte nicht umgeschaltet werden"));
+  }
+  // Hinweis mit „Rückgängig“ nach dem Einschalten: schaltet aus, was dann noch läuft. Kurze Einträge verwirft die Automation selbst.
+  _rueckAus(text, schalter) {
+    const fn = () => {
+      const noch = schalter.filter(e => { const st = this._hass.states[e]; return st && st.state === "on"; });
+      if (!noch.length) return;
+      this._hass.callService("input_boolean", "turn_off", { entity_id: noch })
+        .then(() => U.toast(this, "Rückgängig gemacht"), () => U.toast(this, "Rückgängig ging nicht – bitte von Hand ausschalten"));
+    };
+    if (U.undo) U.undo(this, text, fn); else U.toast(this, text);
   }
   // „*“ = alle mit Schlafschalter: schläft noch keiner oder nur einer, legen sich alle hin; schlafen alle, wachen alle auf.
   // Die Karte schaltet nur — den Termin schreibt wie beim Stillen die Protokoll-Automation.
@@ -7332,7 +8255,8 @@ class FpBabyOverviewCard extends HTMLElement {
     const an = !ziel.every(k => this._schlaeft(k)), betroffen = ziel.filter(k => this._schlaeft(k) !== an);
     if (!an && betroffen.some(k => Date.now() - this._schlafBeginn(k) < MIN)) U.toast(this, "Unter einer Minute – als Fehltipp verworfen, nicht protokolliert");
     this._hass.callService("input_boolean", an ? "turn_on" : "turn_off", { entity_id: betroffen.map(k => k.sleep_switch) })
-      .catch(() => U.toast(this, "Schlaf konnte nicht umgeschaltet werden"));
+      .then(() => { if (an && betroffen.length) this._rueckAus(`${betroffen.map(k => k.name).join(" und ")}: Schlaf gestartet`, betroffen.map(k => k.sleep_switch)); },
+        () => U.toast(this, "Schlaf konnte nicht umgeschaltet werden"));
   }
   async _eintrag(cal, summary, meta, start, okText) {
     try {
@@ -7340,14 +8264,29 @@ class FpBabyOverviewCard extends HTMLElement {
         entity_id: cal, summary, description: JSON.stringify(meta),
         start_date_time: this._local(start, " "), end_date_time: this._local(new Date(+start + MIN), " "),
       });
-      U.toast(this, okText);
+      const zurueck = () => this._rueckgaengig(cal, summary, start);
+      if (U.undo) U.undo(this, okText, zurueck); else U.toast(this, okText);
       this._load();
       return true;
     } catch (e) { U.toast(this, "Konnte nicht gespeichert werden"); return false; }
   }
+  // „Rückgängig“ nach einem Schnelleintrag: das eben angelegte Ereignis im Kalender suchen (gleiche Überschrift,
+  // Beginn innerhalb einer Minute) und löschen.
+  async _rueckgaengig(cal, summary, start) {
+    try {
+      const von = new Date(+start - MIN), bis = new Date(+start + 2 * MIN);
+      const evts = await this._hass.callApi("GET", `calendars/${cal}?start=${encodeURIComponent(von.toISOString())}&end=${encodeURIComponent(bis.toISOString())}`);
+      const ev = (Array.isArray(evts) ? evts : []).filter(x => x.uid && x.summary === summary && Math.abs(this._start(x) - start) <= MIN)
+        .sort((x, y) => Math.abs(this._start(x) - start) - Math.abs(this._start(y) - start))[0];
+      if (!ev) { U.toast(this, "Eintrag nicht gefunden – bitte in der Liste löschen"); return; }
+      await this._hass.callWS({ type: "calendar/event/delete", entity_id: cal, uid: ev.uid });
+      U.toast(this, "Rückgängig gemacht");
+      this._load();
+    } catch (e) { U.toast(this, "Rückgängig ging nicht – bitte in der Liste löschen"); }
+  }
 
-  // ---------- Blätter (Windel, Fläschchen, Frag nach) ----------
-  _closeSheet() { if (this._ov) { this._ov.remove(); this._ov = null; this._chatOffen = false; } }
+  // ---------- Blätter (Windel, Fläschchen, Nachtragen, Ändern, Einstellungen, Frag nach) ----------
+  _closeSheet() { if (this._ov) { this._ov.remove(); this._ov = null; this._chatOffen = false; this._einstOffen = false; } }
   _sheet(inner, cls) {
     this._closeSheet();
     const ov = document.createElement("div");
@@ -7390,6 +8329,186 @@ class FpBabyOverviewCard extends HTMLElement {
       this._eintrag(kid.feeding_calendar, `Fläschchen ${ml} ml`, { typ: "flasche", ml }, start, `${kid.name}: Fläschchen ${ml} ml eingetragen ✓`);
     });
   }
+  // ＋ Nachtragen: Art wählen, danach dasselbe Blatt wie beim Ändern (mit Tag Heute/Gestern). Schlaf hat sein eigenes Blatt.
+  _nachtragOptionen(kid) {
+    const o = [];
+    if (kid.feeding_calendar) o.push("stillen", "flasche");
+    if (kid.diaper_calendar) o.push("windel");
+    if (kid.sleep_calendar) o.push("schlaf");
+    return o;
+  }
+  _sheetNachtrag(kid) {
+    const opt = this._nachtragOptionen(kid);
+    if (!opt.length) return;
+    const los = typ => (typ === "schlaf" ? this._sheetSchlaf(kid, null) : this._sheetEintrag(kid, typ, null));
+    if (opt.length === 1) { los(opt[0]); return; }
+    const T = { stillen: ["🤱", "Stillen", "var(--c-nurse)"], flasche: ["🍼", "Fläschchen", "var(--c-bottle)"], windel: ["💩", "Windel", "var(--c-diaper)"], schlaf: ["😴", "Schlaf", "var(--c-sleep)"] };
+    const ov = this._sheet(`<div class="fo-sh-head"><b>＋ Nachtragen · ${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-big3 fo-big2">${opt.map(t => `<button type="button" data-nt-typ="${t}" style="--q:${T[t][2]}"><span>${T[t][0]}</span>${T[t][1]}</button>`).join("")}</div>`);
+    ov.querySelectorAll("[data-nt-typ]").forEach(b => b.addEventListener("click", () => los(b.dataset.ntTyp)));
+  }
+  _at(basis, hhmm) { const [h, m] = String(hhmm || "").split(":").map(Number), d = new Date(basis); d.setHours(h || 0, m || 0, 0, 0); return d; }
+  _artText(a) { return a === "beides" ? "nass + voll" : a; }
+  // Stillen, Fläschchen oder Windel ändern und löschen (e gesetzt) oder nachtragen (e leer, mit Tag Heute/Gestern).
+  // Das Datum eines vorhandenen Eintrags bleibt; ein Ende vor dem Beginn heißt über Mitternacht.
+  _sheetEintrag(kid, typ, e) {
+    const neu = !e, jetzt = new Date(), pre = (this.config.bottle_presets || []).map(Number).filter(x => x > 0);
+    let tag = this._off === -1 ? "gestern" : "heute", seite = e ? e.seite : this._seite(kid), ml = e ? e.ml : (pre[0] || 0), art = e ? e.art : "nass";
+    if (seite !== "links" && seite !== "rechts") seite = "links";
+    const von = e ? e.start : typ === "stillen" ? new Date(+jetzt - 15 * MIN) : jetzt, bis = (e && e.end) || jetzt;   // Windeln haben kein Ende
+    const titel = { stillen: "🤱 Stillen", flasche: "🍼 Fläschchen", windel: "💩 Windel" }[typ];
+    const felder = {
+      stillen: `<div class="fo-zeitrow"><div><div class="fo-lbl">Beginn</div><input class="fo-in fo-von" type="time" value="${this._hm(von)}"></div>
+          <div><div class="fo-lbl">Ende</div><input class="fo-in fo-bis" type="time" value="${this._hm(bis)}"></div></div>
+        <div class="fo-sh-hint">Liegt das Ende vor dem Beginn, war es am nächsten Tag.</div>
+        <div class="fo-lbl">Seite</div>
+        <div class="fo-wahl"><button type="button" data-seite="links">Links</button><button type="button" data-seite="rechts">Rechts</button></div>`,
+      flasche: `<div class="fo-lbl">Menge</div>
+        <div class="fo-mls">${pre.map(x => `<button type="button" data-ml="${x}">${x} ml</button>`).join("")}<input class="fo-in fo-mlin" type="number" inputmode="numeric" min="1" max="400" placeholder="ml" value="${ml && !pre.includes(ml) ? ml : ""}"></div>
+        <div class="fo-lbl">Fertig getrunken um</div>
+        <input class="fo-in fo-zeit" type="time" value="${this._hm(von)}">`,
+      windel: `<div class="fo-lbl">Art</div>
+        <div class="fo-big3"><button type="button" data-art="nass" style="--q:var(--c-diaper)"><span>💧</span>Nass</button><button type="button" data-art="voll" style="--q:var(--c-stool)"><span>💩</span>Voll</button><button type="button" data-art="beides" style="--q:var(--c-stool)"><span>💧💩</span>Beides</button></div>
+        <div class="fo-lbl">Uhrzeit</div>
+        <input class="fo-in fo-zeit" type="time" value="${this._hm(von)}">`,
+    }[typ];
+    if (!felder) return;
+    const ov = this._sheet(`<div class="fo-sh-head"><b>${titel} · ${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      ${neu ? `<div class="fo-lbl">Tag</div><div class="fo-wahl"><button type="button" data-tag="heute">Heute</button><button type="button" data-tag="gestern">Gestern</button></div>` : ""}
+      ${felder}
+      <button class="fo-ok" type="button">${neu ? "Eintragen" : "Speichern"}</button>
+      ${neu ? "" : `<button class="fo-del" type="button">Eintrag löschen</button>`}`);
+    const mark = () => {
+      ov.querySelectorAll("[data-tag]").forEach(b => b.classList.toggle("fo-on", b.dataset.tag === tag));
+      ov.querySelectorAll("[data-seite]").forEach(b => b.classList.toggle("fo-on", b.dataset.seite === seite));
+      ov.querySelectorAll("[data-ml]").forEach(b => b.classList.toggle("fo-on", Number(b.dataset.ml) === ml));
+      ov.querySelectorAll("[data-art]").forEach(b => b.classList.toggle("fo-on", b.dataset.art === art));
+    };
+    ov.querySelectorAll("[data-tag]").forEach(b => b.addEventListener("click", () => { tag = b.dataset.tag; mark(); }));
+    ov.querySelectorAll("[data-seite]").forEach(b => b.addEventListener("click", () => { seite = b.dataset.seite; mark(); }));
+    ov.querySelectorAll("[data-art]").forEach(b => b.addEventListener("click", () => { art = b.dataset.art; mark(); }));
+    ov.querySelectorAll("[data-ml]").forEach(b => b.addEventListener("click", () => { ml = Number(b.dataset.ml); ov.querySelector(".fo-mlin").value = ""; mark(); }));
+    const mlin = ov.querySelector(".fo-mlin");
+    if (mlin) mlin.addEventListener("input", ev => { ml = Number(ev.target.value) || 0; mark(); });
+    mark();
+    ov.querySelector(".fo-ok").addEventListener("click", async () => {
+      const basis = neu ? this._mitternacht(new Date(), tag === "gestern" ? -1 : 0) : e.start;
+      let a, b, p;
+      if (typ === "stillen") {
+        const vz = ov.querySelector(".fo-von").value, bz = ov.querySelector(".fo-bis").value;
+        if (!vz || !bz) { U.toast(this, "Bitte Beginn und Ende angeben"); return; }
+        a = this._at(basis, vz); b = this._at(basis, bz);
+        if (b <= a) b.setDate(b.getDate() + 1);   // über Mitternacht
+        if (a - Date.now() > 5 * MIN) { U.toast(this, "Der Beginn liegt in der Zukunft – Tag prüfen"); return; }
+        if (b - a > 3 * STD) { U.toast(this, "Länger als 3 Stunden – Zeiten prüfen"); return; }
+        if (neu && b - Date.now() > 5 * MIN) b = new Date(Math.max(+a + MIN, Date.now()));
+        p = { seite };
+      } else {
+        const zt = ov.querySelector(".fo-zeit").value;
+        if (!zt) { U.toast(this, "Bitte die Uhrzeit angeben"); return; }
+        if (typ === "flasche" && !(ml > 0 && ml <= 400)) { U.toast(this, "Bitte eine Menge angeben"); return; }
+        a = this._at(basis, zt);
+        if (a - Date.now() > 5 * MIN) { U.toast(this, "Die Uhrzeit liegt in der Zukunft – Tag prüfen"); return; }
+        b = new Date(+a + MIN);   // Fläschchen und Windel sind Punkte: eine Minute ab der Uhrzeit
+        p = typ === "flasche" ? { ml } : { art };
+      }
+      const raw = this._d && this._d.kids[kid.key], letzteEnde = Math.max(0, ...((raw && raw.feeds) || []).filter(x => x.typ === "stillen").map(x => +x.end));
+      this._closeSheet();
+      let ok;
+      if (neu) {
+        ok = await this._evNeu(kid, typ, p, a, b);
+        if (ok) {
+          U.toast(this, `${kid.name}: ${this._evDaten(typ, p).summary} eingetragen ✓`);
+          // Ist es die jüngste Mahlzeit, gilt für das nächste Mal die andere Seite — wie beim Nachtragen in der Stillkarte.
+          if (typ === "stillen" && kid.side && !this._laeuft(kid) && +b >= letzteEnde)
+            this._hass.callService("input_select", "select_option", { entity_id: kid.side, option: seite === "links" ? "rechts" : "links" }).catch(() => { /* nur Komfort */ });
+        }
+      } else {
+        ok = await this._evAendern(kid, typ, e, p, a, b);
+        if (ok) U.toast(this, "Eintrag geändert ✓");
+      }
+      if (ok) this._load();
+    });
+    if (!neu) ov.querySelector(".fo-del").addEventListener("click", async () => {
+      const was = typ === "stillen" ? `Stillen${e.seite ? ` ${e.seite}` : ""} ${this._hm(e.start)}–${this._hm(e.end)}`
+        : typ === "flasche" ? `Fläschchen${e.ml ? ` ${e.ml} ml` : ""} um ${this._hm(e.start)}` : `Windel ${this._artText(e.art)} um ${this._hm(e.start)}`;
+      if (!window.confirm(`${kid.name}: ${was} löschen?`)) return;
+      this._closeSheet();
+      if (await this._evLoeschen(kid, typ, e.uid)) this._load();
+    });
+  }
+  // Überschrift und Beschreibung genau wie die Stillkarte und die Windelkarte sie schreiben.
+  _evDaten(typ, p) {
+    if (typ === "stillen") return { summary: `Stillen ${p.seite}`, description: JSON.stringify({ typ: "stillen", seite: p.seite, auto: false }) };
+    if (typ === "flasche") return { summary: `Fläschchen ${p.ml} ml`, description: JSON.stringify({ typ: "flasche", ml: p.ml }) };
+    return { summary: `Windel ${this._artText(p.art)}`, description: JSON.stringify({ typ: "windel", art: p.art }) };
+  }
+  _evKal(kid, typ) { return typ === "windel" ? kid.diaper_calendar : kid.feeding_calendar; }
+  async _evNeu(kid, typ, p, a, b) {
+    const d = this._evDaten(typ, p);
+    try {
+      await this._hass.callService("calendar", "create_event", { entity_id: this._evKal(kid, typ), summary: d.summary, description: d.description,
+        start_date_time: this._local(a, " "), end_date_time: this._local(b, " ") });
+      return true;
+    } catch (x) { U.toast(this, "Eintrag konnte nicht gespeichert werden"); return false; }
+  }
+  async _evLoeschen(kid, typ, uid, leise) {
+    try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this._evKal(kid, typ), uid }); return true; }
+    catch (x) { if (!leise) U.toast(this, "Eintrag konnte nicht gelöscht werden"); return false; }
+  }
+  // Ändern wie in Still- und Windelkarte: erst aktualisieren, sonst neu anlegen und den alten löschen.
+  async _evAendern(kid, typ, alt, p, a, b) {
+    const d = this._evDaten(typ, p);
+    try {
+      await this._hass.callWS({ type: "calendar/event/update", entity_id: this._evKal(kid, typ), uid: alt.uid,
+        event: { summary: d.summary, description: d.description, dtstart: this._local(a, "T"), dtend: this._local(b, "T") } });
+      return true;
+    } catch (x) {
+      if (!(await this._evNeu(kid, typ, p, a, b))) return false;
+      if (!(await this._evLoeschen(kid, typ, alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
+      return true;
+    }
+  }
+
+  // ⚙ Erinnerung und Pause: direkt am Helfer, dieselben wie in Stillkarte und Erinnerungs-Automation.
+  _sheetEinst() {
+    const ov = this._sheet(`<div class="fo-sh-head"><b>⚙ Einstellungen</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-einst"></div>
+      <div class="fo-sh-hint">Dieselben Helfer nutzen die Stillkarte und die Erinnerung.</div>`);
+    this._einstOffen = true; this._einstHtml = "";
+    ov.querySelector(".fo-einst").addEventListener("click", ev => {
+      const b = ev.target.closest("[data-es]");
+      if (b && !b.disabled) this._einstSetzen(b.dataset.es, Number(b.dataset.d));
+    });
+    this._einstZeichne();
+  }
+  _einstZeichne() {
+    const box = this._ov && this._ov.querySelector(".fo-einst"); if (!box) return;
+    const c = this.config;
+    const html = [["reminder_entity", "Erinnerung tagsüber"], ["reminder_night_entity", `Erinnerung nachts (${c.night_start}–${c.night_end} Uhr)`], ["meal_pause_entity", "Pause bis neue Mahlzeit"]]
+      .filter(([opt]) => c[opt]).map(([opt, titel]) => {
+        const st = this._hass && this._hass.states[c[opt]], a = (st && st.attributes) || {}, n = st ? parseFloat(st.state) : NaN, da = isFinite(n);
+        const min = a.min != null && isFinite(Number(a.min)) ? Number(a.min) : -Infinity, max = a.max != null && isFinite(Number(a.max)) ? Number(a.max) : Infinity;
+        const wert = da ? `${n.toLocaleString("de-AT", { maximumFractionDigits: 2 })}${a.unit_of_measurement ? ` ${U.esc(a.unit_of_measurement)}` : ""}` : "–";
+        return `<div class="fo-er"><span>${U.esc(titel)}</span>
+          <button type="button" data-es="${opt}" data-d="-1" aria-label="weniger" ${!da || n <= min ? "disabled" : ""}>−</button>
+          <b class="fo-er-v">${wert}</b>
+          <button type="button" data-es="${opt}" data-d="1" aria-label="mehr" ${!da || n >= max ? "disabled" : ""}>＋</button></div>`;
+      }).join("");
+    if (html === this._einstHtml) return;   // der Zustand hat sich nicht geändert
+    this._einstHtml = html; box.innerHTML = html;
+  }
+  _einstSetzen(opt, richtung) {
+    const id = this.config[opt], st = id && this._hass && this._hass.states[id], n = st ? parseFloat(st.state) : NaN;
+    if (!isFinite(n)) return;
+    const a = st.attributes || {}, step = Number(a.step) > 0 ? Number(a.step) : 1;
+    let v = Number((n + richtung * step).toFixed(6));
+    if (a.min != null && isFinite(Number(a.min))) v = Math.max(Number(a.min), v);
+    if (a.max != null && isFinite(Number(a.max))) v = Math.min(Number(a.max), v);
+    if (v === n) return;
+    this._hass.callService(id.split(".")[0], "set_value", { entity_id: id, value: v }).catch(() => U.toast(this, "Der Wert konnte nicht geändert werden"));
+  }
+
   // Wiegen und Ändern im Format der fp-weight-card: Ganztagstermin „Name 3450 g“, höchstens ein Wert je Kind und Tag.
   _sheetWiegen(kid, e) {
     const heute = this._isoTag(new Date());
@@ -7623,7 +8742,7 @@ class FpBabyOverviewCard extends HTMLElement {
       if (kid.birth) L.push(`Geboren ${this._dmy(this._day(kid.birth))}${kid.ga ? ` in SSW ${kid.ga}` : ""}, heute ${this._alterText(kid)} alt.`);
       if (this._laeuft(kid)) L.push(`Gerade läuft: Stillen seit ${this._hm(new Date(this._beginn(kid)))}${this._seite(kid) ? ` (${this._seite(kid)})` : ""}.`);
       if (kid.feeding_calendar || kid.diaper_calendar) {
-        L.push(`Tageswerte (0–24 Uhr; eine Mahlzeit = Einträge mit höchstens ${this.config.meal_pause_minutes} Min Pause; Abstand = Beginn zu Beginn):`);
+        L.push(`Tageswerte (0–24 Uhr; eine Mahlzeit = Einträge mit höchstens ${this._pauseMin()} Min Pause; Abstand = Beginn zu Beginn):`);
         L.push("Tag | Mahlzeiten | gestillt Min | Fläschchen ml | Ø Abstand | längster Abstand | Windeln nass/voll");
         for (let i = tage - 1; i >= 0; i--) {
           const d0 = this._mitternacht(jetzt, -i), t0 = +d0, t1 = t0 + TAG;
@@ -7676,45 +8795,56 @@ class FpBabyOverviewCard extends HTMLElement {
 
   _styles() {
     return `<style>
-      /* Farben wie Buma: dunkel mit Lachs als Akzent, je Art eine eigene Farbe. */
-      .fo-card{--b-bg:#1C1917;--b-card:#27221F;--b-card2:#322B27;--b-line:rgba(255,255,255,.07);--b-text:#F4EEE6;--b-mut:#9C9289;--b-faint:#6E655E;
-        --b-acc:#E8957A;--b-acc2:rgba(232,149,122,.16);--b-due:#3A2722;--b-sky:#203052;--b-bar:#2C2522;--b-track:#2E2724;--b-shadow:rgba(0,0,0,.45);
-        --c-nurse:#E77BB4;--c-bottle:#F0A73F;--c-diaper:#5DB36E;--c-stool:#B07A4A;--c-sleep:#8F8CF0;
-        position:relative;padding:18px 16px 14px;background:var(--b-bg);color:var(--b-text);border-radius:22px;container:fo-card / inline-size;}
-      .fo-card.fo-light{--b-bg:#FBF6EF;--b-card:#F1E9DF;--b-card2:#E7DDD0;--b-line:rgba(60,40,20,.09);--b-text:#2B2420;--b-mut:#7A7067;--b-faint:#A89E94;
-        --b-acc:#C9674A;--b-acc2:rgba(201,103,74,.12);--b-due:#F7E0D6;--b-sky:#D6E0F2;--b-bar:#FFFFFF;--b-track:#EAE2D6;--b-shadow:rgba(70,50,30,.18);
-        --c-nurse:#D9619E;--c-bottle:#E0921F;--c-diaper:#3F9A52;--c-stool:#9A6438;--c-sleep:#6662D6;}
+      /* Farben und Radien kommen aus dem Theme (Variablen --fp-*, siehe familienplaner-warm.yaml);
+         was nach dem Komma steht, ist der Rückfall für Themes ohne diese Zeilen. */
+      .fo-card{--b-bg:var(--ha-card-background, var(--card-background-color, #fff));--b-card:var(--fp-surface, var(--secondary-background-color, #f2f0ea));
+        --b-card2:var(--fp-surface-2, var(--divider-color, #e0ddd4));--b-track:var(--b-card2);--b-line:var(--divider-color, rgba(0,0,0,.12));
+        --b-text:var(--primary-text-color, #212121);--b-mut:var(--secondary-text-color, #727272);--b-faint:var(--disabled-text-color, var(--secondary-text-color, #9e9e9e));
+        --b-acc:var(--fp-accent, var(--primary-color, #4F6B57));--b-acc2:rgba(var(--fp-accent-rgb, 79, 107, 87), .14);
+        --b-alert:var(--fp-alert, var(--warning-color, #B97F06));
+        --b-on:var(--fp-c-on, #1E1C18);--b-bar:var(--b-bg);--b-shadow:rgba(0,0,0,.18);
+        --c-nurse:var(--fp-c-nurse, #D9719F);--c-bottle:var(--fp-c-bottle, #E3A43A);--c-diaper:var(--fp-c-diaper, #3E9DB0);--c-stool:var(--fp-c-stool, #A77446);--c-sleep:var(--fp-c-sleep, #8A87E0);
+        --fo-hero-fb:linear-gradient(180deg, rgba(var(--fp-tint-rgb, 125,155,132), .28) 0%, rgba(var(--fp-tint-rgb, 125,155,132), 0) 100%);
+        position:relative;padding:18px 16px 14px;background:var(--b-bg);color:var(--b-text);border-radius:var(--fp-radius, var(--ha-card-border-radius, 16px));container:fo-card / inline-size;}
+      /* fo-dark: nur für die Rückfälle, die vom Modus abhängen (Nachthimmel, Schatten, Uhrzeitfelder, Kinderfarbe in der Kurve) */
+      .fo-card.fo-dark{--fo-hero-fb:linear-gradient(180deg, #26324D 0%, rgba(38,50,77,0) 100%);--b-shadow:rgba(0,0,0,.45);}
       :where(.fo-card) button{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent;}   /* ohne Gewicht, damit Klassen mit eigener Schriftgröße gewinnen */
-      .fo-sky{position:absolute;left:0;right:0;top:0;height:200px;border-radius:22px 22px 0 0;pointer-events:none;
-        background:linear-gradient(180deg,var(--b-sky) 0%,color-mix(in srgb,var(--b-sky) 45%,var(--b-bg)) 45%,var(--b-bg) 100%);}
-      .fo-top,.fo-body,.fo-tabbar{position:relative;}
+      .fo-sky{position:absolute;left:0;right:0;top:0;height:200px;border-radius:var(--fp-radius, var(--ha-card-border-radius, 16px)) var(--fp-radius, var(--ha-card-border-radius, 16px)) 0 0;pointer-events:none;
+        background:var(--fp-hero-bg, var(--fo-hero-fb));}
+      .fo-top,.fo-body{position:relative;}
       .fo-laden,.fo-leer{padding:24px 8px;text-align:center;color:var(--b-mut);font-size:.9rem;}
 
       /* Kopf */
       .fo-top{display:flex;align-items:center;gap:10px;min-height:50px;}
-      .fo-who{display:flex;align-items:center;gap:12px;position:relative;flex:1;min-width:0;}
+      .fo-who{display:flex;align-items:center;gap:12px;flex:1;min-width:0;}
       .fo-who-all{display:none;}
       .fo-card.fo-multi .fo-who-all{display:none;}
       @container fo-card (min-width: 680px){ .fo-card.fo-multi .fo-who-one{display:none;} .fo-card.fo-multi .fo-who-all{display:flex;} }
-      .fo-kidbtn{display:flex;align-items:center;gap:12px;border:none;background:transparent;padding:0;cursor:pointer;text-align:left;}
+      /* Kindwechsel am Handy: ein großer Knopf je Kind, der gewählte in der Kinderfarbe gefüllt */
+      .fo-kseg{gap:8px;align-items:stretch;}
+      .fo-kb{flex:1 1 0;min-width:0;min-height:48px;display:flex;align-items:center;gap:8px;padding:6px 10px;border:2px solid transparent;border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);text-align:left;cursor:pointer;}
+      .fo-kb.fo-on{background:var(--k2);border-color:var(--k);}
+      .fo-kb:active{transform:scale(.97);}
+      .fo-kbn{display:flex;flex-direction:column;min-width:0;line-height:1.15;}
+      .fo-kbn b,.fo-kbn small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      .fo-kbn b{font-size:.98rem;font-weight:800;}
+      .fo-kbn small{font-size:.72rem;color:var(--b-mut);font-weight:600;}
+      @container fo-card (max-width: 420px){ .fo-kb{gap:6px;padding:6px 8px;} }
       .fo-wn{display:flex;flex-direction:column;min-width:0;}
       .fo-wn b{font-size:1.45rem;font-weight:800;letter-spacing:-.01em;line-height:1.15;}
       .fo-wn small{font-size:.86rem;color:var(--b-mut);font-weight:600;}
-      .fo-caret{font-style:normal;font-size:1rem;margin-left:6px;color:var(--b-mut);}
       .fo-av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:800;flex:none;overflow:hidden;}
       .fo-av img{width:100%;height:100%;object-fit:cover;}
       .fo-avs{display:flex;} .fo-avs .fo-av{box-shadow:0 0 0 2px var(--b-bg);} .fo-avs .fo-av+.fo-av{margin-left:-12px;}
-      .fo-menu{position:absolute;top:56px;left:0;z-index:5;display:flex;flex-direction:column;gap:2px;padding:6px;border-radius:16px;background:var(--b-card2);box-shadow:0 10px 30px var(--b-shadow);}
-      .fo-menu[hidden]{display:none;}
-      .fo-menu button{display:flex;align-items:center;gap:10px;border:none;background:transparent;padding:8px 14px 8px 8px;border-radius:12px;font-weight:700;cursor:pointer;}
-      .fo-menu button.fo-on{background:var(--b-card);}
-      .fo-spark{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-acc);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+      .fo-spark{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--accent-color, var(--b-acc));cursor:pointer;display:flex;align-items:center;justify-content:center;}
       .fo-spark:active{background:var(--b-acc2);}
+      .fo-gear{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:transparent;color:var(--b-mut) !important;font-size:1.45rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+      .fo-gear:active{background:var(--b-acc2);}
 
       /* Tag blättern */
       .fo-daynav{display:flex;align-items:center;justify-content:center;gap:28px;margin:14px 0 12px;font-weight:700;font-size:1rem;}
       .fo-daynav span{min-width:110px;text-align:center;}
-      .fo-daynav button{border:none;background:transparent;font-size:1.6rem;line-height:1;width:40px;height:36px;border-radius:12px;color:var(--b-mut);cursor:pointer;}
+      .fo-daynav button{border:none;background:transparent;font-size:1.6rem;line-height:1;width:40px;height:36px;border-radius:var(--fp-radius-sm, 12px);color:var(--b-mut);cursor:pointer;}
       .fo-daynav button:disabled{opacity:.25;cursor:default;}
 
       /* Spalten: Zwillinge am Tablet nebeneinander, am Handy eins mit Wechsel im Kopf */
@@ -7724,7 +8854,7 @@ class FpBabyOverviewCard extends HTMLElement {
         .fo-card.fo-multi .fo-col{display:grid;grid-template-rows:subgrid;grid-row:span var(--rows);}
       }
       .fo-blk{display:flex;flex-direction:column;min-width:0;}
-      .fo-blk > .fo-next,.fo-blk > .fo-mcard,.fo-blk > .fo-nowgrid,.fo-blk > .fo-minis{flex:1;}   /* nebeneinander gleich hoch */
+      .fo-blk > .fo-next,.fo-blk > .fo-mcard,.fo-blk > .fo-kenn,.fo-blk > .fo-now,.fo-blk > .fo-tag{flex:1;}   /* nebeneinander gleich hoch */
       @container fo-card (max-width: 679px){ .fo-card.fo-multi .fo-col:not(.fo-sel){display:none;} .fo-colhead{display:none !important;} }
       .fo-col{min-width:0;}
       .fo-colhead{display:flex;align-items:center;gap:10px;margin:0 2px 12px;}
@@ -7736,64 +8866,84 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-sleep{display:flex;flex-direction:column;gap:10px;margin:0 0 18px;}
       .fo-sl-row{display:flex;gap:10px;}
       @container fo-card (min-width: 680px){ .fo-sleep{flex-direction:row;} .fo-sl-row{display:contents;} .fo-sl-plus{order:9;} }
-      .fo-sl{flex:1 1 0;min-width:0;min-height:76px;display:flex;align-items:center;gap:12px;border:none;border-radius:18px;padding:12px 16px;cursor:pointer;text-align:left;
-        background:var(--c-sleep);color:#1C1917 !important;box-shadow:0 4px 16px color-mix(in srgb,var(--c-sleep) 40%,transparent);}
-      .fo-card.fo-light .fo-sl{color:#fff !important;}
+      .fo-sl{flex:1 1 0;min-width:0;min-height:76px;display:flex;align-items:center;gap:12px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:12px 16px;cursor:pointer;text-align:left;
+        background:var(--c-sleep);color:var(--b-on) !important;box-shadow:0 4px 16px color-mix(in srgb,var(--c-sleep) 40%,transparent);}
       .fo-sl:active{transform:scale(.97);}
-      .fo-sl.fo-sl-an,.fo-card.fo-light .fo-sl.fo-sl-an{background:color-mix(in srgb,var(--c-sleep) 24%,var(--b-bg));color:var(--b-text) !important;
+      .fo-sl.fo-sl-an{background:color-mix(in srgb,var(--c-sleep) 24%,var(--b-bg));color:var(--b-text) !important;
         box-shadow:inset 0 0 0 3px var(--c-sleep),0 0 22px color-mix(in srgb,var(--c-sleep) 45%,transparent);}
       .fo-sle{font-size:2rem;line-height:1;flex:none;}
       .fo-slx{display:flex;flex-direction:column;min-width:0;}
       .fo-slt{font-weight:800;font-size:1.08rem;line-height:1.2;font-variant-numeric:tabular-nums;}
       .fo-sls{font-size:.84rem;opacity:.8;font-variant-numeric:tabular-nums;margin-top:2px;}
       .fo-sl-an .fo-sls{color:var(--c-sleep);opacity:1;font-weight:700;}
-      /* Handy: in der Reihe je Kind Symbol über dem Text, sonst bricht „Kind B schläft“ um */
-      @container fo-card (max-width: 679px){ .fo-sl-row + .fo-sl-row .fo-sl{flex-direction:column;justify-content:center;gap:6px;padding:12px 8px;text-align:center;}
-        .fo-sl-row + .fo-sl-row .fo-slx{align-items:center;} }
-      .fo-sl-plus{flex:none;width:56px;min-height:76px;border:none;border-radius:18px;background:var(--b-card);color:var(--b-mut) !important;font-size:1.5rem;cursor:pointer;}
+      /* Kleine Zeile unter „Beide schlafen“: zwei Fassungen, am Tablet die bisherige, am Handy der Zustand der anderen Kinder */
+      .fo-vh,.fo-sls-h{display:none;}
+      /* Handy: nur „Beide schlafen“ (mit ＋), die Knöpfe je Kind entfallen — das gewählte Kind schaltet die Aktionsleiste unten.
+         Mit nur einem Kind entfällt die ganze Leiste. */
+      @container fo-card (max-width: 679px){ .fo-sl-row + .fo-sl-row{display:none;} .fo-sleep-solo{display:none;}
+        .fo-vt{display:none;} .fo-vh{display:inline;} .fo-sls-h{display:block;} }
+      .fo-sl-plus{flex:none;width:56px;min-height:76px;border:none;border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);color:var(--b-mut) !important;font-size:1.5rem;cursor:pointer;}
       .fo-s{position:absolute;top:0;bottom:0;border-radius:2px;background:var(--c-sleep);opacity:.4;}
       .fo-s.fo-s1{opacity:.9;}
       .fo-zeitrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-      .fo-kids button.fo-on{background:var(--c-sleep);color:#1C1917 !important;}
+      .fo-kids button.fo-on{background:var(--c-sleep);color:var(--b-on) !important;}
 
       /* Schnellknöpfe */
       .fo-quick{display:flex;gap:10px;margin-bottom:14px;}
-      .fo-q{flex:1 1 0;min-width:0;height:68px;border:none;border-radius:16px;background:var(--q);color:#1C1917 !important;cursor:pointer;
+      .fo-q{flex:1 1 0;min-width:0;height:68px;border:none;border-radius:var(--fp-radius-sm, 12px);background:var(--q);color:var(--b-on) !important;cursor:pointer;
         display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.74rem;font-weight:700;box-shadow:0 4px 14px color-mix(in srgb,var(--q) 35%,transparent);}
       .fo-q:active{transform:scale(.95);}
       .fo-qe{font-size:1.45rem;line-height:1;}
-      .fo-q-run{outline:3px solid color-mix(in srgb,var(--q) 45%,transparent);outline-offset:2px;font-variant-numeric:tabular-nums;font-size:.9rem;}
+      .fo-q-run{outline:3px solid color-mix(in srgb,var(--q) 45%,transparent);outline-offset:2px;}
+      /* Handy: die Schnellknöpfe entfallen, Schlaf, Stillen, Windel und Fläschchen stehen in der Aktionsleiste unten */
+      @container fo-card (max-width: 679px){ .fo-quick{display:none;} }
+      /* Knöpfe der Aktionsleiste: wie .fo-q, aber niedriger (mindestens 52 px) und ohne eigenen Schatten, den trägt die Leiste.
+         Der Schlafknopf zeigt wach seit … bzw. die Dauer; schläft das Kind, ist er gefüllt wie .fo-sl-an. */
+      .fo-qa{height:auto;min-height:52px;padding:5px 2px;gap:2px;box-shadow:none;}
+      .fo-qa .fo-qe{font-size:1.25rem;}
+      .fo-qt{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums;}
+      .fo-qs{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.66rem;font-weight:600;line-height:1.1;opacity:.8;font-variant-numeric:tabular-nums;}
+      .fo-qa.fo-qa-an{background:color-mix(in srgb,var(--c-sleep) 24%,var(--b-bg));color:var(--b-text) !important;
+        box-shadow:inset 0 0 0 3px var(--c-sleep),0 0 22px color-mix(in srgb,var(--c-sleep) 45%,transparent);}
+      .fo-qa-an .fo-qs{color:var(--c-sleep);opacity:1;font-weight:700;}
+      @container fo-card (max-width: 360px){ .fo-qa{font-size:.68rem;} }
 
       /* „Nächste Mahlzeit“ */
-      .fo-next{border-radius:20px;padding:16px 18px;background:var(--b-card);border:1.5px solid var(--b-acc);box-shadow:0 8px 24px var(--b-shadow);}
+      .fo-next{border-radius:var(--fp-radius, 16px);padding:16px 18px;background:var(--b-card);border:1.5px solid var(--b-acc);box-shadow:0 8px 24px var(--b-shadow);}
       .fo-nl{display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--b-acc);}
       .fo-nb{font-size:2rem;font-weight:800;letter-spacing:-.01em;line-height:1.15;margin-top:4px;font-variant-numeric:tabular-nums;}
-      .fo-next-due .fo-nb{color:var(--b-acc);}
+      .fo-next-due .fo-nb{color:var(--b-alert);}
       .fo-ns{font-size:.92rem;color:var(--b-mut);margin-top:4px;}
       .fo-nf{font-size:.88rem;color:var(--b-faint);margin-top:6px;}
-      .fo-nbtn{margin-top:12px;border:none;border-radius:12px;padding:10px 16px;background:var(--b-acc2);color:var(--b-acc) !important;font-weight:800;cursor:pointer;}
+      .fo-nbtn{margin-top:12px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:10px 16px;background:var(--b-acc2);color:var(--b-acc) !important;font-weight:800;cursor:pointer;}
       .fo-puls{width:9px;height:9px;border-radius:50%;background:var(--c-nurse);animation:fo-puls 1.4s ease-in-out infinite;}
       @keyframes fo-puls{50%{transform:scale(1.7);opacity:.35;}}
 
       /* Jetzt */
       .fo-sec{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--b-faint);margin:18px 2px 8px;}
-      .fo-nowgrid{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:10px;}
-      .fo-nowgrid>:last-child:nth-child(odd){grid-column:span 2;}
-      .fo-nc{display:flex;flex-direction:column;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
-      .fo-nc.fo-due{background:var(--b-due);}
-      .fo-ncl{display:flex;align-items:center;gap:7px;font-size:.84rem;color:var(--b-mut);font-weight:600;}
-      .fo-ncl i{width:9px;height:9px;border-radius:50%;flex:none;}
-      .fo-ncb{font-size:1.55rem;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums;line-height:1.1;}
-      .fo-ncs{font-size:.8rem;color:var(--b-mut);}
-      .fo-ncn{font-size:.78rem;color:var(--b-faint);margin-top:auto;padding-top:8px;}
-      .fo-due-t{color:var(--b-acc);font-weight:700;font-size:.86rem;}
+      .fo-sech{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+      .fo-plus{flex:none;min-height:36px;border:none;border-radius:999px;padding:8px 14px;background:var(--b-acc2);color:var(--b-acc) !important;font-size:.82rem;font-weight:800;letter-spacing:0;text-transform:none;cursor:pointer;}
+      /* Behälter für „Jetzt“, „Tag“, die Einträge und alles in „Muster“ und „Wachstum“: Rand statt beiger Fläche, getrennt durch Linien */
+      .fo-box{box-sizing:border-box;min-width:0;background:var(--b-bg);border:1px solid var(--b-line);border-radius:var(--fp-radius, 16px);padding:2px 12px;}
+      /* Jetzt als Liste: runder Kreis in der Tätigkeitsfarbe mit Symbol, Wert groß, „Tätigkeit · Detail“ klein, rechts Ausblick oder „Fällig“ */
+      .fo-nr{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--b-line);min-width:0;}
+      .fo-nr:first-child{border-top:none;}
+      .fo-nr[data-view]{cursor:pointer;}
+      .fo-nrk{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.05rem;line-height:1;background:color-mix(in srgb,var(--nr) 22%,var(--b-bg));}
+      .fo-nrm{flex:1;min-width:0;display:flex;flex-direction:column;}
+      .fo-nrm b{font-size:1rem;font-weight:900;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .fo-nrm small{font-size:.76rem;line-height:1.3;color:var(--b-mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .fo-nrr{flex:none;display:flex;flex-direction:column;align-items:flex-end;text-align:right;font-size:.74rem;font-weight:700;line-height:1.25;color:var(--b-mut);font-variant-numeric:tabular-nums;}
+      .fo-nr-due{color:var(--b-alert);font-weight:900;}
+      /* Kennzahlen in Wachstum: dieselben Zeilen (.fo-nr/.fo-nrm), nur ohne Symbolkreis */
+      .fo-kenn{margin-top:14px;}
 
-      /* Tageszahlen */
-      .fo-pills{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:8px;margin-top:16px;}
-      .fo-pills div{display:flex;flex-direction:column;align-items:center;border-radius:14px;padding:9px 4px;background:var(--b-card);}
-      .fo-pills b{font-size:1.15rem;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;}
-      .fo-pills span{font-size:.72rem;color:var(--b-mut);font-weight:600;white-space:nowrap;}
-      @container fo-card (max-width: 420px){ .fo-pills b{font-size:1rem;} .fo-pills span{font-size:.66rem;} }
+      /* Tag: Streifen mit Stunden und darunter die Zahlen als Textzeile (Abstand per gap, keine Trennzeichen) */
+      .fo-tag{padding:11px 12px;}
+      .fo-tag .fo-strip-l{margin-top:0;}
+      .fo-zahlen{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:8px;font-size:.8rem;line-height:1.35;color:var(--b-mut);}
+      .fo-zahlen span{white-space:nowrap;}
+      .fo-zahlen b{font-weight:800;color:var(--b-text);font-variant-numeric:tabular-nums;}
 
       /* Streifen */
       .fo-strip{position:relative;flex:1;min-width:0;}
@@ -7807,26 +8957,27 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-ticks span{position:absolute;top:2px;transform:translateX(-50%);}
       .fo-ticks span:first-child{transform:none;} .fo-ticks span:last-child{transform:translateX(-100%);}
 
-      /* Einträge */
-      .fo-list{border-radius:16px;background:var(--b-card);padding:4px 14px;}
+      /* Einträge (Heute) und Messungen (Wachstum): Zeilen im .fo-box, getrennt durch Linien */
       .fo-li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--b-line);font-size:.9rem;}
       .fo-li:last-child{border-bottom:none;}
       .fo-li i{width:9px;height:9px;border-radius:50%;flex:none;}
       .fo-li span{flex:1;min-width:0;font-weight:600;} .fo-li small{color:var(--b-mut);} .fo-li time{color:var(--b-mut);font-variant-numeric:tabular-nums;min-width:42px;text-align:right;}
 
-      /* Wachstum & Momente */
-      .fo-minis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
-      .fo-mini{display:flex;align-items:center;gap:12px;border-radius:18px;padding:12px 14px;background:var(--b-card);min-width:0;}
-      .fo-mini[data-nav],.fo-mini[data-view]{cursor:pointer;}
-      .fo-mi{font-size:1.6rem;flex:none;}
-      .fo-mini div{display:flex;flex-direction:column;min-width:0;}
-      .fo-mini small{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--b-faint);}
-      .fo-mini b{font-size:1rem;font-weight:800;overflow-wrap:anywhere;}
-      .fo-mini div span{font-size:.78rem;color:var(--b-mut);}
+      /* Wachstum & Momente als zwei Chips */
+      .fo-mchips{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;}
+      .fo-mchip{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-width:0;box-sizing:border-box;border:none;border-radius:999px;padding:5px 11px;background:var(--b-card);
+        font-size:.78rem;font-weight:700;text-align:left;cursor:pointer;}
+      .fo-mchip:active{transform:scale(.97);}
+      .fo-mchip-t{display:flex;min-width:0;white-space:nowrap;}
+      .fo-mchip-cut{max-width:26ch;overflow:hidden;text-overflow:ellipsis;}
+      .fo-mchip-d{margin-left:.35em;}
 
       /* Muster */
       .fo-mtitle{display:flex;flex-direction:column;margin:16px 2px 12px;}
       .fo-mtitle b{font-size:1.5rem;font-weight:800;} .fo-mtitle span{color:var(--b-mut);font-size:.9rem;}
+      .fo-bericht{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:-4px 2px 14px;}
+      .fo-bericht button{border:none;border-radius:999px;padding:8px 14px;background:var(--b-acc2);color:var(--b-acc) !important;font-size:.86rem;font-weight:800;cursor:pointer;}
+      .fo-bericht span{font-size:.8rem;color:var(--b-mut);}
       .fo-mctl{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:16px;}
       .fo-seg{display:flex;gap:4px;padding:4px;border-radius:999px;background:var(--b-card);}
       .fo-seg button{border:none;background:transparent;border-radius:999px;padding:6px 14px;font-weight:700;font-size:.86rem;color:var(--b-mut) !important;cursor:pointer;}
@@ -7834,26 +8985,41 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-chips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;max-width:100%;padding-bottom:2px;} .fo-chips::-webkit-scrollbar{display:none;}
       .fo-chips button{flex:none;display:flex;align-items:center;gap:7px;border:none;border-radius:999px;padding:8px 14px;background:var(--b-card);font-weight:700;font-size:.88rem;cursor:pointer;}
       .fo-chips i{width:9px;height:9px;border-radius:50%;background:var(--chip);}
-      .fo-chips button.fo-on{background:var(--chip);color:#1C1917 !important;} .fo-chips button.fo-on i{background:#1C1917;opacity:.35;}
-      .fo-mcard{border-radius:20px;padding:16px 18px;background:var(--b-card);}
+      .fo-chips button.fo-on{background:var(--chip);color:var(--b-on) !important;} .fo-chips button.fo-on i{background:var(--b-on);opacity:.35;}
+      /* Zusammenfassung mit Tagesschnitt: ein .fo-box; unter einer Linie der Schnitt, bei Zwillingen am unteren Rand auf einer Linie */
+      .fo-mcard{display:flex;flex-direction:column;padding:12px 14px;}
       .fo-mh{font-size:1.2rem;font-weight:800;}
-      .fo-mt{font-size:.92rem;color:var(--b-mut);line-height:1.45;margin-top:6px;}
-      .fo-avg{margin-top:16px;font-size:.95rem;} .fo-avg span{color:var(--b-mut);}
-      .fo-hint{font-size:.8rem;color:var(--c-diaper);margin-top:4px;opacity:.9;}
-      .fo-rows{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
-      .fo-row{display:flex;align-items:center;gap:10px;}
+      .fo-mt{font-size:.92rem;color:var(--b-mut);line-height:1.45;margin:6px 0 10px;}
+      .fo-avgz{margin-top:auto;padding:9px 0 2px;border-top:1px solid var(--b-line);}
+      .fo-avg{font-size:.95rem;} .fo-avg span{color:var(--b-mut);}
+      .fo-hint{font-size:.8rem;color:var(--b-mut);margin-top:3px;opacity:.9;}
+      /* Tage: eine Zeile je Tag (Tag, Streifen, Summe), getrennt durch Linien; die Stundenmarken oben sind die Kopfzeile ohne Linie */
+      .fo-rows{margin-top:14px;}
+      .fo-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--b-line);}
+      .fo-row:first-child,.fo-row-ticks + .fo-row{border-top:none;}
       .fo-rl{flex:0 0 48px;font-size:.84rem;font-weight:700;color:var(--b-mut);font-variant-numeric:tabular-nums;}
       .fo-rt{flex:0 0 58px;text-align:right;font-size:.84rem;font-weight:700;font-variant-numeric:tabular-nums;}
       .fo-row .fo-track{height:22px;}
+      .fo-row-ticks{padding:8px 0 0;}
       .fo-row-ticks .fo-ticks{height:14px;}
-      .fo-ins{display:flex;flex-direction:column;gap:6px;}
-      .fo-ins div{border-radius:14px;padding:10px 12px;background:var(--b-card);font-size:.88rem;line-height:1.35;}
+      /* Bemerkt (Muster und Wachstum): Zeilen im .fo-box mit Linien */
+      .fo-ins > div{padding:9px 0;border-top:1px solid var(--b-line);font-size:.88rem;line-height:1.35;}
+      .fo-ins > div:first-child{border-top:none;}
       .fo-ins span{color:var(--b-mut);}
 
-      /* Wachstum: Kurve in der Kinderfarbe, im Dunkeln aufgehellt */
-      .fo-gtiles{margin-top:10px;}
-      .fo-gcard{border-radius:20px;padding:12px 8px 10px;background:var(--b-card);--kl:color-mix(in srgb,var(--k) 55%,var(--b-text));}
-      .fo-card.fo-light .fo-gcard{--kl:var(--k);}
+      /* Eingebettete Karten (Momente, Protokoll) ohne eigenen Kartenrahmen; ihre Farben kommen wie die der Übersicht aus dem Theme */
+      .fo-emb{--ha-card-box-shadow:none;--ha-card-border-width:0;}
+      .fo-emb ha-card{background:transparent !important;box-shadow:none !important;border:none !important;}
+      .fo-ms-host .fm-card{padding:0 0 8px;}
+      .fo-ms-host .fm-title:empty{display:none;}
+      /* Am Handy wählt der Schalter im Kopf das Kind, der eigene der Meilensteinkarte wäre doppelt. Am Tablet bleibt er. */
+      @container fo-card (max-width: 679px){ .fo-card.fo-multi .fo-ms-host .fm-kids{display:none;} }
+      .fo-emb .ff-card,.fo-emb .fd-card{padding:0 0 8px;}
+      .fo-pgrid .fo-blk:not(:empty) + .fo-blk:not(:empty){margin-top:14px;}
+
+      /* Wachstum: Kurve in der Kinderfarbe */
+      .fo-gcard{padding:12px 8px 10px;--kl:var(--k);}   /* Kasten kommt von .fo-box */
+      .fo-card.fo-dark .fo-gcard{--kl:color-mix(in srgb,var(--k) 55%,var(--b-text));}   /* im Dunkeln aufgehellt */
       .fo-gchart{height:230px;}
       .fo-gchart svg{display:block;overflow:visible;}
       .fo-ggrid{stroke:var(--b-line);stroke-width:1;}
@@ -7866,7 +9032,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-gheute{stroke:var(--b-acc);stroke-width:1.5;}
       .fo-gheutel{font-size:10.5px;font-weight:800;fill:var(--b-acc);text-anchor:middle;}
       .fo-gline{fill:none;stroke:var(--kl);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round;}
-      .fo-gdot{fill:var(--kl);stroke:var(--b-card);stroke-width:2;}
+      .fo-gdot{fill:var(--kl);stroke:var(--b-bg);stroke-width:2;}
       .fo-ghalo{fill:var(--kl);opacity:.25;}
       .fo-gpt{cursor:pointer;}
       .fo-gleg{display:flex;flex-wrap:wrap;gap:6px 16px;padding:4px 10px 0;font-size:.76rem;color:var(--b-mut);}
@@ -7880,8 +9046,18 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-more{display:block;margin:8px auto 0;border:none;background:transparent;color:var(--b-acc) !important;font-weight:700;font-size:.86rem;cursor:pointer;}
       .fo-quelle{font-size:.72rem;line-height:1.45;color:var(--b-faint);margin-top:12px;}
 
-      /* Leiste unten */
-      .fo-tabbar{position:sticky;bottom:12px;z-index:4;display:flex;gap:4px;width:max-content;max-width:100%;margin:22px auto 0;padding:6px;border-radius:999px;
+      /* Leiste unten: der Behälter klebt am unteren Rand, darin am Handy die Aktionsleiste über der Ansichtsleiste.
+         Er selbst nimmt keine Tipps an, damit er den Inhalt daneben nicht verdeckt. */
+      .fo-dock{position:sticky;bottom:12px;z-index:4;display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:22px;pointer-events:none;}
+      .fo-dock > *{pointer-events:auto;}
+      .fo-dock:has(.fo-tabbar:empty){display:none;}
+      .fo-act{display:none;}
+      @container fo-card (max-width: 679px){
+        .fo-act{display:flex;align-self:stretch;gap:8px;box-sizing:border-box;padding:8px;border-radius:var(--fp-radius, 16px);
+          background:var(--b-bar);box-shadow:0 10px 30px var(--b-shadow);border:1px solid var(--b-line);}
+        .fo-act:empty{display:none;}
+      }
+      .fo-tabbar{display:flex;gap:4px;width:max-content;max-width:100%;padding:6px;border-radius:999px;
         background:var(--b-bar);box-shadow:0 10px 30px var(--b-shadow);border:1px solid var(--b-line);}
       .fo-tabbar:empty{display:none;}
       .fo-tabbar button{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:68px;border:none;border-radius:999px;padding:7px 12px;background:transparent;color:var(--b-mut) !important;font-size:.72rem;font-weight:700;cursor:pointer;}
@@ -7892,29 +9068,40 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-ov{position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;animation:fo-fade .2s;}
       @keyframes fo-fade{from{opacity:0;}}
       .fo-sheet{width:100%;max-width:560px;max-height:88vh;overflow:auto;box-sizing:border-box;background:var(--b-bg);color:var(--b-text);
-        border-radius:26px 26px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px var(--b-shadow);animation:fo-up .3s cubic-bezier(.2,.9,.3,1);}
-      @media (min-width: 700px){ .fo-ov{align-items:center;} .fo-sheet{border-radius:26px;} }
+        border-radius:var(--fp-radius, 16px) var(--fp-radius, 16px) 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px var(--b-shadow);animation:fo-up .3s cubic-bezier(.2,.9,.3,1);}
+      @media (min-width: 700px){ .fo-ov{align-items:center;} .fo-sheet{border-radius:var(--fp-radius, 16px);} }
       @keyframes fo-up{from{transform:translateY(40px);opacity:0;}}
       .fo-sh-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
       .fo-sh-head b{flex:1;font-size:1.15rem;font-weight:800;display:flex;align-items:center;gap:8px;}
-      .fo-sh-ai svg{color:var(--b-acc);}
+      .fo-sh-ai svg{color:var(--accent-color, var(--b-acc));}
       .fo-x{border:none;background:var(--b-card);width:34px;height:34px;border-radius:50%;cursor:pointer;flex:none;}
       .fo-neu{border:none;background:transparent;color:var(--b-mut) !important;font-size:.8rem;font-weight:700;cursor:pointer;}
       .fo-sh-sub{font-size:.8rem;color:var(--b-mut);margin:-6px 0 12px;}
       .fo-big3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-      .fo-big3 button{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;border-radius:18px;padding:16px 6px;background:color-mix(in srgb,var(--q) 22%,var(--b-card));font-weight:800;cursor:pointer;}
+      .fo-big3 button{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:16px 6px;background:color-mix(in srgb,var(--q) 22%,var(--b-card));font-weight:800;cursor:pointer;}
       .fo-big3 span{font-size:1.8rem;}
+      .fo-big3 button.fo-on{box-shadow:inset 0 0 0 3px var(--q);}
+      .fo-big2{grid-template-columns:repeat(2,1fr);}
+      .fo-wahl{display:flex;gap:8px;}
+      .fo-wahl button{flex:1 1 0;border:none;border-radius:var(--fp-radius-sm, 12px);padding:11px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
+      .fo-wahl button.fo-on{background:var(--b-acc);color:var(--fp-accent-fg, #fff) !important;}
+      .fo-er{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--b-line);}
+      .fo-er:last-child{border-bottom:none;}
+      .fo-er>span{flex:1;min-width:0;font-weight:700;}
+      .fo-er-v{min-width:70px;text-align:center;font-weight:800;font-variant-numeric:tabular-nums;}
+      .fo-er button{flex:none;width:44px;height:44px;border:none;border-radius:50%;background:var(--b-card);font-size:1.4rem;font-weight:800;line-height:1;cursor:pointer;}
+      .fo-er button:disabled{opacity:.3;cursor:default;}
       .fo-lbl{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--b-faint);margin:14px 0 8px;}
       .fo-mls{display:flex;flex-wrap:wrap;gap:8px;}
-      .fo-mls button{border:none;border-radius:12px;padding:10px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
-      .fo-mls button.fo-on{background:var(--c-bottle);color:#1C1917 !important;}
+      .fo-mls button{border:none;border-radius:var(--fp-radius-sm, 12px);padding:10px 14px;background:var(--b-card);font-weight:700;cursor:pointer;}
+      .fo-mls button.fo-on{background:var(--c-bottle);color:var(--b-on) !important;}
       .fo-mls .fo-in{width:90px;}
-      .fo-in{box-sizing:border-box;width:100%;padding:11px 12px;border:1px solid var(--b-line);border-radius:12px;background:var(--b-card);color:var(--b-text);font:inherit;font-size:1rem;}
-      .fo-in[type=time],.fo-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:dark;}
+      .fo-in{box-sizing:border-box;width:100%;padding:11px 12px;border:1px solid var(--b-line);border-radius:var(--fp-radius-sm, 12px);background:var(--b-card);color:var(--b-text);font:inherit;font-size:1rem;}
+      .fo-in[type=time],.fo-in[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;color-scheme:light;}
       .fo-in::-webkit-date-and-time-value{text-align:left;}   /* iPhone: Datum und Uhrzeit sonst breiter als das Blatt */
-      .fo-card.fo-light .fo-in[type=time],.fo-card.fo-light .fo-in[type=date]{color-scheme:light;}
+      .fo-card.fo-dark .fo-in[type=time],.fo-card.fo-dark .fo-in[type=date]{color-scheme:dark;}
       .fo-sh-hint{font-size:.78rem;color:var(--b-mut);margin-top:6px;}
-      .fo-ok{display:block;width:100%;margin-top:18px;border:none;border-radius:14px;padding:13px;background:var(--b-acc);color:#fff !important;font-weight:800;font-size:1rem;cursor:pointer;}
+      .fo-ok{display:block;width:100%;margin-top:18px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:13px;background:var(--b-acc);color:var(--fp-accent-fg, #fff) !important;font-weight:800;font-size:1rem;cursor:pointer;}
       .fo-del{display:block;width:100%;margin-top:6px;border:none;background:transparent;padding:11px;color:var(--b-mut) !important;font-weight:700;cursor:pointer;}
 
       /* Frag nach */
@@ -7922,9 +9109,9 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-msgs{flex:1;display:flex;flex-direction:column;gap:8px;overflow-y:auto;margin-bottom:10px;min-height:0;}
       .fo-msgs[hidden]{display:none;}
       .fo-chat .fo-sugg{margin-top:auto;}
-      .fo-msg{max-width:88%;border-radius:18px;padding:10px 14px;font-size:.93rem;line-height:1.45;overflow-wrap:anywhere;}
+      .fo-msg{max-width:88%;border-radius:var(--fp-radius, 16px);padding:10px 14px;font-size:.93rem;line-height:1.45;overflow-wrap:anywhere;}
       .fo-msg p{margin:0 0 6px;} .fo-msg p:last-child{margin-bottom:0;} .fo-msg ul{margin:4px 0;padding-left:20px;} .fo-msg li{margin:2px 0;}
-      .fo-me{align-self:flex-end;background:var(--b-acc);color:#fff;border-bottom-right-radius:6px;}
+      .fo-me{align-self:flex-end;background:var(--b-acc);color:var(--fp-accent-fg, #fff);border-bottom-right-radius:6px;}
       .fo-ai{align-self:flex-start;background:var(--b-card);border-bottom-left-radius:6px;}
       .fo-tipp{display:flex;gap:5px;padding:14px 16px;}
       .fo-tipp i{width:8px;height:8px;border-radius:50%;background:var(--b-mut);opacity:.4;animation:fo-tipp 1.2s infinite;}
@@ -7935,7 +9122,7 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-sugg button{border:1px solid var(--b-line);border-radius:999px;padding:8px 13px;background:var(--b-card);font-size:.86rem;font-weight:600;cursor:pointer;text-align:left;}
       .fo-ask{display:flex;gap:8px;}
       .fo-ask .fo-in{flex:1;min-width:0;}
-      .fo-send{flex:none;width:48px;border:none;border-radius:12px;background:var(--b-acc);color:#fff !important;font-size:1.1rem;cursor:pointer;}
+      .fo-send{flex:none;width:48px;border:none;border-radius:var(--fp-radius-sm, 12px);background:var(--b-acc);color:var(--fp-accent-fg, #fff) !important;font-size:1.1rem;cursor:pointer;}
       @media (prefers-reduced-motion: reduce){ .fo-puls,.fo-tipp i,.fo-sheet,.fo-ov{animation:none !important;} }
     </style>`;
   }
@@ -7944,6 +9131,6 @@ class FpBabyOverviewCard extends HTMLElement {
 if (!customElements.get("fp-baby-overview-card")) {
   customElements.define("fp-baby-overview-card", FpBabyOverviewCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "fp-baby-overview-card", name: "FP Baby Overview Card", description: "Übersicht je Kind im Stil von Buma: nächste Mahlzeit, Jetzt-Karten, Tagesstreifen, Muster und KI-Chat „Frag nach“" });
+  window.customCards.push({ type: "fp-baby-overview-card", name: "FP Baby Overview Card", description: "Übersicht je Kind im Stil von Buma: nächste Mahlzeit, Jetzt-Liste, Tagesstreifen, Muster und KI-Chat „Frag nach“" });
 }
 })();

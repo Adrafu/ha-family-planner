@@ -62,7 +62,7 @@ familienplaner-warm:
       # --- Karten ---
       card-background-color: "#FFFFFF"
       ha-card-background: "#FFFFFF"
-      ha-card-border-radius: "12px"
+      ha-card-border-radius: "16px"
       ha-card-border-width: "1px"
       ha-card-border-color: "#DED6C4"
       ha-card-box-shadow: "0 2px 8px rgba(70, 58, 34, 0.10)"
@@ -102,14 +102,43 @@ familienplaner-warm:
       fp-accent-fg: "#FFFFFF"           # Text auf Knopfflaechen
       fp-accent: "#4F6B57"
       fp-head: "#3C5343"                # Ueberschriften in eigenen Karten
-      fp-bar-bg: "#4F6B57"
-      fp-bar-fg: "#FFFFFF"
       # Essensplan: eine eigene Feldfarbe je Tageszeit, randlos
       fp-meal0-bg: "#F0EADA"            # Fruehstueck
       fp-meal1-bg: "#DFEBD6"            # Mittag
       fp-meal2-bg: "#F7E4CC"            # Abend
+      fp-meal0: "#C9A15A"               # Punktfarbe Frühstück (Listenansicht)
+      fp-meal1: "#6E9A62"               # Punktfarbe Mittag
+      fp-meal2: "#C97A3D"               # Punktfarbe Abend
       fp-meal-border: "transparent"
       fp-meal-radius: "8px"
+
+      # --- Design aus einem Guss (seit 13.10.2026) ---
+      # Gemeinsame Bausteine fuer alle eigenen Karten, vor allem die Baby-Uebersicht.
+      # Die Karten lesen sie mit Rueckfallwerten; ohne diese Zeilen bleibt alles benutzbar.
+      fp-surface: "#F4EFE4"             # Kacheln innerhalb einer Karte
+      fp-surface-2: "#E9E2D2"           # Spuren, gedrueckte Segmente
+      fp-hero-bg: "linear-gradient(180deg, #DCE5D3, rgba(220, 229, 211, 0))"   # Kopfverlauf: Morgen in Salbei
+      fp-alert: "#B97F06"               # „Faellig“
+      fp-alert-bg: "#FBEFD3"
+      fp-c-nurse: "#D9719F"             # Stillen
+      fp-c-bottle: "#E3A43A"            # Flaeschchen
+      fp-c-diaper: "#3E9DB0"            # Windel, blaugruen statt gruen (gruen ist eine Kinderfarbe)
+      fp-c-stool: "#A77446"             # Stuhl
+      fp-c-sleep: "#8A87E0"             # Schlaf
+      fp-c-on: "#1E1C18"                # Schrift auf diesen Farbflaechen
+      fp-radius: "16px"                 # Karten und Blaetter
+      fp-radius-sm: "12px"              # Kacheln und Knoepfe
+
+      # --- Glance-Karte auf der Startseite (seit 14.10.2026) ---
+      # Hintergrund je Tageszeit (Morgen 5-11, Tag 11-17, Abend 17-22, Nacht), dazu
+      # Schrift, Rand und Schatten. Ersetzt die festen Farben aus card_mod im Dashboard.
+      fp-glance-morning: "linear-gradient(135deg, #E4EBDA, #F3EBD8)"   # Salbei zu Sand
+      fp-glance-day: "linear-gradient(135deg, #DCE7D6, #E6EEDF)"       # Salbei
+      fp-glance-evening: "linear-gradient(135deg, #DCE7D6, #EADDC9)"   # Salbei zu warmem Bernstein
+      fp-glance-night: "linear-gradient(135deg, #D5DDD3, #D9DCE6)"     # Salbei zu kuehlem Grau
+      fp-glance-fg: "#22371F"
+      fp-glance-border: "#B9CBB1"
+      fp-glance-shadow: "0 2px 8px rgba(70, 58, 34, 0.16)"
 
     dark:
       # Der aktuelle Name ist ha-font-family-body; primary-font-family und die
@@ -152,7 +181,7 @@ familienplaner-warm:
 
       card-background-color: "#2C2A25"
       ha-card-background: "#2C2A25"
-      ha-card-border-radius: "12px"
+      ha-card-border-radius: "16px"
       ha-card-border-width: "1px"
       ha-card-border-color: "#3E3B34"
       ha-card-box-shadow: "0 2px 8px rgba(0, 0, 0, 0.35)"
@@ -183,10 +212,33 @@ familienplaner-warm:
       fp-accent-fg: "#1E1C18"
       fp-accent: "#8FB098"
       fp-head: "#8FB098"
-      fp-bar-bg: "#3C5343"
-      fp-bar-fg: "#EDE8DC"
       fp-meal0-bg: "#332F27"
       fp-meal1-bg: "#2B3529"
       fp-meal2-bg: "#372E24"
+      fp-meal0: "#D8B676"
+      fp-meal1: "#8DB880"
+      fp-meal2: "#DE9660"
       fp-meal-border: "transparent"
       fp-meal-radius: "8px"
+
+      fp-surface: "#35322B"
+      fp-surface-2: "#403C34"
+      fp-hero-bg: "linear-gradient(180deg, #26324D, rgba(38, 50, 77, 0))"      # Kopfverlauf: Nachthimmel
+      fp-alert: "#E0A93F"
+      fp-alert-bg: "#3A3122"
+      fp-c-nurse: "#E58BB6"
+      fp-c-bottle: "#EDB458"
+      fp-c-diaper: "#63B7C8"
+      fp-c-stool: "#C08C5E"
+      fp-c-sleep: "#9592EE"
+      fp-c-on: "#1E1C18"
+      fp-radius: "16px"
+      fp-radius-sm: "12px"
+
+      fp-glance-morning: "linear-gradient(135deg, #2E3A30, #3A3527)"
+      fp-glance-day: "linear-gradient(135deg, #2C3A2F, #33402F)"
+      fp-glance-evening: "linear-gradient(135deg, #2E3530, #3B2F2A)"
+      fp-glance-night: "linear-gradient(135deg, #1E2638, #26324D)"     # Nachthimmel wie fp-hero-bg
+      fp-glance-fg: "#EDE8DC"
+      fp-glance-border: "#3E3B34"
+      fp-glance-shadow: "0 2px 8px rgba(0, 0, 0, 0.35)"
