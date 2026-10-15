@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.0.1 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
+/* Family Planner custom cards v3.0.2 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -6223,11 +6223,12 @@ if (!customElements.get("fp-diaper-card-beta")) {
 }
 })();
 
-/* ===== fp-milestone-card-beta v3 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
+/* ===== fp-milestone-card-beta v4 (Foto je Meilenstein: hochladen beim Festhalten und später, rund im Album statt des Symbols, klein in Entwicklung und Bewegung, groß in der Erinnerung; davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
 // Ein erreichter Meilenstein = ein Ganztagstermin im eigenen Kalender an dem Tag,
 // an dem es passiert ist: Titel "🐢 Kind A: Krabbelt", Beschreibung
 // {"typ":"meilenstein","kind":"kind_a","id":"krabbeln"}, dazu optional notiz,
-// ca (Datum nur ungefähr) und bei eigenen Momenten t (Titel) und e (Symbol).
+// ca (Datum nur ungefähr), foto (ein Foto: media-source-ID aus dem Medienordner,
+// Unterordner image_folder) und bei eigenen Momenten t (Titel) und e (Symbol).
 // Dieselbe id in mehreren Bereichen ist derselbe Meilenstein: „Sitzt allein“ bei
 // den Ersten Malen hakt auch „Sitzt ohne Hilfe“ (Entwicklung, 9 Monate) und das
 // WHO-Fenster ab. Ids nie umbenennen — sie stehen in den Kalendereinträgen.
@@ -6453,6 +6454,7 @@ class FpMilestoneCard extends HTMLElement {
       title: "Meilensteine",
       kids: [{ key: "kind_a", name: "Kind A", color: "#4A7A3A" }],   // je Kind key, name, color, dazu birth und ga wie bei der fp-weight-card-beta
       sections: SECTIONS,
+      image_folder: "meilensteine",   // Unterordner im HA-Medienordner für die Fotos
     }, config);
     if (!Array.isArray(this.config.kids) || !this.config.kids.length) throw new Error("fp-milestone-card-beta braucht mindestens ein Kind unter kids");
     // Fehlt eine Angabe, trotzdem etwas Sinnvolles zeigen statt einer kaputten Farbe.
@@ -6461,6 +6463,7 @@ class FpMilestoneCard extends HTMLElement {
     const s = [].concat(this.config.sections || []).filter(x => SECTIONS.includes(x));
     this._secs = s.length ? s : SECTIONS;
     this._built = false; this._data = null; this._pend = []; this._hat = new Map(); this._sig = "";
+    this._img = new Map();   // aufgelöste Foto-Adressen je media-source-ID, damit das häufige Neuzeichnen nicht jedes Mal nachfragt
     this._pfx = `fp-milestone:${this.config.calendar}`;
     this._kind = this._pref("kind", "");
     if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
@@ -6474,7 +6477,7 @@ class FpMilestoneCard extends HTMLElement {
     if (!this._built) { this._build(); this._load(); }
   }
   connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._load(), 5 * 60000); }
-  disconnectedCallback() { clearInterval(this._timer); this._timer = null; }
+  disconnectedCallback() { clearInterval(this._timer); this._timer = null; this._closeFull(); }
 
   // Gewähltes Kind und Bereich merken — reine Komfort-Einstellung.
   _pref(n, d) { try { return localStorage.getItem(`${this._pfx}:${n}`) || d; } catch (e) { return d; } }
@@ -6546,7 +6549,8 @@ class FpMilestoneCard extends HTMLElement {
     if (meta.typ !== "meilenstein" || !meta.id || !meta.kind) return null;   // fremde Termine im selben Kalender überspringen
     const start = (ev.start && (ev.start.date || ev.start.dateTime)) || ev.start;
     return { uid: ev.uid, kind: String(meta.kind), id: String(meta.id), date: this._day(start), ca: !!meta.ca,
-      notiz: meta.notiz ? String(meta.notiz) : "", t: meta.t ? String(meta.t) : "", e: meta.e ? String(meta.e) : "" };
+      notiz: meta.notiz ? String(meta.notiz) : "", t: meta.t ? String(meta.t) : "", e: meta.e ? String(meta.e) : "",
+      foto: typeof meta.foto === "string" && meta.foto.startsWith("media-source://") ? meta.foto : "" };   // nur Medienordner-IDs, nichts Fremdes laden
   }
   // Je Kind und Meilenstein zählt der früheste Eintrag; noch nicht gespeicherte stehen schon mit drin.
   _index() {
@@ -6580,12 +6584,13 @@ class FpMilestoneCard extends HTMLElement {
     const info = this._info(id, x), meta = { typ: "meilenstein", kind, id };
     if (x.ca) meta.ca = true;
     if (x.notiz) meta.notiz = x.notiz;
+    if (x.foto) meta.foto = x.foto;
     if (id.startsWith("eigen_")) { meta.t = info.t; meta.e = info.e; }
     return { summary: `${info.e} ${this._kid(kind).name}: ${info.t}`, description: JSON.stringify(meta) };
   }
   // Erscheint sofort (optimistisch), der Kalender zieht nach.
   async _create(kind, id, date, x) {
-    const tmp = { uid: `tmp-${Math.random()}`, kind, id, date, ca: !!x.ca, notiz: x.notiz || "", t: x.t || "", e: x.e || "" };
+    const tmp = { uid: `tmp-${Math.random()}`, kind, id, date, ca: !!x.ca, notiz: x.notiz || "", t: x.t || "", e: x.e || "", foto: x.foto || "" };
     this._pend.push(tmp);
     const d = this._ev(kind, id, x), nach = new Date(date); nach.setDate(nach.getDate() + 1);
     try {
@@ -6613,6 +6618,92 @@ class FpMilestoneCard extends HTMLElement {
       if (!(await this._delete(alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
       return true;
     }
+  }
+
+  // ---------- Fotos ----------
+  // Ein Foto je Meilenstein, wie im Kochbuch: verkleinert in den Medienordner laden, im Eintrag steht nur die
+  // media-source-ID. Zum Anzeigen braucht jede ID eine signierte Adresse — die wird einmal geholt und fast
+  // einen Tag gemerkt, sonst fragte jedes Neuzeichnen der Karte neu nach und die Bilder flackerten.
+  _fotoUrl(src) {
+    const t = Date.now(), c = this._img.get(src);
+    if (c && c.until > t) return c.p;
+    const c2 = { url: "", fail: false, until: t + 82800000 };
+    c2.p = this._hass.callWS({ type: "media_source/resolve_media", media_content_id: src, expires: 86400 })
+      .then(r => (c2.url = r.url))
+      .catch(err => { c2.fail = true; c2.until = Date.now() + 60000; throw err; });   // nach einer Minute nochmal versuchen
+    this._img.set(src, c2);
+    return c2.p;
+  }
+  // Ein Bild-Tag; ist die Adresse schon bekannt, steht sie gleich drin (kein Flackern), sonst setzt _fillImgs sie nach dem Zeichnen.
+  // fb = Symbol, das an die Stelle tritt, falls das Foto sich nicht laden lässt; ohne fb verschwindet das Bild einfach.
+  _foto(src, cls, fb) {
+    const c = this._img.get(src), url = c && !c.fail && c.until > Date.now() ? c.url : "";
+    return `<img class="${cls}" data-img="${U.esc(src)}"${fb ? ` data-fb="${U.esc(fb)}"` : ""}${url ? ` src="${U.esc(url)}"` : ""} alt="">`;
+  }
+  _fillImgs(root) {
+    root.querySelectorAll("img[data-img]").forEach(img => {
+      const src = img.dataset.img;
+      img.addEventListener("error", () => {   // Adresse abgelaufen oder Datei weg: eine Minute lang nicht erneut versuchen
+        const p = Promise.reject(new Error("img")); p.catch(() => {});
+        this._img.set(src, { url: "", fail: true, until: Date.now() + 60000, p });
+        this._noImg(img);
+      }, { once: true });
+      if (img.getAttribute("src")) return;
+      this._fotoUrl(src).then(u => { if (img.isConnected) img.src = u; }).catch(() => this._noImg(img));
+    });
+  }
+  _noImg(img) {
+    if (!img.isConnected) return;
+    if (img.dataset.fb) { const s = document.createElement("span"); s.className = "fm-st-e"; s.textContent = img.dataset.fb; img.replaceWith(s); }
+    else img.remove();
+  }
+  // Foto verkleinern (lange Seite 1280 px, JPEG) und hochladen; liefert die media-source-ID.
+  async _uploadFoto(file, id, tag) {
+    const url = URL.createObjectURL(file), fehler = code => Object.assign(new Error(code), { code });
+    try {
+      const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
+      const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      const blob = await new Promise(ok => cv.toBlob(ok, "image/jpeg", 0.84));
+      if (!blob) throw fehler("bild");
+      // Dateiname ohne Namen von Personen: Meilenstein, Tag und eine Zufallsmarke
+      const slug = String(id || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40) || "moment";
+      const fd = new FormData();
+      fd.append("media_content_id", `media-source://media_source/local/${this.config.image_folder}`);
+      fd.append("file", blob, `${slug}-${tag}-${Date.now().toString(36)}.jpg`);
+      const res = await this._hass.fetchWithAuth("/api/media_source/local_source/upload", { method: "POST", body: fd });
+      if (res.status === 401 || res.status === 403) throw fehler("admin");
+      if (res.status === 400) throw fehler("ordner");
+      if (!res.ok) throw fehler("upload");
+      const j = await res.json();
+      if (!j || !j.media_content_id) throw fehler("upload");
+      return j.media_content_id;
+    } finally { URL.revokeObjectURL(url); }
+  }
+  // Ein hochgeladenes, aber nie gespeichertes Foto wieder aus dem Medienordner räumen. Gespeicherte Fotos fasst das
+  // nie an: dieselbe ID kann bei Geschwistern am Eintrag hängen. Schlägt das Löschen fehl, bleibt eben eine Datei liegen.
+  async _verwerfeFoto(ref) {
+    this._img.delete(ref);
+    try { await this._hass.callWS({ type: "media_source/local_source/remove", media_content_id: ref }); } catch (e) { /* bleibt liegen */ }
+  }
+  // Foto bildschirmfüllend; ein Tipp oder Escape schließt es wieder.
+  _vollbild(src) {
+    this._closeFull();
+    const f = document.createElement("div");
+    f.className = "fm-full";
+    f.innerHTML = `${this._foto(src, "fm-full-img")}<button class="fm-full-x" aria-label="Schließen">✕</button>`;
+    f.addEventListener("click", () => this._closeFull());
+    this.appendChild(f); this._full = f;
+    this._fillImgs(f);
+    this._fullKey = ev => { if (ev.key === "Escape") { ev.stopPropagation(); this._closeFull(); } };
+    document.addEventListener("keydown", this._fullKey, true);
+  }
+  _closeFull() {
+    if (!this._full) return;
+    this._full.remove(); this._full = null;
+    document.removeEventListener("keydown", this._fullKey, true);
   }
 
   // ---------- Aufbau ----------
@@ -6648,7 +6739,7 @@ class FpMilestoneCard extends HTMLElement {
     if (!this._built || !this._data) return;
     // Ohne uid: wird aus dem vorläufigen Eintrag der echte, bleibt alles stehen und der Sticker hüpft zu Ende.
     const sig = JSON.stringify([this._kind, this._tab, this._band, this._iso(new Date()),
-      [...this._hat.values()].map(e => [e.kind, e.id, +e.date, e.ca, e.notiz, e.t, e.e])]);
+      [...this._hat.values()].map(e => [e.kind, e.id, +e.date, e.ca, e.notiz, e.t, e.e, e.foto])]);
     if (!force && sig === this._sig) return;
     this._sig = sig;
     const kid = this._kid(this._kind);
@@ -6656,6 +6747,7 @@ class FpMilestoneCard extends HTMLElement {
     this._paintHead(kid);
     const body = this.querySelector(".fm-body");
     body.innerHTML = this._tab === "development" ? this._htmlDev(kid) : this._tab === "motor" ? this._htmlMotor(kid) : this._htmlFirsts(kid);
+    this._fillImgs(body);
     // Am Handy passt die Leiste der Altersstufen nicht ganz drauf: die gewählte in die Mitte holen.
     const leiste = body.querySelector(".fm-bands"), sel = leiste && leiste.querySelector(".fm-sel");
     if (sel && leiste.scrollWidth > leiste.clientWidth) leiste.scrollLeft = sel.offsetLeft - (leiste.clientWidth - sel.offsetWidth) / 2;
@@ -6698,7 +6790,7 @@ class FpMilestoneCard extends HTMLElement {
     const wann = h ? `${h.ca ? "ca. " : ""}${this._alter(kid, h.date, false, true) || this._dm(h.date)}` : "";
     return `<button class="fm-st${h ? " fm-on" : ""}" data-id="${U.esc(it.id)}" data-label="${U.esc(it.t)}" aria-pressed="${h ? "true" : "false"}"${h ? ` title="${U.esc(`${it.t}: ${this._dmy(h.date)}`)}"` : ""}>
       ${h ? `<span class="fm-st-star">⭐</span>` : ""}${this._andere(kid, it.id)}
-      <span class="fm-st-e">${U.esc(it.e)}</span><span class="fm-st-t">${U.esc(it.t)}</span>${h ? `<span class="fm-st-d">${wann}</span>` : ""}</button>`;
+      ${h && h.foto ? this._foto(h.foto, "fm-st-ph", it.e) : `<span class="fm-st-e">${U.esc(it.e)}</span>`}<span class="fm-st-t">${U.esc(it.t)}</span>${h ? `<span class="fm-st-d">${wann}</span>` : ""}</button>`;
   }
 
   // ---------- Entwicklung ----------
@@ -6734,7 +6826,7 @@ class FpMilestoneCard extends HTMLElement {
   _row(kid, id, t) {
     const h = this._get(kid.key, id);
     return `<button class="fm-row${h ? " fm-on" : ""}" data-id="${U.esc(id)}" data-label="${U.esc(t)}" aria-pressed="${h ? "true" : "false"}">
-      <span class="fm-bub">${h ? "✓" : ""}</span><span class="fm-rt">${U.esc(t)}</span>${this._andere(kid, id)}${h ? `<span class="fm-rd">${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}</button>`;
+      <span class="fm-bub">${h ? "✓" : ""}</span><span class="fm-rt">${U.esc(t)}</span>${this._andere(kid, id)}${h && h.foto ? this._foto(h.foto, "fm-mini") : ""}${h ? `<span class="fm-rd">${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}</button>`;
   }
 
   // ---------- Bewegung ----------
@@ -6754,7 +6846,7 @@ class FpMilestoneCard extends HTMLElement {
         return `<span class="fm-dot${k.key === kid.key ? " fm-me" : ""}" style="left:${pos(m)};background:${U.esc(k.color)}" title="${U.esc(`${k.name}: ${this._dmy(x.date)}`)}">${U.esc(String(k.name).slice(0, 1))}</span>`;
       }).join("");
       return `<button class="fm-mo${h ? " fm-on" : ""}" data-id="${id}" data-label="${U.esc(t)}" aria-pressed="${h ? "true" : "false"}">
-        <span class="fm-ml"><span class="fm-mi">${e}</span><span class="fm-mt">${U.esc(t)}</span>${h ? `<span class="fm-md">⭐ ${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}</span>
+        <span class="fm-ml"><span class="fm-mi">${e}</span><span class="fm-mt">${U.esc(t)}</span>${h ? `<span class="fm-md">⭐ ${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}${h && h.foto ? this._foto(h.foto, "fm-mini") : ""}</span>
         <span class="fm-track"><span class="fm-win" style="left:${pos(lo)};width:${pos(hi - lo)}"></span>${now}${dots}</span></button>`;
     }).join("");
     // Zahlen, die mit „heute“ zusammenstoßen würden, fallen weg; am Rand steht „heute“ bündig statt mittig.
@@ -6816,7 +6908,12 @@ class FpMilestoneCard extends HTMLElement {
   }
 
   // ---------- Dialog ----------
-  _closeOv() { if (this._ov) { this._ov.remove(); this._ov = null; } }
+  _closeOv() {
+    this._closeFull();
+    if (!this._ov) return;
+    const o = this._ov; this._ov = null; o.remove();
+    if (o._aufraeumen) o._aufraeumen();   // ein noch ungespeichertes, gerade hochgeladenes Foto verwerfen
+  }
   _openSheet({ id, label, edit, custom }) {
     this._closeOv();
     const kid = this._kid(this._kind), e = edit || null, info = this._info(id || "eigen_", e);
@@ -6837,6 +6934,7 @@ class FpMilestoneCard extends HTMLElement {
         ${schon.map(x => `<div class="fm-sh-other"><span class="fm-od" style="background:${U.esc(x.k.color)}">${U.esc(String(x.k.name).slice(0, 1))}</span>Bei ${U.esc(x.k.name)} war’s am ${this._dmy(x.h.date)}</div>`).join("")}
       </div>
       <div class="fm-sh-body">
+        <div class="fm-gbox"></div>
         ${custom ? `<div class="fm-two"><label class="fm-emo"><span class="fm-lbl">Symbol</span><input class="fm-in fm-e" maxlength="12" value="${U.esc(e ? info.e : "✨")}"></label>
           <label class="fm-grow"><span class="fm-lbl">Was ist passiert?</span><input class="fm-in fm-t" maxlength="60" placeholder="z. B. Erstes Mal im Tiergarten" value="${e ? U.esc(info.t) : ""}"></label></div>` : ""}
         <span class="fm-lbl">Wann war’s?</span>
@@ -6847,6 +6945,8 @@ class FpMilestoneCard extends HTMLElement {
         ${frei.map(k => `<label class="fm-check"><input type="checkbox" class="fm-also" value="${U.esc(k.key)}"${GEMEINSAM.has(id) ? " checked" : ""}> Auch für ${U.esc(k.name)} festhalten</label>`).join("")}
         <span class="fm-lbl">Notiz <span class="fm-opt">– wenn du magst</span></span>
         <textarea class="fm-in fm-notiz" rows="2" maxlength="500" placeholder="Wo wart ihr? Was war lustig?">${e ? U.esc(e.notiz) : ""}</textarea>
+        <span class="fm-lbl">Foto <span class="fm-opt">– wenn du magst</span></span>
+        <div class="fm-foto"></div>
       </div>
       <div class="fm-foot">${e ? `<button class="fm-btn fm-del">Nicht mehr abhaken</button>` : ""}<span class="fm-flex"></span>
         <button class="fm-btn fm-cancel">${e ? "Schließen" : "Abbrechen"}</button><button class="fm-btn fm-ok">${e ? "Speichern" : "Festhalten ✨"}</button></div>
@@ -6864,20 +6964,62 @@ class FpMilestoneCard extends HTMLElement {
     datum.addEventListener("change", zeig); datum.addEventListener("input", zeig);
     zeig();
     if (custom && !e) setTimeout(() => ov.querySelector(".fm-t").focus(), 50);
+
+    // Foto: wird sofort beim Auswählen hochgeladen, der Verweis im Eintrag aber erst mit „Speichern“ festgehalten.
+    // neu = Foto, das erst in diesem Dialog hochgeladen wurde und noch an keinem Eintrag hängt: bei Abbruch, Tausch
+    // oder Entfernen wird es wieder gelöscht. Ein schon gespeichertes Foto bleibt dagegen immer liegen (siehe _verwerfeFoto).
+    let foto = e ? e.foto : "", neu = "", laedt = false;
+    let gross = !!foto;   // eine Erinnerung mit Foto zeigt es groß oben; die Vorschau unten gibt es dann nicht doppelt
+    const fotoBox = ov.querySelector(".fm-foto"), grossBox = ov.querySelector(".fm-gbox");
+    const fotoZeigen = () => {
+      grossBox.innerHTML = foto && gross ? this._foto(foto, "fm-gfoto") : "";
+      fotoBox.innerHTML = `${foto && !gross ? this._foto(foto, "fm-vorschau") : ""}<div class="fm-fotoact">${laedt
+        ? `<span class="fm-btn fm-busy">⏳ Lädt hoch …</span>`
+        : `<label class="fm-btn fm-fbtn">${foto ? "Tauschen" : "📷 Foto"}<input type="file" accept="image/*" hidden></label>${foto ? `<button type="button" class="fm-btn fm-fdel">Entfernen</button>` : ""}`}</div>`;
+      this._fillImgs(grossBox); this._fillImgs(fotoBox);
+    };
+    const fotoFehler = err => U.toast(this, err && err.code === "admin" ? "Hochladen geht nur mit einem Admin-Konto"
+      : err && err.code === "ordner" ? `Ordner „${this.config.image_folder}“ fehlt im Medienordner – bitte einmal anlegen` : "Foto konnte nicht hochgeladen werden");
+    const fotoWahl = async file => {
+      laedt = true; fotoZeigen();
+      let ref = "";
+      try {
+        const tag = /^\d{4}-\d{2}-\d{2}$/.test(datum.value) ? datum.value : this._iso(heute);
+        ref = await this._uploadFoto(file, id, tag);
+      } catch (err) { laedt = false; if (this._ov === ov) { fotoZeigen(); fotoFehler(err); } return; }
+      if (this._ov !== ov) { this._verwerfeFoto(ref); return; }   // Dialog wurde währenddessen geschlossen
+      if (neu) this._verwerfeFoto(neu);   // ein zuvor in diesem Dialog hochgeladenes Foto ist jetzt überholt
+      foto = neu = ref; laedt = false; fotoZeigen();
+    };
+    fotoBox.addEventListener("change", ev => {
+      const f = ev.target.files && ev.target.files[0];
+      if (f && ev.target.matches("input[type=file]")) fotoWahl(f);
+    });
+    fotoBox.addEventListener("click", ev => {
+      if (ev.target.closest(".fm-fdel")) {
+        if (neu) { this._verwerfeFoto(neu); neu = ""; }
+        foto = ""; gross = false; fotoZeigen();
+      } else if (ev.target.closest(".fm-vorschau")) this._vollbild(foto);
+    });
+    grossBox.addEventListener("click", () => { if (foto) this._vollbild(foto); });
+    ov._aufraeumen = () => { if (neu) { this._verwerfeFoto(neu); neu = ""; } };
+    fotoZeigen();
+
     ov.querySelector(".fm-cancel").addEventListener("click", () => this._closeOv());
     if (e) ov.querySelector(".fm-del").addEventListener("click", async () => {
       if (!window.confirm(`${kid.name}: „${titel}“ nicht mehr abhaken?`)) return;
-      this._closeOv();
+      this._closeOv();   // räumt auch ein neu hochgeladenes Foto ab; das gespeicherte bleibt (kann bei Geschwistern hängen)
       const alle = (this._data || []).filter(x => x.kind === e.kind && x.id === e.id);   // Duplikate gleich mit
       for (const x of alle) await this._delete(x.uid);
       this._load();
     });
     ov.querySelector(".fm-ok").addEventListener("click", async () => {
+      if (laedt) { U.toast(this, "Das Foto lädt noch hoch – einen Moment"); return; }
       if (!datum.value) { U.toast(this, "Bitte ein Datum wählen"); return; }
       const d = this._day(datum.value);
       if (d > heute) { U.toast(this, "Das Datum liegt in der Zukunft"); return; }
       if (kid.birth && d < this._day(kid.birth)) { U.toast(this, "Das Datum liegt vor der Geburt"); return; }
-      const x = { ca: ov.querySelector(".fm-ca").checked, notiz: ov.querySelector(".fm-notiz").value.trim() };
+      const x = { ca: ov.querySelector(".fm-ca").checked, notiz: ov.querySelector(".fm-notiz").value.trim(), foto };
       let mid = id;
       if (custom) {
         x.t = ov.querySelector(".fm-t").value.trim(); x.e = ov.querySelector(".fm-e").value.trim() || "✨";
@@ -6885,13 +7027,16 @@ class FpMilestoneCard extends HTMLElement {
         if (!mid) mid = `eigen_${Date.now().toString(36)}`;
       }
       const auch = [...ov.querySelectorAll(".fm-also:checked")].map(c => c.value);
+      const eigenes = neu; neu = "";   // hängt gleich am Eintrag, _closeOv soll es nicht mehr löschen
       this._closeOv();
-      if (e) { if (await this._update(e, d, x)) this._load(); return; }
+      // Klappt das Speichern nicht, hängt das neue Foto an nichts: dann weg damit.
+      if (e) { if (await this._update(e, d, x)) this._load(); else if (eigenes) this._verwerfeFoto(eigenes); return; }
       const kids = [kid.key, ...auch];
-      const jobs = kids.map(k => this._create(k, mid, d, x));   // legt die Einträge sofort vorläufig an
+      const jobs = kids.map(k => this._create(k, mid, d, x));   // legt die Einträge sofort vorläufig an; alle teilen sich dasselbe Foto
       this._index(); this._paint(true); this._feiern(mid, kids);
       const ok = await Promise.all(jobs);
       if (ok.includes(false)) { this._index(); this._paint(true); }
+      if (eigenes && !ok.includes(true)) this._verwerfeFoto(eigenes);
       this._load();
     });
   }
@@ -6938,6 +7083,9 @@ class FpMilestoneCard extends HTMLElement {
       .fm-st.fm-on{border:2px solid var(--fm-kt,var(--fm-k));background:linear-gradient(160deg,var(--fm-k1),var(--fm-k2));box-shadow:0 3px 10px var(--fm-k2);}
       .fm-st.fm-on .fm-st-e{opacity:1;transform:rotate(-6deg);filter:drop-shadow(0 0 1px var(--card-background-color,#fff)) drop-shadow(0 3px 3px rgba(0,0,0,.2));}
       .fm-st.fm-on .fm-st-t{color:var(--primary-text-color);font-weight:700;}
+      /* Foto statt Symbol: rund, so hoch wie die Symbolzeile (2.1rem bei 1.15 Zeilenhöhe), damit die Kacheln gleich hoch bleiben */
+      .fm-st-ph{display:block;flex:none;width:2.6rem;height:2.6rem;margin:-.09rem 0;box-sizing:border-box;border-radius:50%;object-fit:cover;
+        border:2px solid var(--card-background-color,#fff);background:var(--fm-s2);box-shadow:0 3px 6px var(--fm-k3);}
       .fm-st-d{margin-top:auto;font-size:.7rem;font-weight:800;color:var(--fm-kt,var(--fm-k));background:var(--card-background-color,#fff);border-radius:999px;padding:1px 8px;}
       .fm-st-star{position:absolute;top:-9px;right:-5px;font-size:1.15rem;transform:rotate(14deg);}
       .fm-add{border-style:dashed;border-color:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 36%,transparent);}
@@ -6971,6 +7119,9 @@ class FpMilestoneCard extends HTMLElement {
       .fm-rt{flex:1;min-width:0;}
       .fm-rd{flex:none;font-size:.78rem;font-weight:800;color:var(--fm-kt,var(--fm-k));}
       .fm-row .fm-others{position:static;}
+      /* kleines rundes Foto am erledigten Eintrag (Entwicklung und Bewegung) */
+      .fm-mini{flex:none;width:28px;height:28px;box-sizing:border-box;border-radius:50%;object-fit:cover;
+        border:2px solid var(--card-background-color,#fff);background:var(--fm-s2);box-shadow:0 1px 3px var(--fm-k3);}
 
       /* Bewegung: Zeitfenster als Balken, Punkte zeigen, wann es so weit war */
       .fm-motor{display:flex;flex-direction:column;gap:8px;}
@@ -7034,12 +7185,24 @@ class FpMilestoneCard extends HTMLElement {
       .fm-btn{border:none;border-radius:var(--fm-rs);padding:12px 16px;font-weight:700;font-size:.95rem;cursor:pointer;background:var(--fm-s);color:var(--primary-text-color);}
       .fm-ok{background:var(--fm-k);color:#fff;box-shadow:0 4px 12px var(--fm-k3);}
       .fm-del{background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;padding-left:2px;padding-right:2px;}
+      /* Foto im Dialog: groß oben in der Erinnerung, sonst als Vorschau unter der Notiz; ein Tipp zeigt es bildschirmfüllend */
+      .fm-gbox{margin-top:14px;} .fm-gbox:empty{display:none;}
+      .fm-gfoto{display:block;width:100%;min-height:150px;max-height:min(320px,48vh);object-fit:cover;border-radius:var(--fm-rs);background:var(--fm-s);cursor:zoom-in;}
+      .fm-vorschau{display:block;max-width:100%;max-height:200px;min-width:120px;min-height:120px;object-fit:cover;border-radius:var(--fm-rs);background:var(--fm-s);cursor:zoom-in;margin-bottom:8px;}
+      .fm-fotoact{display:flex;flex-wrap:wrap;gap:8px;}
+      .fm-fbtn,.fm-busy{display:inline-block;text-align:center;}
+      .fm-busy{opacity:.75;cursor:default;}
+      .fm-full{position:fixed;inset:0;z-index:1002;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;cursor:zoom-out;
+        background:color-mix(in srgb,var(--fp-scrim,#000) 92%,transparent);animation:fm-fade .2s;}
+      .fm-full-img{max-width:100%;max-height:100%;object-fit:contain;}
+      .fm-full-x{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:12px;width:40px;height:40px;border:none;border-radius:50%;cursor:pointer;
+        background:color-mix(in srgb,var(--fp-scrim,#000) 50%,transparent);color:var(--text-primary-color,#fff);font-size:1.15rem;}
 
       /* Konfetti */
       .fm-fx{position:fixed;inset:0;pointer-events:none;z-index:1000;overflow:hidden;}
       .fm-cf{position:absolute;display:block;border-radius:2px;}
       .fm-cf-e{font-size:20px;line-height:1;}
-      @media (prefers-reduced-motion: reduce){ .fm-sh-e,.fm-spark,.fm-pop,.fm-bump,.fm-sheet,.fm-ov{animation:none !important;} }
+      @media (prefers-reduced-motion: reduce){ .fm-sh-e,.fm-spark,.fm-pop,.fm-bump,.fm-sheet,.fm-ov,.fm-full{animation:none !important;} }
     </style>`;
   }
   getCardSize() { return 10; }
