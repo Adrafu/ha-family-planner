@@ -27,6 +27,29 @@
       const p = el.parentElement;
       if (p && p.localName === "hui-card") { p.style.display = "block"; p.style.height = "100%"; }
     },
+    // Wie fill, aber im HA-Stapel (horizontal-stack) bleibt alles, wie HA es setzt.
+    // Dort gilt "#root > hui-card { display: contents }" und die Breite verteilt
+    // "#root > hui-card > * { flex: 1 1 0 }". Ein Inline-"display:block" am hui-card
+    // hebt das auf: er wird selbst zum Flex-Item mit Breite nach Inhalt, und eine
+    // Karte mit container-type:inline-size hat dann Eigenbreite 0 — alle Karten
+    // kleben zusammengedrueckt (~0 px) nebeneinander. Ein height:100% an der Karte
+    // verhindert dort ausserdem das Strecken auf gleiche Hoehe (Prozenthoehe in
+    // einer Zeile ohne feste Hoehe zaehlt nicht mehr als "auto").
+    // Also: nur wenn der hui-card nicht "contents" ist (Sections-Raster,
+    // vertical-stack), wird die Zelle geschlossen. Das braucht den berechneten Stil
+    // eines eingehaengten hui-card; vorher gilt die Raster-Annahme, und die Karte
+    // ruft nach dem Einhaengen (connectedCallback) noch einmal auf.
+    fillZelle: el => {
+      const p = el.parentElement;
+      const da = !!p && p.localName === "hui-card" && p.isConnected;
+      // Eigene Werte aus einem frueheren Aufruf (oder von fill) erst entfernen,
+      // sonst liest man unten das eigene "block" statt HAs Regel.
+      if (da && p.style.display === "block" && p.style.height === "100%") { p.style.removeProperty("display"); p.style.removeProperty("height"); }
+      const stapel = da && getComputedStyle(p).display === "contents";
+      el.style.display = "block";
+      if (stapel) el.style.removeProperty("height"); else el.style.height = "100%";
+      if (da && !stapel) { p.style.display = "block"; p.style.height = "100%"; }
+    },
   };
   // In dasselbe Objekt hineinschreiben, nicht ersetzen: Karten der anderen
   // Datei halten bereits eine Referenz darauf.
@@ -2431,7 +2454,7 @@ if (!customElements.get("shopping-fav-card-beta")) {
 }
 })();
 
-/* ===== nav-card-beta v3 (fuellt die Rasterzelle aus; wraps any card; pointer/text-cursor children stay interactive) ===== */
+/* ===== nav-card-beta v4 (in horizontal-stack wieder nebeneinander statt zusammengedrueckt (fuellt die Rasterzelle, ohne HAs Stapel-Aufteilung zu ueberschreiben); davor: fuellt die Rasterzelle aus; wraps any card; pointer/text-cursor children stay interactive) ===== */
 (() => {
 const U = window.__fpUtils;
 class NavCard extends HTMLElement {
@@ -2439,6 +2462,11 @@ class NavCard extends HTMLElement {
     if (!config || !config.card) throw new Error("card (zu umhuellende Karte) erforderlich");
     this.config = config;
     this._built = false;
+  }
+  connectedCallback() {
+    // _build kann vor dem Einhaengen laufen; dann war der hui-card noch nicht erreichbar
+    const fz = U.fillZelle || U.fill;
+    if (fz) fz(this);
   }
   set hass(hass) {
     this._hass = hass;
@@ -2466,7 +2494,8 @@ class NavCard extends HTMLElement {
     wrap.addEventListener("click", e => this._onClick(e));
     // Hoehe bis zur umhuellten Karte durchreichen; deren ha-card braucht
     // zusaetzlich card_mod: "ha-card{height:100%}" in ihrer eigenen Config.
-    if (U.fill) U.fill(this); // defensiv: fehlender Helfer darf die Karte nie killen
+    const fz = U.fillZelle || U.fill; // defensiv: fehlender Helfer darf die Karte nie killen
+    if (fz) fz(this);
     if (el.style) el.style.height = "100%";
   }
   _isInteractive(path) {
@@ -2508,7 +2537,7 @@ if (!customElements.get("nav-card-beta")) {
 }
 })();
 
-/* ===== fp-todo-card-beta v17 (Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+/* ===== fp-todo-card-beta v18 (in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
 // Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
 // selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
 // Hinzufügen über das Ereignis fp-todo-add bleiben.
@@ -2548,7 +2577,8 @@ class FpTodoCard extends HTMLElement {
     window.addEventListener("fp-todo-add", this._onAdd);
     if (!this._tick) this._tick = setInterval(() => this._paint(), 60000);   // „heute/morgen“ wandert mit dem Tag
     if (!this._built && this.config) this._build();
-    if (U.fill) U.fill(this);   // jetzt hängt die Karte im DOM, hui-card ist erreichbar
+    const fz = U.fillZelle || U.fill;
+    if (fz) fz(this);   // jetzt hängt die Karte im DOM, hui-card ist erreichbar
     this._subscribe();
     this._paint();
   }
@@ -2728,7 +2758,8 @@ class FpTodoCard extends HTMLElement {
     const pc = this.config.pill;
     const dot = pc && typeof pc === "object" && pc.color && !pc.bg ? String(pc.color) : "";
     this.innerHTML = `<ha-card class="fpt-card"${dot ? ` style="${U.esc("--fpt-dot:" + dot)}"` : ""}><div class="fpt-body"><div class="fpt-head" hidden></div><div class="fpt-list" lang="de"></div>${add}</div></ha-card>${this._styles()}`;
-    if (U.fill) U.fill(this);
+    const fz = U.fillZelle || U.fill;
+    if (fz) fz(this);
     const card = this.querySelector(".fpt-card");
     this._head = card.querySelector(".fpt-head");
     this._list = card.querySelector(".fpt-list");
@@ -3115,7 +3146,7 @@ if (!customElements.get("fp-todo-card-beta")) {
 }
 })();
 
-/* ===== fp-glance-card-beta v7 (Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
+/* ===== fp-glance-card-beta v8 (in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -3164,7 +3195,12 @@ class FpGlanceCard extends HTMLElement {
     if (!this._built) this._build(); else this._paint();
     this._maybeFetch();
   }
-  connectedCallback() { if (!this._clock) this._clock = setInterval(() => { this._maybeFetch(); this._paint(); }, 60000); }
+  connectedCallback() {
+    if (!this._clock) this._clock = setInterval(() => { this._maybeFetch(); this._paint(); }, 60000);
+    // _build kann vor dem Einhängen laufen; dann war der hui-card noch nicht erreichbar
+    const fz = U.fillZelle || U.fill;
+    if (fz) fz(this);
+  }
   disconnectedCallback() { if (this._clock) { clearInterval(this._clock); this._clock = null; } }
 
   _esc(s) { return U.esc(s); }
@@ -3324,7 +3360,8 @@ class FpGlanceCard extends HTMLElement {
         <div class="fpg-info"></div>
         <div class="fpg-wc"></div>
       </div>`;
-    if (U.fill) U.fill(this); // defensiv: fehlender Helfer darf die Karte nie killen
+    const fz = U.fillZelle || U.fill; // defensiv: fehlender Helfer darf die Karte nie killen
+    if (fz) fz(this);
     if (this.config.shadow) this.style.setProperty("--fpg-shadow", this.config.shadow);
     this._elCard = this.querySelector(".fpg-card");
     this._elDate = this.querySelector(".fpg-date");
