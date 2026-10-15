@@ -140,7 +140,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card-beta v30 (am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
+/* ===== meal-grid-card-beta v31 (Kopf mit „📖 Kochbuch“, wenn cookbook_path gesetzt ist; davor: am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -586,8 +586,9 @@ class MealGridCard extends HTMLElement {
 
     // ---------- Kopf ----------
     // Woche füllen / Leeren sitzen als kleine Pillen im Kopf (nicht in „Heute groß“: dort ist keine ganze Woche geladen)
-    const aktionen = (!compact && layout !== "today" && this.config.ai_suggest)
-      ? `<div class="mg-acts"><button class="mg-fill">${CP(0x2728)} Woche füllen</button><button class="mg-clear">${CP(0x1F5D1)} Leeren</button></div>` : "";
+    const ki = (!compact && layout !== "today" && this.config.ai_suggest)
+      ? `<button class="mg-fill">${CP(0x2728)} Woche füllen</button><button class="mg-clear">${CP(0x1F5D1)} Leeren</button>` : "";
+    const aktionen = ki ? `<div class="mg-acts">${ki}</div>` : "";
     let head = "";
     if (compact) {
       if (this.config.title) head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
@@ -603,12 +604,16 @@ class MealGridCard extends HTMLElement {
         ? `${a.getDate()}.–${b.getDate()}. ${mn[b.getMonth()]}`
         : `${a.getDate()}. ${mn[a.getMonth()]} – ${b.getDate()}. ${mn[b.getMonth()]}`;
       const heute = this._offset !== 0 ? `<button class="mg-today-btn" data-d="0" title="Aktuelle Woche">Heute</button>` : "";
+      // „📖 Kochbuch“ führt zur Kochbuch-Unteransicht; steht vor den Aktionen, damit es beim Umbruch in der ersten Reihe bleibt
+      // und nicht neben dem „Leeren“ sitzt. Nur im vollen Kopf (nicht bei hide_header, nicht in „Heute groß“).
+      const buch = this.config.cookbook_path ? `<button class="mg-book">${CP(0x1F4D6)} Kochbuch</button>` : "";
+      const acts = (buch || ki) ? `<div class="mg-acts${buch && ki ? " mg-acts3" : ""}">${buch}${ki}</div>` : "";
       head = `<div class="mg-head"><div class="mg-title">${this._esc(this.config.title)}</div>
         <div class="mg-hr">${heute}<div class="mg-wk">
           <button class="mg-nav" data-d="-1" title="Vorige Woche" aria-label="Vorige Woche">${CP(0x2039)}</button>
           <span class="mg-range">${range}</span>
           <button class="mg-nav" data-d="1" title="Nächste Woche" aria-label="Nächste Woche">${CP(0x203A)}</button>
-        </div></div>${aktionen}</div>`;
+        </div></div>${acts}</div>`;
     }
 
     // ---------- Bausteine ----------
@@ -736,12 +741,15 @@ class MealGridCard extends HTMLElement {
       .mg-nav{flex:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--primary-text-color);font-size:1.25rem;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .mg-nav:active{background:var(--fp-surface-2,var(--divider-color));}
       .mg-today-btn{flex:none;min-height:32px;padding:0 12px;border:none;border-radius:999px;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);color:var(--fp-accent,var(--primary-color));font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-      .mg-acts{flex:none;display:flex;flex-wrap:wrap;gap:6px;}
-      .mg-fill,.mg-clear{flex:none;min-height:32px;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      /* max-width: drei Pillen dürfen auf schmalen Karten in der Reihe umbrechen statt überzulaufen */
+      .mg-acts{flex:none;max-width:100%;display:flex;flex-wrap:wrap;gap:6px;}
+      .mg-book,.mg-fill,.mg-clear{flex:none;min-height:32px;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      /* drei Pillen: auf Handybreite etwas enger, damit „Leeren“ nicht allein in eine dritte Reihe fällt (ab ca. 335 px Kartenbreite) */
+      @media (max-width:420px){.mg-acts3{gap:5px;}.mg-acts3 .mg-book,.mg-acts3 .mg-fill,.mg-acts3 .mg-clear{padding:0 10px;}}
       .mg-fill:disabled,.mg-clear:disabled{opacity:.6;cursor:default;}
       @media (hover:hover){
         .mg-nav:hover{background:var(--fp-surface-2,var(--divider-color));}
-        .mg-fill:hover{color:var(--fp-accent,var(--primary-color));border-color:var(--fp-accent,var(--primary-color));}
+        .mg-book:hover,.mg-fill:hover{color:var(--fp-accent,var(--primary-color));border-color:var(--fp-accent,var(--primary-color));}
         .mg-clear:hover{color:var(--error-color,#db4437);border-color:var(--error-color,#db4437);}
       }
       /* Datum als kleine Pille im Kopf von „Heute groß“ */
@@ -856,6 +864,8 @@ class MealGridCard extends HTMLElement {
       ${bgImg}
     `;
     this.innerHTML = `<style>${css}</style>${html}`;
+    const kb = this.querySelector(".mg-book");
+    if (kb) kb.addEventListener("click", () => this._nav(this.config.cookbook_path));
     const fb = this.querySelector(".mg-fill");
     if (fb) fb.addEventListener("click", () => this._fillWeek(fb));
     const cb = this.querySelector(".mg-clear");
