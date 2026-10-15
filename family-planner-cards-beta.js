@@ -7215,18 +7215,22 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v18 (ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v19 (neu: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
 // Schreibt selbst Windeln, Fläschchen, Gewichte und nachgetragenes oder geändertes Stillen im Format
 // jener Karten und schaltet den Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
+// Mit layout: bar wird daraus eine schmale Leiste für die Startseite (letzte und nächste Mahlzeit je Kind, ohne Protokoll,
+// Schlaf, Wachstum oder Meilensteine); sie lädt nur die Stillkalender und führt per Tipp in den Baby-Tab.
 (() => {
 const U = window.__fpUtils;
 const MIN = 60000, STD = 3600000, TAG = 86400000;
 const WT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const KIDCOLORS = ["#4A7A3A", "#7A4A78", "#3A6A8A", "#A0603A"];
 const LADETAGE = 28;   // für Muster: zwei Wochen und die zwei davor zum Vergleich
+const BARTAGE = 4;     // Leiste: so viele Tage Stillkalender (die Prognose braucht 72 h)
+const BARTAKT = 15000; // Leiste: alle 15 s prüfen, ob sich der Text geändert hat (Minuten), jede Minute neu laden
 // Kleine eigene Symbole für die Leiste unten, 24er-Raster.
 const ICO = {
   heute: '<path d="M4 11.2 12 4l8 7.2V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/>',
@@ -7256,6 +7260,8 @@ class FpBabyOverviewCard extends HTMLElement {
       meal_pause_entity: "",     // optional: input_number (Minuten), überschreibt meal_pause_minutes
       meal_pause_minutes: 45,    // höchstens so viel Pause zwischen zwei Einträgen derselben Mahlzeit
       bottle_minutes: 15,        // Fläschchen stehen mit „fertig um“: so viel früher war ihr Beginn
+      layout: "",                // "bar" = schmale Baby-Leiste für die Startseite statt der Übersicht
+      nav_path: "",              // Leiste: Pfad des Baby-Tabs, den ein Tipp auf ein Kind öffnet; leer = Tipp tut nichts
     }, config);
     this.config.kids = this.config.kids.map((k, i) => Object.assign({}, k, {
       key: String(k.key || k.name || `kind_${i + 1}`), name: String(k.name || k.key || `Kind ${i + 1}`),
@@ -7272,7 +7278,15 @@ class FpBabyOverviewCard extends HTMLElement {
     this._eAlle = false;   // Heute: alle Einträge des Tages statt der letzten fünf
     this._emb = {};        // Protokoll: eingebettete Still- und Windelkarte je Kind, einmal angelegt
     this._ref = null;
-    if (this.config.growth_data) this._loadRef();
+    // Leiste: nur Stillkalender und Schalter. Kurven, Perzentile und Raster der Übersicht braucht sie nicht; die Rasterhöhe
+    // (Sections-View) richtet sich nach der Leiste, volle Breite, Höhe nach Inhalt. Als Eigenschaft der Instanz, damit die Übersicht
+    // von Home Assistant nichts Neues angeboten bekommt.
+    this._bar = this.config.layout === "bar";
+    if (this._bar) this.getGridOptions = () => ({ columns: "full", rows: "auto" });
+    else delete this.getGridOptions;
+    this._barHtml = "";
+    if (this._timer) { clearInterval(this._timer); this._timer = setInterval(() => this._tick(), this._bar ? BARTAKT : 1000); }   // Editor: Takt passt zur Darstellung
+    if (this.config.growth_data && !this._bar) this._loadRef();
   }
   // Referenzkurven wie in der fp-weight-card-beta; beide Karten teilen sich den Abruf über window.__fpGrowth.
   async _loadRef() {
@@ -7289,6 +7303,7 @@ class FpBabyOverviewCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    if (this._bar) { this._hassBar(); return; }
     if (this._ms) this._ms.hass = hass;
     Object.values(this._emb).forEach(e => { if (e.feed) e.feed.hass = hass; if (e.diaper) e.diaper.hass = hass; });
     // Verglichen wird mit dem, was die Karte zuletzt gesehen hat — nicht mit dem vorigen hass-Objekt.
@@ -7309,12 +7324,21 @@ class FpBabyOverviewCard extends HTMLElement {
     this._nachT = zeiten.map(ms => setTimeout(() => this._load(), ms));
   }
   connectedCallback() {
+    // Leiste: nach dem Wiederanhängen (zurück auf der Startseite) gleich frisch zeichnen und laden, der Takt stand solange still.
+    if (this._bar) {
+      if (this._abgehaengt) { this._abgehaengt = false; this._paintBar(); this._load(); }
+      if (!this._timer) this._timer = setInterval(() => this._tick(), BARTAKT);
+      return;
+    }
     // Home Assistant hängt die Karte beim Tabwechsel ab und wieder an: wer zurückkehrt, landet auf „Heute“ am heutigen Tag.
-    // Kind, Muster-Spanne, eingebettete Karten und Daten bleiben.
+    // Muster-Spanne, eingebettete Karten und Daten bleiben. Das Kind liest sie neu aus der Merkung: Die Baby-Leiste auf der Startseite
+    // legt dort das getippte Kind ab, der Baby-Tab soll bei ihm landen.
     if (this._abgehaengt) {
       this._abgehaengt = false;
       this._closeSheet();
       this._view = "heute"; this._off = 0; this._eAlle = false;
+      const gemerkt = this._pref("kind", "");
+      if (this.config.kids.some(k => k.key === gemerkt)) this._kind = gemerkt;
       if (this._built) this._paint(true);
     }
     if (!this._timer) this._timer = setInterval(() => this._tick(), 1000);
@@ -7332,6 +7356,8 @@ class FpBabyOverviewCard extends HTMLElement {
   // Jede Sekunde nur die laufenden Uhren; jede halbe Minute die „her“-Zeiten, jede Minute die Kalender.
   _tick() {
     this._t = (this._t || 0) + 1;
+    // Leiste: zeichnet nur neu, wenn sich ein Text geändert hat (Minuten), und lädt jede Minute (vier Takte)
+    if (this._bar) { this._paintBar(); if (this._t % 4 === 0) this._load(); return; }
     this.querySelectorAll(".fo-uhr[data-ab]").forEach(el => { el.textContent = this._uhr((Date.now() - Number(el.dataset.ab)) / 1000); });
     this.querySelectorAll(".fo-dauer[data-ab]").forEach(el => { el.textContent = this._hDauer(Date.now() - Number(el.dataset.ab)); });   // Schlaf: ohne Sekunden
     if (this._t % 30 === 0) this._paint();
@@ -7444,7 +7470,9 @@ class FpBabyOverviewCard extends HTMLElement {
 
   async _load() {
     if (!this._hass) return;
-    const jetzt = new Date(), von = this._mitternacht(jetzt, -Math.max(LADETAGE, Number(this.config.days || 14))), bis = this._mitternacht(jetzt, 1);
+    // Leiste: nur der Stillkalender der letzten Tage; Windeln, Schlaf, Gewichte und Meilensteine bleiben aus (leerer Kalender = kein Abruf)
+    const bar = this._bar, nur = c => (bar ? "" : c);
+    const jetzt = new Date(), von = this._mitternacht(jetzt, bar ? -BARTAGE : -Math.max(LADETAGE, Number(this.config.days || 14))), bis = this._mitternacht(jetzt, 1);
     let fehler = 0;
     const holen = async (cal, ab) => {
       if (!cal) return [];
@@ -7457,7 +7485,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const lange = new Date(2015, 0, 1);
     await Promise.all([
       ...this.config.kids.map(async k => {
-        const [f, w, sl] = await Promise.all([holen(k.feeding_calendar, von), holen(k.diaper_calendar, von), holen(k.sleep_calendar, von)]);
+        const [f, w, sl] = await Promise.all([holen(k.feeding_calendar, von), holen(nur(k.diaper_calendar), von), holen(nur(k.sleep_calendar), von)]);
         const a = alt.kids[k.key] || { feeds: [], diapers: [], sleeps: [] };
         d.kids[k.key] = {
           feeds: f ? f.map(x => this._parseFeed(x)).filter(x => x && !isNaN(x.start)).sort((x, y) => x.start - y.start) : a.feeds,
@@ -7465,8 +7493,8 @@ class FpBabyOverviewCard extends HTMLElement {
           sleeps: sl ? sl.map(x => this._parseSleep(x)).filter(x => x && !isNaN(x.start) && !isNaN(x.end)).sort((x, y) => x.start - y.start) : (a.sleeps || []),
         };
       }),
-      holen(this.config.weight_calendar, lange).then(r => { if (r) d.weights = r.map(x => this._parseWeight(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
-      holen(this.config.milestone_calendar, lange).then(r => { if (r) d.milestones = r.map(x => this._parseMilestone(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
+      holen(nur(this.config.weight_calendar), lange).then(r => { if (r) d.weights = r.map(x => this._parseWeight(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
+      holen(nur(this.config.milestone_calendar), lange).then(r => { if (r) d.milestones = r.map(x => this._parseMilestone(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
     ]);
     if (fehler && this._loadedOnce) U.toast(this, "Einige Einträge konnten nicht geladen werden");
     this._loadedOnce = true;   // allerersten Ladefehler (Startup-Flackern) nicht melden
@@ -7734,6 +7762,99 @@ class FpBabyOverviewCard extends HTMLElement {
     return { h, t: t.join(" ") };
   }
 
+  // ---------- Leiste (layout: bar) ----------
+  // Schmale Pille für die Startseite: je Kind ein Element mit Kürzel oder Foto, Name, letzter Mahlzeit und der Spanne der nächsten.
+  // Die Daten und Regeln sind die der Hauptkarte (_vm, _naechsteKarte): Leiste und Baby-Tab sagen dasselbe. Geladen wird nur der
+  // Stillkalender (siehe _load), gezeichnet wird, wenn sich ein Schalter ändert oder der Text (Minuten) — also nicht bei jedem hass.
+  // Ein Tipp merkt das Kind in derselben Preference wie der Baby-Tab und öffnet nav_path; der Tab liest sie beim Wiederanhängen.
+  _hassBar() {
+    const kids = this.config.kids, sts = this._hass.states;
+    const st = e => { const s = e && sts[e]; return s ? [s.state, s.last_changed, s.attributes && s.attributes.timestamp] : 0; };
+    const sig = JSON.stringify([kids.map(k => [st(k.switch), st(k.start), k.entity && sts[k.entity] && sts[k.entity].attributes && sts[k.entity].attributes.entity_picture]), this._pauseMin()]);
+    const lauf = kids.map(k => this._laeuft(k)), vorher = this._lauf;
+    this._lauf = lauf;
+    if (!this._built) { this._swSig = sig; this._buildBar(); this._load(); return; }
+    // Beim Stopp schreibt die Automation den Termin erst nach ein paar Sekunden — mehrfach nachladen, wie in der Übersicht.
+    if (vorher && vorher.some((v, i) => v && !lauf[i])) this._nachladen([3000, 8000, 20000, 40000]);
+    if (sig !== this._swSig) { this._swSig = sig; this._paintBar(); }
+  }
+  _buildBar() {
+    this._built = true; this._barHtml = "";
+    this.innerHTML = `<div class="fb-card"><div class="fb-pill"></div></div>${this._stylesBar()}`;
+    this.querySelector(".fb-card").addEventListener("click", ev => { const b = ev.target.closest("[data-kid]"); if (b) this._barTipp(b.dataset.kid); });
+    this._paintBar();
+  }
+  // Neu zeichnen nur, wenn der Text ein anderer ist (jede Minute ändert sich „satt seit“ bzw. „stillt“).
+  _paintBar() {
+    const pille = this._built && this.querySelector(".fb-pill");
+    if (!pille) return;
+    const html = this.config.kids.map(k => this._barKind(k)).join(`<i class="fb-sep" aria-hidden="true"></i>`);
+    if (html === this._barHtml) return;
+    this._barHtml = html; pille.innerHTML = html;
+  }
+  // Ein Kind: Kürzel, Name und der Zustand nach den Regeln von _naechsteKarte. Spanne und „Fällig“ nur mit Prognose (ab vier Abständen)
+  // und höchstens acht Stunden nach der letzten Mahlzeit; danach „letzte vor …“. Ohne nav_path ist es kein Knopf.
+  _barKind(k) {
+    const jetzt = Date.now(), nav = !!this.config.nav_path, hm = t => this._hm(new Date(t));
+    let dot = "", txt;
+    if (!this._d) txt = "lädt …";
+    else if (this._laeuft(k)) { dot = `<i class="fb-puls" aria-hidden="true"></i>`; txt = `<b>stillt</b> · ${this._minText(jetzt - this._beginn(k))}`; }
+    else {
+      const vm = this._vm(k), l = vm.letzte, p = vm.prog, seit = l ? jetzt - l.start : 0;
+      if (!l) txt = "noch nichts eingetragen";
+      else if (seit > 8 * STD) txt = `letzte vor ${this._her(seit)}`;
+      else {
+        txt = `satt seit ${this._hDauer(seit)}`;
+        if (p) txt += jetzt < p.lo ? ` · <b>${hm(p.lo)}–${hm(p.hi)}</b>` : jetzt <= p.hi ? ` · <b>jetzt–${hm(p.hi)}</b>` : ` · <span class="fb-due">Fällig</span>`;
+      }
+    }
+    return `<${nav ? `button type="button"` : "div"} class="fb-k" data-kid="${U.esc(k.key)}" style="${this._kidStyle(k)}">${this._avatar(k, 22)}
+      <b class="fb-n">${U.esc(k.name)}</b><span class="fb-o">·</span>${dot}<span class="fb-t">${txt}</span></${nav ? "button" : "div"}>`;
+  }
+  _barTipp(key) {
+    const p = this.config.nav_path;
+    if (!p || !this.config.kids.some(k => k.key === key)) return;
+    this._kind = key; this._setPref("kind", key);   // derselbe Schlüssel wie im Baby-Tab (_pfx hängt an den Kinder-Keys)
+    history.pushState(null, "", p);
+    window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
+  }
+  _stylesBar() {
+    return `<style>
+      /* Farben und Radien aus dem Theme (--fp-*), nach dem Komma der Rückfall; hell und dunkel macht das Theme */
+      .fb-card{display:block;--b-bg:var(--ha-card-background, var(--card-background-color, #fff));--b-line:var(--divider-color, rgba(0,0,0,.12));
+        --b-text:var(--primary-text-color, #212121);--b-mut:var(--secondary-text-color, #727272);--b-alert:var(--fp-alert, var(--warning-color, #B97F06));
+        --c-nurse:var(--fp-c-nurse, #D9719F);container:fb-card / inline-size;}
+      .fb-pill{display:flex;align-items:center;box-sizing:border-box;padding:7px 14px;border:1px solid var(--b-line);border-radius:999px;background:var(--b-bg);
+        color:var(--b-text);font-size:.9rem;line-height:1.3;font-variant-numeric:tabular-nums;}
+      .fb-k{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:7px;margin:0;padding:3px 8px;border:0;border-radius:999px;
+        background:none;font:inherit;color:inherit;text-align:left;cursor:default;-webkit-tap-highlight-color:transparent;}
+      button.fb-k{cursor:pointer;}
+      button.fb-k:active{background:var(--k1);}
+      @media (hover:hover){ button.fb-k:hover{background:var(--k1);} }
+      button.fb-k:focus-visible{outline:2px solid var(--k);outline-offset:1px;}
+      .fb-card .fo-av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:800;flex:none;overflow:hidden;font-size:11px !important;}   /* wie .fo-av der Hauptkarte: weiße Initiale auf der Kinderfarbe, in beiden Themes lesbar; nur größer als der Standard von _avatar */
+      .fb-card .fo-av img{width:100%;height:100%;object-fit:cover;}
+      .fb-n{flex:0 1 auto;min-width:2.5ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800;}
+      .fb-o{flex:none;color:var(--b-mut);margin:0 -2px;}
+      .fb-t{flex:0 .0001 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--b-mut);font-weight:600;}
+      .fb-t b{color:var(--b-text);font-weight:800;}
+      .fb-due{display:inline-block;padding:0 9px;border-radius:999px;font-size:.84em;font-weight:800;line-height:1.5;color:var(--b-alert);
+        background:var(--fp-alert-bg, color-mix(in srgb, var(--b-alert) 18%, transparent));}
+      .fb-puls{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c-nurse);margin:0 -1px;animation:fb-puls 1.4s ease-in-out infinite;}
+      @keyframes fb-puls{50%{transform:scale(1.7);opacity:.35;}}
+      .fb-sep{flex:none;width:1px;align-self:stretch;margin:2px 8px;background:var(--b-line);}
+      /* Schmal (unter 700 px, gemessen: zwei Kinder mit „Name · satt seit 1:10 h · 22:24–22:49“ brauchen nebeneinander rund 690 px):
+         eine Zeile je Kind untereinander, die Pille nur noch abgerundet statt rund. Etwas enger gesetzt, damit eine Zeile in
+         343 px passt; der Name gibt als Erster nach (Ellipse). */
+      @container fb-card (max-width: 699px){
+        .fb-pill{flex-direction:column;align-items:stretch;gap:2px;padding:7px 12px;border-radius:var(--fp-radius, 16px);font-size:.86rem;}
+        .fb-k{flex:none;justify-content:flex-start;gap:6px;padding:3px 4px;}
+        .fb-sep{display:none;}
+      }
+      @media (prefers-reduced-motion: reduce){ .fb-puls{animation:none !important;} }
+    </style>`;
+  }
+
   // ---------- Aufbau ----------
   _build() {
     this._built = true;
@@ -7875,6 +7996,7 @@ class FpBabyOverviewCard extends HTMLElement {
   }
 
   _paint(force) {
+    if (this._bar) { this._paintBar(); return; }
     if (!this._built || !this._d) return;
     if ((this._view === "protokoll" && !this._hatProtokoll()) || (this._view === "wachstum" && !this.config.weight_calendar) || (this._view === "momente" && !this.config.milestone_calendar)) this._view = "heute";
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
@@ -9412,11 +9534,11 @@ class FpBabyOverviewCard extends HTMLElement {
       @media (prefers-reduced-motion: reduce){ .fo-puls,.fo-tipp i,.fo-sheet,.fo-ov{animation:none !important;} }
     </style>`;
   }
-  getCardSize() { return 12; }
+  getCardSize() { return this._bar ? 1 : 12; }
 }
 if (!customElements.get("fp-baby-overview-card-beta")) {
   customElements.define("fp-baby-overview-card-beta", FpBabyOverviewCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "fp-baby-overview-card-beta", name: "FP Baby Overview Card", description: "Übersicht je Kind im Stil von Buma: nächste Mahlzeit, Jetzt-Liste, Tagesstreifen, Muster und KI-Chat „Frag nach“" });
+  window.customCards.push({ type: "fp-baby-overview-card-beta", name: "FP Baby Overview Card", description: "Übersicht je Kind im Stil von Buma: nächste Mahlzeit, Jetzt-Liste, Tagesstreifen, Muster und KI-Chat „Frag nach“; mit layout: bar eine schmale Leiste für die Startseite" });
 }
 })();
