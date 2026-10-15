@@ -1954,7 +1954,7 @@ if (!customElements.get("kids-routine-card-beta")) {
 }
 })();
 
-/* ===== shopping-fav-card-beta v23 (großer Knopf unter der Schnellauswahl, wenn beides sichtbar ist; davor: Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card-beta v24 (embedded: true ohne eigenen Rahmen, kompakter, für die Aufgabenkarte; davor: großer Knopf unter der Schnellauswahl, wenn beides sichtbar ist; davor: Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1979,6 +1979,8 @@ class ShoppingFavCard extends HTMLElement {
       // Home Assistant reicht kein Wiederholungsmuster durch, deshalb legt die Karte solche
       // Aufgaben direkt ueber die Todoist-Schnittstelle an (rest_command).
       repeat_options: [], repeat_label: "Wiederholung", todoist_service: "rest_command.todoist_add_task",
+      // embedded: sitzt in der Aufgabenkarte (fp-todo-card-beta, Option favorites), die den Rahmen stellt
+      embedded: false,
     }, config || {});
     this._editing = false; this._lastVal = null; this._built = false;
     this._open = []; this._optim.clear(); this._markSig = ""; this._failAt = 0;
@@ -2000,6 +2002,9 @@ class ShoppingFavCard extends HTMLElement {
     const t = setTimeout(() => { this._timers.delete(t); fn(); }, ms);
     this._timers.add(t);
   }
+  // Dialoge hängen an der Karte selbst. Eingebettet in die Aufgabenkarte (container-type) wäre
+  // position:fixed an deren Rahmen gebunden statt am Fenster; dann hängen sie am Element der Aufgabenkarte.
+  _ovRoot() { return this.config.embedded && this._ovHost && this._ovHost.isConnected ? this._ovHost : this; }
 
   // ---------- „Schon auf der Liste“ (Abo auf list_entity) ----------
   // Tipp legt direkt an (kein Zuweisen-Blatt) und es gibt Favoriten, die man markieren kann
@@ -2296,7 +2301,7 @@ class ShoppingFavCard extends HTMLElement {
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
     const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${this._emoji(name)} ${this._esc(name)}</div><div class="sf-sub">Wer?</div><div class="sf-tgts">${tbtns}</div>${this._dueHtml()}${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">OK</button></div></div>`;
-    this.appendChild(ov);
+    this._ovRoot().appendChild(ov);
     const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
     ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => {
@@ -2325,7 +2330,7 @@ class ShoppingFavCard extends HTMLElement {
     const dueHtml = this.config.show_due ? this._dueHtml() : "";
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${CP(0x2795)} ${this._esc(this.config.add_label || "Hinzufügen")}</div><input class="sf-addtext" type="text" placeholder="Eingeben..."/>${favChips ? `<div class="sf-sub">Favoriten</div><div class="sf-favs">${favChips}</div>` : ""}${tbtns ? `<div class="sf-sub">${this._esc(this.config.target_label || "Wer?")}</div><div class="sf-tgts">${tbtns}</div>` : ""}${dueHtml}${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">Hinzufügen</button></div></div>`;
-    this.appendChild(ov);
+    this._ovRoot().appendChild(ov);
     const txt = ov.querySelector(".sf-addtext");
     const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
@@ -2372,7 +2377,11 @@ class ShoppingFavCard extends HTMLElement {
            + `<div class="sf-grid" lang="de" style="--sf-cols:${cols};">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div>`;
     }
     this._markSig = this._marksSig();
-    this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${top}${body}${bottom}</ha-card>${this._styles()}`;
+    if (this.config.embedded) {
+      // ohne ha-card: Rahmen, Hintergrund und Schatten gehören der Aufgabenkarte
+      this.style.display = "block";
+      this.innerHTML = `<div class="sf-card sf-emb">${top}${body}${bottom}</div>${this._styles()}`;
+    } else this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${top}${body}${bottom}</ha-card>${this._styles()}`;
 
     const ab = this.querySelector(".sf-addbig");
     if (ab) ab.addEventListener("click", () => this._openAdd());
@@ -2390,7 +2399,7 @@ class ShoppingFavCard extends HTMLElement {
     this._draft = this._items();
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._ov = ov;
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">Favoriten bearbeiten</div><div class="sf-list"></div><div class="sf-addrow"><input class="sf-new" type="text" placeholder="Neuer Favorit..."><button class="sf-addbtn">${CP(0x2795)} Hinzufügen</button></div><div class="sf-foot"><button class="sf-done">Fertig</button></div></div>`;
-    this.appendChild(ov);
+    this._ovRoot().appendChild(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeEditor(); });
     const inp = ov.querySelector(".sf-new");
     ov.querySelector(".sf-addbtn").addEventListener("click", () => { this._add(inp.value); inp.value = ""; inp.focus(); });
@@ -2423,7 +2432,7 @@ class ShoppingFavCard extends HTMLElement {
       .sf-sec{font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
       .sf-edit{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:36px;box-sizing:border-box;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       /* Raster: höchstens --sf-cols Spalten, auf schmalen Karten weniger (mindestens 96px), alle gleich breit */
-      .sf-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(max(96px,calc((100% - (var(--sf-cols,3) - 1) * 8px) / var(--sf-cols,3) - 1px)),1fr));}
+      .sf-grid{display:grid;gap:var(--sf-gap,8px);grid-template-columns:repeat(auto-fill,minmax(max(var(--sf-min,96px),calc((100% - (var(--sf-cols,3) - 1) * var(--sf-gap,8px)) / var(--sf-cols,3) - 1px)),1fr));}
       .sf-chip{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:68px;box-sizing:border-box;padding:8px 6px;border:none;border-radius:var(--fp-radius-sm,12px);background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-size:.82rem;font-weight:700;line-height:1.15;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .sf-ic{flex:none;line-height:1;}
       .sf-em{font-size:1.45rem;line-height:1;}
@@ -2439,6 +2448,17 @@ class ShoppingFavCard extends HTMLElement {
       .sf-chip .sf-ck{position:absolute;top:5px;right:7px;font-size:.7rem;font-weight:800;line-height:1;}
       .sf-added{background:var(--fp-accent,var(--primary-color))!important;color:var(--fp-accent-fg,var(--text-primary-color,#fff))!important;box-shadow:none!important;}
       .sf-empty{grid-column:1/-1;color:var(--secondary-text-color);padding:8px;text-align:center;}
+      /* embedded: in der Aufgabenkarte ohne eigenen Rahmen und Innenabstand; Titel als kleines Abschnitts-Label, Kacheln kompakter */
+      .sf-card.sf-emb{padding:0;}
+      .sf-emb .sf-head{min-height:0;margin-bottom:8px;}
+      .sf-emb .sf-title,.sf-emb .sf-sec{font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
+      .sf-emb .sf-edit{min-height:30px;gap:4px;padding:0 10px;font-size:.7rem;}
+      .sf-emb .sf-grid{--sf-min:78px;--sf-gap:6px;}
+      .sf-emb .sf-chip{min-height:56px;gap:2px;padding:6px 4px;font-size:.78rem;}
+      .sf-emb .sf-em{font-size:1.2rem;}
+      .sf-emb .sf-chip.sf-big{min-height:64px;}
+      .sf-emb .sf-chip.sf-big .sf-em{font-size:1.35rem;}
+      .sf-emb .sf-chip.sf-big .sf-nm{font-size:.82rem;}
       .sf-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
       .sf-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(92vw,420px);max-height:82vh;overflow:auto;border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
       .sf-mhead{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
@@ -2591,7 +2611,7 @@ if (!customElements.get("nav-card-beta")) {
 }
 })();
 
-/* ===== fp-todo-card-beta v18 (in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+/* ===== fp-todo-card-beta v19 (Einkauf in einer Karte: add_placeholder, create_position: top, header_actions, eingebettete Favoriten, empty_style: compact; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
 // Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
 // selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
 // Hinzufügen über das Ereignis fp-todo-add bleiben.
@@ -2608,6 +2628,9 @@ class FpTodoCard extends HTMLElement {
     this._timers = new Set();
     this._gen = 0; this._pseq = 0; this._failAt = 0;
     this._unsub = null; this._subbing = false; this._built = false; this._sig = "";
+    this._acts = [];           // header_actions: Pillen im Kopf, die einen Dienst rufen
+    this._busy = new Set();    // Pillen, deren Dienst gerade läuft (Index in _acts)
+    this._favEl = null;        // eingebettete Favoriten (shopping-fav-card-beta), einmal angelegt und behalten
     this._onAdd = e => {
       const d = e.detail || {};
       if (this.config && d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary), d.due || null, d.description);
@@ -2624,6 +2647,10 @@ class FpTodoCard extends HTMLElement {
     this._repeats = config.repeat_options || [];
     this._items = null; this._err = false; this._errShown = false; this._loadedOnce = false; this._failAt = 0;
     this._pending = []; this._ovr.clear(); this._keep.clear();
+    // Kopf-Pillen: nur Einträge mit Dienst „domain.service“ und etwas zum Beschriften
+    this._acts = (Array.isArray(config.header_actions) ? config.header_actions : [])
+      .filter(a => a && typeof a.service === "string" && a.service.indexOf(".") > 0 && (a.label || a.icon));
+    this._busy.clear(); this._favEl = null;
     this._built = false;
     if (this.isConnected) { this._build(); this._subscribe(); this._paint(); }
   }
@@ -2646,6 +2673,7 @@ class FpTodoCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._built && this.config) this._build();
+    if (this._favEl) this._favEl.hass = hass;
     this._subscribe();
   }
   _after(fn, ms) {
@@ -2806,21 +2834,44 @@ class FpTodoCard extends HTMLElement {
   _build() {
     this._closeEdit();
     this._built = true; this._sig = "";
-    const add = this.config.hide_create === true ? "" :
-      `<div class="fpt-add"><input class="fpt-in" type="text" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe" enterkeyhint="done" autocomplete="off"><button type="button" class="fpt-plus" aria-label="Aufgabe hinzufügen">＋</button></div>`;
+    const c = this.config;
+    // add_placeholder: Platzhalter der Eingabe (Vorgabe „Neue Aufgabe“); create_position: top setzt die Eingabe unter den Kopf
+    const ph = c.add_placeholder != null && String(c.add_placeholder) !== "" ? String(c.add_placeholder) : "";
+    const top = c.create_position === "top";
+    const add = c.hide_create === true ? "" :
+      `<div class="fpt-add${top ? " fpt-add-top" : ""}"><input class="fpt-in" type="text" placeholder="${U.esc(ph || "Neue Aufgabe")}" aria-label="${U.esc(ph || "Neue Aufgabe")}" enterkeyhint="done" autocomplete="off"><button type="button" class="fpt-plus" aria-label="${ph ? "Hinzufügen" : "Aufgabe hinzufügen"}">＋</button></div>`;
+    // Favoriten (eingebettete shopping-fav-card-beta) unter der Liste, bei unten stehender Eingabe unter dieser
+    const favs = c.favorites && typeof c.favorites === "object" ? `<div class="fpt-favs"></div>` : "";
     // Farbe des Abhak-Kreises: die Personenfarbe der Pille, bei der alten Form (bg + color) und ohne Farbe der Akzent
-    const pc = this.config.pill;
+    const pc = c.pill;
     const dot = pc && typeof pc === "object" && pc.color && !pc.bg ? String(pc.color) : "";
-    this.innerHTML = `<ha-card class="fpt-card"${dot ? ` style="${U.esc("--fpt-dot:" + dot)}"` : ""}><div class="fpt-body"><div class="fpt-head" hidden></div><div class="fpt-list" lang="de"></div>${add}</div></ha-card>${this._styles()}`;
+    this.innerHTML = `<ha-card class="fpt-card"${dot ? ` style="${U.esc("--fpt-dot:" + dot)}"` : ""}><div class="fpt-body"><div class="fpt-head${this._acts.length ? " fpt-head-a" : ""}" hidden></div>${top ? add : ""}<div class="fpt-list" lang="de"></div>${top ? "" : add}${favs}</div></ha-card>${this._styles()}`;
     const fz = U.fillZelle || U.fill;
     if (fz) fz(this);
     const card = this.querySelector(".fpt-card");
     this._head = card.querySelector(".fpt-head");
     this._list = card.querySelector(".fpt-list");
+    if (favs) this._mountFavs(card.querySelector(".fpt-favs"));
     card.addEventListener("click", e => this._onClick(e));
     const inp = card.querySelector(".fpt-in");
     if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); this._add(); } });
     this._paint();
+  }
+  // Die Favoriten sind eine shopping-fav-card-beta mit embedded: true. Die Instanz bleibt über Neuzeichnen und
+  // hass-Updates erhalten (neu angelegt wird sie nur mit setConfig); list_entity ist die eigene Liste.
+  _mountFavs(slot) {
+    if (!slot) return;
+    if (!this._favEl) {
+      const tag = "shopping-fav-card-beta";
+      if (!customElements.get(tag)) { console.warn("[fp-todo-card-beta] shopping-fav-card-beta nicht geladen: Favoriten fehlen"); return; }
+      const el = document.createElement(tag);
+      try { el.setConfig(Object.assign({}, this.config.favorites, { list_entity: this.config.favorites.list_entity || this.config.entity, embedded: true })); }
+      catch (e) { console.warn("[fp-todo-card-beta] favorites:", e); return; }
+      el._ovHost = this;   // Dialoge der Favoriten hängen an dieser Karte, nicht an deren Rahmen (siehe _ovRoot der Favoriten)
+      this._favEl = el;
+    }
+    slot.appendChild(this._favEl);
+    if (this._hass) this._favEl.hass = this._hass;
   }
   _pillStyle(p) {
     const bg = p.bg ? String(p.bg) : "", col = p.color ? String(p.color) : "";
@@ -2844,7 +2895,13 @@ class FpTodoCard extends HTMLElement {
       if (label) left = `<span class="fpt-pill"${st ? ` style="${st}"` : ""}>${U.esc(label)}</span>`;
     } else if (c.title) left = `<div class="fpt-title">${U.esc(c.title)}</div>`;
     const right = open > 0 ? `<div class="fpt-cnt"><b>${open}</b><small>offen</small></div>` : "";
-    return left + right;
+    return left + right + this._actsHtml();
+  }
+  // header_actions: kleine Pillen ganz rechts im Kopf; während der Dienst läuft, ist die Pille gesperrt
+  _actsHtml() {
+    if (!this._acts.length) return "";
+    return `<div class="fpt-acts">${this._acts.map((a, i) =>
+      `<button type="button" class="fpt-act" data-act="${i}"${this._busy.has(i) ? ` disabled aria-busy="true"` : ""}>${a.icon ? `<span class="fpt-act-i">${U.esc(a.icon)}</span>` : ""}${a.label ? `<span>${U.esc(a.label)}</span>` : ""}</button>`).join("")}</div>`;
   }
   _rowHtml(r) {
     const uid = U.esc(r.u);
@@ -2861,7 +2918,7 @@ class FpTodoCard extends HTMLElement {
     this._expire();
     const m = this._model();
     const state = this._items !== null ? "ok" : this._err ? "err" : "wait";
-    const sig = JSON.stringify([state, m.open, m.groups.map(g => [g.key, g.title, g.rows.map(r => [r.u, r.s, r.d, r.done, r.pend, r.chip ? r.chip.c + ":" + r.chip.t : ""])])]);
+    const sig = JSON.stringify([state, m.open, [...this._busy].join(), m.groups.map(g => [g.key, g.title, g.rows.map(r => [r.u, r.s, r.d, r.done, r.pend, r.chip ? r.chip.c + ":" + r.chip.t : ""])])]);
     if (sig === this._sig) return;
     this._sig = sig;
     this._nRows = m.groups.reduce((n, g) => n + g.rows.length, 0);
@@ -2875,7 +2932,10 @@ class FpTodoCard extends HTMLElement {
         + `<div class="fpt-rows">${g.rows.map(r => this._rowHtml(r)).join("")}</div>`).join("");
     } else if (state === "ok") {
       const t = this.config.empty_text != null ? String(this.config.empty_text) : "Alles erledigt";
-      html = `<div class="fpt-empty"><div class="fpt-empty-i">✓</div>${t ? `<div>${U.esc(t)}</div>` : ""}</div>`;
+      // empty_style: compact = eine leise Zeile „✓ Text“ statt des großen Hinweises mit Kreis
+      html = this.config.empty_style === "compact"
+        ? `<div class="fpt-empty fpt-empty-c"><i>✓</i>${t ? `<span>${U.esc(t)}</span>` : ""}</div>`
+        : `<div class="fpt-empty"><div class="fpt-empty-i">✓</div>${t ? `<div>${U.esc(t)}</div>` : ""}</div>`;
     } else if (state === "err") {
       html = `<div class="fpt-empty"><div>Liste konnte nicht geladen werden</div></div>`;
     }
@@ -2901,6 +2961,14 @@ class FpTodoCard extends HTMLElement {
       .fpt-cnt{display:flex;align-items:baseline;gap:5px;flex:none;margin-left:auto;white-space:nowrap;}
       .fpt-cnt b{font-size:1.45rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;}
       .fpt-cnt small{font-size:.72rem;font-weight:600;color:var(--fpt-mut);}
+      /* mit Kopf-Pillen: Zahl rückt neben den Titel, die Pillen sitzen ganz rechts und brechen auf schmalen Karten um */
+      .fpt-head-a{flex-wrap:wrap;justify-content:flex-start;row-gap:8px;}
+      .fpt-head-a .fpt-cnt{margin-left:0;}
+      .fpt-acts{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto;justify-content:flex-end;}
+      .fpt-act{flex:none;display:inline-flex;align-items:center;gap:5px;min-height:32px;box-sizing:border-box;padding:0 12px;border:1px solid var(--fpt-acc);border-radius:999px;background:transparent;color:var(--fpt-acc);font-size:.76rem;font-weight:800;white-space:nowrap;cursor:pointer;}
+      .fpt-act-i{line-height:1;}
+      .fpt-act:disabled{opacity:.55;cursor:default;}
+      @media (hover:hover){.fpt-act:not(:disabled):hover{background:color-mix(in srgb,var(--fpt-acc) 12%,transparent);}}
       /* Liste */
       .fpt-list{flex:1 1 auto;min-height:0;}
       .fpt-sec{margin:12px 0 0;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--fpt-mut);}
@@ -2932,13 +3000,18 @@ class FpTodoCard extends HTMLElement {
       /* leer / Fehler */
       .fpt-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px 8px;text-align:center;font-size:.9rem;font-weight:600;color:var(--fpt-mut);}
       .fpt-empty-i{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--fpt-s);color:var(--fpt-acc);font-size:1.1rem;font-weight:800;}
+      .fpt-empty.fpt-empty-c{flex-direction:row;justify-content:flex-start;gap:8px;padding:4px 2px;text-align:left;font-size:.88rem;font-weight:700;}
+      .fpt-empty-c i{flex:none;font-style:normal;font-weight:900;color:var(--fpt-acc);}
       /* Eingabezeile */
       .fpt-add{display:flex;gap:8px;margin-top:12px;}
+      .fpt-add.fpt-add-top{margin:0 0 12px;}
       .fpt-in{flex:1 1 auto;min-width:0;box-sizing:border-box;min-height:46px;padding:0 14px;border:none;border-radius:var(--fpt-r);background:var(--fpt-s);color:var(--primary-text-color);font-size:1rem;font-weight:600;}
       .fpt-in::placeholder{color:var(--fpt-mut);font-weight:600;opacity:1;}
       .fpt-in:focus{outline:2px solid color-mix(in srgb,var(--fpt-acc) 55%,transparent);outline-offset:0;}
       .fpt-plus{flex:none;width:46px;min-height:46px;padding:0;border:none;border-radius:var(--fpt-r);background:var(--fpt-acc);color:var(--fp-accent-fg,#fff) !important;font-size:1.3rem;font-weight:700;line-height:1;cursor:pointer;}
       .fpt-plus:active{opacity:.8;}
+      /* Favoriten unter der Liste: durch eine dünne Linie abgesetzt, ohne eigenen Rahmen */
+      .fpt-favs{margin-top:14px;padding-top:12px;border-top:1px solid var(--divider-color);}
       /* schmale Karten (Handy-Spalten, ca. 120–140 px): Chip unter den Text, kleinere Tippfläche und Polster */
       @container (max-width: 280px){
         .fpt-body{padding:10px;}
@@ -2962,6 +3035,8 @@ class FpTodoCard extends HTMLElement {
     const chk = t.closest(".fpt-chk[data-uid]");
     if (chk) { this._toggle(chk.dataset.uid); return; }
     if (t.closest(".fpt-plus")) { this._add(); return; }
+    const act = t.closest(".fpt-act[data-act]");
+    if (act) { this._runAction(+act.dataset.act); return; }
     const txt = t.closest(".fpt-txt[data-uid]");
     if (txt && this._edit && !this._ov && !this._opening) {
       this._opening = true;
@@ -3008,6 +3083,23 @@ class FpTodoCard extends HTMLElement {
       this._pending = this._pending.filter(x => x !== p); this._paint();
       U.toast(this, "Aufgabe konnte nicht angelegt werden");
     });
+  }
+  // Kopf-Pille: Dienst rufen, danach Hinweis. Die Pille bleibt währenddessen gesperrt (ein Skript kann dauern).
+  async _runAction(i) {
+    const a = this._acts[i];
+    if (!a || !this._hass || this._busy.has(i)) return;
+    if (a.confirm_text && !window.confirm(String(a.confirm_text))) return;
+    const label = String(a.label || a.icon);
+    const k = a.service.indexOf(".");
+    this._busy.add(i); this._paint();
+    try {
+      await this._hass.callService(a.service.slice(0, k), a.service.slice(k + 1), a.data && typeof a.data === "object" ? a.data : {});
+      U.toast(this, `✓ ${label}`);
+    } catch (err) {
+      console.warn("[fp-todo-card-beta] Kopf-Aktion fehlgeschlagen:", a.service, err);
+      U.toast(this, `${label} hat nicht geklappt`);
+    }
+    this._busy.delete(i); this._paint();
   }
   // Neuer Eintrag sofort in der Liste (leicht ausgegraut), bis er im Abo auftaucht, höchstens 20 s.
   _optimistic(summary, due, description) {
@@ -3191,7 +3283,7 @@ class FpTodoCard extends HTMLElement {
     </style>`;
   }
 
-  getCardSize() { return 2 + Math.max(1, this._nRows || 1); }
+  getCardSize() { return 2 + Math.max(1, this._nRows || 1) + (this._favEl ? 3 : 0); }
 }
 if (!customElements.get("fp-todo-card-beta")) {
   customElements.define("fp-todo-card-beta", FpTodoCard);
