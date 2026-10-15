@@ -1954,7 +1954,7 @@ if (!customElements.get("kids-routine-card-beta")) {
 }
 })();
 
-/* ===== shopping-fav-card-beta v22 (Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card-beta v23 (großer Knopf unter der Schnellauswahl, wenn beides sichtbar ist; davor: Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2352,10 +2352,11 @@ class ShoppingFavCard extends HTMLElement {
     const showFavs = this._showFavs();
     const assign = this._assigning();
     const mark = this._marking();
-    let top = "", body = "";
+    let top = "", body = "", bottom = "";
     if (this.config.add_button) {
-      // bei „Schnell anlegen“ über dem Kopf mit den Favoriten
-      top = `<div class="sf-addbar"><button class="sf-addbig"><span class="sf-ic">${CP(0x2795)}</span><span>${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</span></button></div>`;
+      // Mit Favoriten („Schnell anlegen“) unter den Kacheln, sonst allein als Kachel
+      const bar = `<div class="sf-addbar${showFavs ? " sf-below" : ""}"><button class="sf-addbig"><span class="sf-ic">${CP(0x2795)}</span><span>${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</span></button></div>`;
+      if (showFavs) bottom = bar; else top = bar;
     }
     if (showFavs) {
       const items = this._items();
@@ -2371,7 +2372,7 @@ class ShoppingFavCard extends HTMLElement {
            + `<div class="sf-grid" lang="de" style="--sf-cols:${cols};">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div>`;
     }
     this._markSig = this._marksSig();
-    this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${top}${body}</ha-card>${this._styles()}`;
+    this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${top}${body}${bottom}</ha-card>${this._styles()}`;
 
     const ab = this.querySelector(".sf-addbig");
     if (ab) ab.addEventListener("click", () => this._openAdd());
@@ -2476,8 +2477,9 @@ class ShoppingFavCard extends HTMLElement {
       .sf-datewrap.sf-dsel .sf-date{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
       .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
       .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;}
-      /* Großer Knopf: volle Breite in Akzent; bei „Schnell anlegen“ über dem Kopf mit den Favoriten */
+      /* Großer Knopf: volle Breite in Akzent; bei „Schnell anlegen“ unter den Kacheln mit den Favoriten */
       .sf-addbar{display:flex;margin-bottom:14px;}
+      .sf-addbar.sf-below{margin:14px 0 0;}
       .sf-addbig{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;box-sizing:border-box;border:none;border-radius:var(--fp-radius-sm,12px);padding:12px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:800;font-size:1rem;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .sf-addbig:active{transform:scale(.99);}
       @media (hover:hover){.sf-addbig:hover{filter:brightness(1.06);}}
