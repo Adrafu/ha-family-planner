@@ -140,7 +140,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card-beta v29 (Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
+/* ===== meal-grid-card-beta v30 (am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -148,13 +148,13 @@ class MealGridCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
       title: "Wochenplan", mode: "week", week_offset: 0, nav_path: "",
-      layout: "list",                       // Wochenansicht: "list" (Liste nach Tagen), "today" (Heute groß, Woche kurz) oder "grid" (Tabelle)
+      layout: "list",                       // Wochenansicht: "list" (Liste nach Tagen, ab 640 px als Tabelle), "today" (Heute groß, Woche kurz) oder "grid" (Tabelle)
       days_ahead: 4,                        // nur layout "today": wie viele Tage nach heute in der kurzen Liste stehen
       show_emojis: true, meal_icons: true, background: "",
       ai_suggest: true, ai_entity: "", recipe_url: "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html",
       hide_header: false,                   // Wochenansicht ohne Kopfleiste und Wochennavigation (fuer die Uebersicht)
       meal_labels: true,                    // Beschriftung neben dem Mahlzeit-Symbol
-      empty_text: "+",                      // was in einer leeren Zelle steht
+      empty_text: "＋",                     // was in einer leeren Zelle steht (leise dargestellt)
       cookbook_entity: "todo.kochbuch", weather_entity: "weather.home", cookbook_path: "",
       meals: [
         { label: "Frühstück", start: 0, end: 11 },
@@ -176,18 +176,26 @@ class MealGridCard extends HTMLElement {
   }
   // Grid: unter 560 px (Handy) wird das Raster gedreht, sieben Spalten wären dort zu schmal für die Gerichte.
   // Today: unter ca. 110 px je Mahlzeit stehen die Mahlzeiten untereinander statt nebeneinander.
-  // Die Liste braucht keine Umstellung. Neu zeichnen nur, wenn die Breite die Schwelle überschreitet.
+  // List: ab 640 px (bei mehr als drei Mahlzeiten entsprechend breiter) steht statt der Liste eine Tabelle,
+  // Tage als Zeilen, Mahlzeiten als Spalten. Darunter bleibt die Liste nach Tagen, in jeder Breite brauchbar.
+  // Gemessen wird wie beim Raster an der Breite der Karte selbst: Ein Container mit container-type würde
+  // in schrumpfenden Umgebungen (horizontal-stack) auf Breite 0 fallen, und die Liste braucht kein zweites DOM.
+  // Neu zeichnen nur, wenn die Breite die Schwelle überschreitet.
   _istSchmal() {
     const l = this._layout(), w = this.clientWidth;
     if (!(w > 0) || (l !== "grid" && l !== "today")) return false;
     return l === "today" ? w < 110 * Math.max(1, (this.config.meals || []).length) : w < 560;
+  }
+  _istBreit() {
+    const w = this.clientWidth, n = (this.config.meals || []).length;
+    return this._layout() === "list" && n > 0 && w >= Math.max(640, 160 + 160 * n);
   }
   _daysAhead() { const n = Number(this.config.days_ahead); return Number.isFinite(n) ? Math.max(0, Math.min(13, Math.floor(n))) : 4; }
   connectedCallback() {
     // Als Block, sonst ist das Element inline: Breite 0 und kein ResizeObserver-Signal.
     if (!this.style.display) this.style.display = "block";
     if (!this._ro && window.ResizeObserver) {
-      this._ro = new ResizeObserver(() => { if (this._istSchmal() !== !!this._quer) this._render(); });
+      this._ro = new ResizeObserver(() => { if (this._istSchmal() !== !!this._quer || this._istBreit() !== !!this._breit) this._render(); });
       this._ro.observe(this);
     }
   }
@@ -574,6 +582,7 @@ class MealGridCard extends HTMLElement {
     const wd = d => dn[(d.getDay() + 6) % 7];
     const colLabel = (d, i) => compact ? (i === 0 ? "Heute" : "Morgen") : wd(d);
     const quer = this._quer = this._istSchmal();
+    const breit = this._breit = this._istBreit();
 
     // ---------- Kopf ----------
     // Woche füllen / Leeren sitzen als kleine Pillen im Kopf (nicht in „Heute groß“: dort ist keine ganze Woche geladen)
@@ -659,6 +668,24 @@ class MealGridCard extends HTMLElement {
       }).join("") + `</div>`;
     };
 
+    // Liste als Tabelle (layout: list auf breiten Karten): Tage als Zeilen, Mahlzeiten als Spalten.
+    // Punkt und Name stehen nur im Kopf, die Zellen zeigen das Gericht oder das leise ＋ und sind wie in der Liste antippbar.
+    const listeBreit = () => {
+      const kopf = `<div class="mg-tr mg-tk"><span></span>` + meals.map((m, mi) =>
+        `<span class="mg-tmh ${dcls(mi)}"${lblOn ? "" : ` title="${this._esc(m.label)}"`}><i class="mg-dot"></i>${lblOn ? `<span class="mg-tml">${this._esc(m.label)}</span>` : ""}</span>`).join("") + `</div>`;
+      const zelle = (mi, ci, d) => {
+        const s = gericht(mi, ci, "<br>");
+        // ohne Mahlzeit-Name in der Zelle braucht die Vorlesehilfe Tag und Mahlzeit am Knopf
+        const klar = cells[mi][ci].filter(o => o.summary).map(o => o.summary).join(", ");
+        const al = `${wd(d)} ${d.getDate()}.${d.getMonth() + 1}., ${meals[mi].label}: ${klar || "leer"}`;
+        return `<button type="button" class="mg-cell mg-tz" data-mi="${mi}" data-ci="${ci}" aria-label="${this._esc(al)}"><span class="mg-tzs${s ? "" : " mg-e"}">${s || leer}</span></button>`;
+      };
+      return `<div class="mg-lt" style="--mg-n:${meals.length}">${kopf}` + cols.map((d, ci) => {
+        const t = isToday(d);
+        return `<div class="mg-tr${t ? " mg-today" : ""}"><div class="mg-tw"><div class="mg-dw">${t ? "Heute" : wd(d)}</div><div class="mg-dd">${d.getDate()}.${d.getMonth() + 1}.</div></div>${meals.map((m, mi) => zelle(mi, ci, d)).join("")}</div>`;
+      }).join("") + `</div>`;
+    };
+
     // Heute groß, Woche kurz (layout: today)
     const heuteGross = () => {
       const last = meals.length - 1;
@@ -681,7 +708,7 @@ class MealGridCard extends HTMLElement {
       return t;
     };
 
-    const body = (compact || layout === "grid") ? tabelle() : (layout === "today" ? heuteGross() : liste());
+    const body = (compact || layout === "grid") ? tabelle() : (layout === "today" ? heuteGross() : (breit ? listeBreit() : liste()));
     const html = `<ha-card class="mg-card">${head}${body}</ha-card>`;
 
     let bgImg = "";
@@ -732,15 +759,27 @@ class MealGridCard extends HTMLElement {
       /* Liste nach Tagen: Linien statt Kästen; Heute mit Strich am Kartenrand */
       .mg-list{padding:0 0 6px;}
       .mg-dr{position:relative;display:flex;align-items:flex-start;gap:12px;padding:6px 16px;box-sizing:border-box;}
-      .mg-dr+.mg-dr{border-top:1px solid var(--divider-color);}
-      .mg-dr.mg-today::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--fp-accent,var(--primary-color));}
+      .mg-dr+.mg-dr,.mg-tr+.mg-tr{border-top:1px solid var(--divider-color);}
+      .mg-dr.mg-today::before,.mg-tr.mg-today::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--fp-accent,var(--primary-color));}
       .mg-dl{flex:none;width:56px;padding-top:8px;line-height:1.2;}
       .mg-dw{font-size:.95rem;font-weight:800;}
       .mg-dd{margin-top:1px;font-size:.68rem;color:var(--secondary-text-color);font-variant-numeric:tabular-nums;}
-      .mg-dr.mg-today .mg-dw,.mg-dr.mg-today .mg-dd{color:var(--fp-accent,var(--primary-color));}
+      .mg-dr.mg-today .mg-dw,.mg-dr.mg-today .mg-dd,.mg-tr.mg-today .mg-dw,.mg-tr.mg-today .mg-dd{color:var(--fp-accent,var(--primary-color));}
       .mg-dm{flex:1 1 0;min-width:0;display:flex;flex-direction:column;}
       .mg-mr{display:flex;align-items:center;gap:8px;align-self:stretch;min-height:36px;box-sizing:border-box;margin:0 -8px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .mg-lb{flex:none;width:calc(var(--mg-ll,6) * .82em);max-width:96px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+      /* Liste als Tabelle (ab 640 px): Kopf mit Punkt und Name je Mahlzeit, je Tag eine Zeile, Zellen nur mit dem Gericht.
+         Jede Zeile ist ein eigenes Raster mit gleichen Spalten, so liegen Kopf und Tage bündig und Heute lässt sich als ganze Zeile tönen. */
+      .mg-lt{padding:0 0 6px;}
+      .mg-tr{position:relative;display:grid;grid-template-columns:120px repeat(var(--mg-n,3),minmax(0,1fr));box-sizing:border-box;}
+      .mg-tr.mg-today{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 12%,transparent);}
+      .mg-tmh{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 12px;}
+      .mg-tml{min-width:0;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .mg-tw{display:flex;flex-direction:column;justify-content:center;min-width:0;padding:10px 12px 10px 16px;line-height:1.2;}
+      .mg-tz{display:flex;align-items:center;min-width:0;min-height:44px;box-sizing:border-box;margin:4px 2px;padding:6px 10px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-tzs{min-width:0;font-size:.9rem;font-weight:700;line-height:1.3;overflow-wrap:break-word;hyphens:auto;color:var(--primary-text-color);}
+      .mg-tzs.mg-e{font-weight:400;color:var(--secondary-text-color);}
 
       /* Heute groß: Mahlzeiten von heute nebeneinander in einem Kasten, darunter die nächsten Tage als kurze Liste */
       .mg-tbox{display:flex;margin:4px 16px 0;border:1px solid var(--divider-color);border-radius:var(--fp-radius-sm,12px);overflow:hidden;}
@@ -760,8 +799,11 @@ class MealGridCard extends HTMLElement {
       .mg-nxg{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-width:0;max-width:100%;min-height:36px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .mg-nxs{min-width:0;font-size:.9rem;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--primary-text-color);}
       .mg-nxs.mg-e{font-weight:400;color:var(--secondary-text-color);}
-      .mg-tc:active,.mg-mr:active,.mg-nxg:active{background:var(--fp-surface,var(--secondary-background-color));}
-      @media (hover:hover){.mg-tc:hover,.mg-mr:hover,.mg-nxg:hover{background:var(--fp-surface,var(--secondary-background-color));}}
+      .mg-tc:active,.mg-mr:active,.mg-nxg:active,.mg-tz:active{background:var(--fp-surface,var(--secondary-background-color));}
+      @media (hover:hover){.mg-tc:hover,.mg-mr:hover,.mg-nxg:hover,.mg-tz:hover{background:var(--fp-surface,var(--secondary-background-color));}}
+      /* in der getönten Heute-Zeile hebt sich die Fläche nur durch etwas mehr Akzent ab */
+      .mg-tr.mg-today .mg-tz:active{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 14%,transparent);}
+      @media (hover:hover){.mg-tr.mg-today .mg-tz:hover{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 14%,transparent);}}
 
       /* Tabelle (layout: grid, mode: compact) */
       .mg-wrap{padding:14px 16px 18px;overflow-x:auto;}
