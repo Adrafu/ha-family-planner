@@ -2,20 +2,20 @@
 
 Vierzehn eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
-- **`meal-grid-card`** — Essensplan (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und KI-Vorschlag (`ai_task`; entschärft mit Küchen-/Grundform-Rotation, Saison- und Wetterbezug, liest getippten Wunsch aus). **Kochbuch-Kopplung:** „★ Ins Kochbuch" pro Eintrag und „Woche füllen" hybrid (erst gewichtet aus dem Kochbuch, dann KI). Drei Darstellungen über `layout`: **`list`** (Vorgabe) ist die **Liste nach Tagen**: je Tag eine Zeile, links Wochentag und Datum, rechts die Mahlzeiten untereinander mit farbigem Punkt, Linien statt Kästen, heute mit Akzentstrich am Rand; sie funktioniert in jeder Breite. **`today`** ist „Heute groß, Woche kurz" für die Startseite: die Mahlzeiten von heute nebeneinander in einem Kasten, darunter die nächsten `days_ahead` Tage mit allem, was je Tag geplant ist (jede eingetragene Mahlzeit mit ihrem Punkt, leere fallen weg). **`grid`** ist die bisherige Tabelle; auf schmalen Karten (Handy, unter 560 px) dreht sie sich: Tage als Zeilen, Mahlzeiten als Spalten. Der Kopf ist schlicht: Titel links, rechts eine Pille ‹ Woche ›, „✨ Woche füllen" und „Leeren" als kleine Pillen. Die Farbe der Mahlzeiten steht nur im Punkt (`--fp-meal0` bis `--fp-meal2`). `mode: compact` (Heute/Morgen) bleibt wie bisher. `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
+- **`meal-grid-card`** — Essensplan (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und KI-Vorschlag (`ai_task`; entschärft mit Küchen-/Grundform-Rotation, Saison- und Wetterbezug, liest getippten Wunsch aus). **Kochbuch-Kopplung:** „★ Ins Kochbuch" pro Eintrag und „Woche füllen" hybrid (erst gewichtet aus dem Kochbuch, dann KI). Drei Darstellungen über `layout`: **`list`** (Vorgabe) ist die **Liste nach Tagen**: je Tag eine Zeile, links Wochentag und Datum, rechts die Mahlzeiten untereinander mit farbigem Punkt, Linien statt Kästen, heute mit Akzentstrich am Rand; sie funktioniert in jeder Breite, auf breiten Karten (ab 640 px, bei mehr als drei Mahlzeiten entsprechend breiter, etwa am Tablet) wird daraus eine **ruhige Tabelle**: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt und Name nur im Kopf, in den Zellen nur das Gericht oder ein leises ＋, heute leicht getönt mit Strich am Rand. **`today`** ist „Heute groß, Woche kurz" für die Startseite: die Mahlzeiten von heute nebeneinander in einem Kasten, darunter die nächsten `days_ahead` Tage mit allem, was je Tag geplant ist (jede eingetragene Mahlzeit mit ihrem Punkt, leere fallen weg). **`grid`** ist die bisherige Tabelle; auf schmalen Karten (Handy, unter 560 px) dreht sie sich: Tage als Zeilen, Mahlzeiten als Spalten. Der Kopf ist schlicht: Titel links, rechts eine Pille ‹ Woche ›, „✨ Woche füllen" und „Leeren" als kleine Pillen. Die Farbe der Mahlzeiten steht nur im Punkt (`--fp-meal0` bis `--fp-meal2`). `mode: compact` (Heute/Morgen) bleibt wie bisher. `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
 - **`family-calendar-card`** — Familienkalender mit **Tagesansicht** (eine Spalte je Person, große Terminkacheln, am Handy eine Zeitliste mit Jetzt-Linie), **Wochenansicht** mit großen Terminkacheln (am Tablet eine Spalte je Tag, am Handy die Tage untereinander; das klassische Stunden-Raster gibt es weiter mit `week_grid: true`) und Monatsansicht. Schlichter Kopf mit Titel, den Ansichten Tag/Woche/Monat als Schalter und dem Datum als Pille (‹ 12.–18. Okt ›), Knopf „+ Termin“ rechts, Personenfilter als kleine Chips mit Farbpunkt, Wischen wechselt Tag bzw. Woche. Mehrere Personen lassen sich per Präfix aus einem Kalender aufteilen. Termine direkt anlegen, bearbeiten und löschen. Im Stunden-Raster Jetzt-Linie (Outlook-Stil), Heute-Highlight und ausgegraute vergangene Tage. Dazu eine **kompakte Mehrtagesansicht** (`initial_view: agenda`): eine Spalte je Tag, Termine als Kacheln mit farbiger Kante — gedacht als Ersatz fuer eine fremde Kalenderkarte in der Uebersicht.
 - **`kids-routine-card`** — Buddy-artige Routinen für Kinder: Aufgaben mit Emoji nach Tageszeit, antippen zum Abhaken (Sterne via ChoreOps), mit Belohnungs-Animation.
-- **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) als **gleich breite Chips** in `columns` Spalten (auf schmalen Karten weniger), Emoji über dem Namen. Favoriten, die **schon offen auf der Liste** stehen, sind mit ✓ markiert und werden bei einem Tipp nicht doppelt angelegt (die Karte liest die Liste live, nur ohne `assign`). Bearbeiten (Hinzufügen/Entfernen/Sortieren) über ✏️ im Kopf; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar).
+- **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) als **gleich breite Chips** in `columns` Spalten (auf schmalen Karten weniger), Emoji über dem Namen. Favoriten, die **schon offen auf der Liste** stehen, sind mit ✓ markiert und werden bei einem Tipp nicht doppelt angelegt (die Karte liest die Liste live, nur ohne `assign`). Bearbeiten (Hinzufügen/Entfernen/Sortieren) über ✏️ im Kopf; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar). Mit `embedded: true` sitzt sie ohne eigenen Rahmen in der `fp-todo-card` (Option `favorites` dort).
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
-- **`fp-todo-card`** — Zeichnet ihre **eigene To-do-Liste** (nicht mehr die native `todo-list`-Karte) im Stil der Baby-Übersicht, live aus der To-do-Entität: Kopf mit Namens-Pille oder Titel und der Zahl der offenen Aufgaben, darunter die Aufgaben als Kacheln mit großem Kreis zum **Abhaken (mit „Rückgängig")** und einem Fälligkeits-Chip („gestern", „heute 14:00", „Fr"). Mit `display_order: duedate_asc` stehen sie in Gruppen **Überfällig / Heute / Demnächst / Ohne Datum**. `pill: { label, color }` gibt jeder Person **eine Farbe** (passt zu hellem und dunklem Theme), `empty_text` ist der Hinweis bei leerer Liste, `due_date_period` filtert nach Fälligkeit. Eine Eingabezeile legt Aufgaben an (`hide_create: true` blendet sie aus); neue Einträge erscheinen **sofort**, auch über das `fp-todo-add`-Event der `shopping-fav-card`, noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Optional ein **eigener Änderungsdialog** (`edit_dialog`): Aufgabe umbenennen, in eine andere Liste verschieben, Fälligkeit per Schnellauswahl setzen und eine Wiederholung vergeben.
-- **`fp-glance-card`** — „Today at a glance"-Banner für die Übersicht: tageszeitabhängige Begrüßung, Datum, nächster Termin (Präfix-Personen aufgelöst) und heutiges Abendessen, mit einem Hintergrund je Tageszeit (nach Uhrzeit): als Foto, aus dem Theme (`--fp-glance-*`) oder als Blauverlauf. Das Wetter wird als eingebettete `clock-weather-card` (echte Animationen + Vorschau) transparent auf den Banner geblendet. Klick pro Element navigiert getrennt (Datum/Termin → Kalender, Essen → Essensplan, Wetter → eigener Wetter-Tab); das More-Info-Popup der eingebetteten Karte wird unterdrückt.
+- **`fp-todo-card`** — Zeichnet ihre **eigene To-do-Liste** (nicht mehr die native `todo-list`-Karte) im Stil der Baby-Übersicht, live aus der To-do-Entität: Kopf mit Namens-Pille oder Titel und der Zahl der offenen Aufgaben, darunter die Aufgaben als Kacheln mit großem Kreis zum **Abhaken (mit „Rückgängig")** und einem Fälligkeits-Chip („gestern", „heute 14:00", „Fr"). Mit `display_order: duedate_asc` stehen sie in Gruppen **Überfällig / Heute / Demnächst / Ohne Datum**. `pill: { label, color }` gibt jeder Person **eine Farbe** (passt zu hellem und dunklem Theme), `empty_text` ist der Hinweis bei leerer Liste, `due_date_period` filtert nach Fälligkeit. Eine Eingabezeile legt Aufgaben an (`hide_create: true` blendet sie aus); neue Einträge erscheinen **sofort**, auch über das `fp-todo-add`-Event der `shopping-fav-card`, noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Optional ein **eigener Änderungsdialog** (`edit_dialog`): Aufgabe umbenennen, in eine andere Liste verschieben, Fälligkeit per Schnellauswahl setzen und eine Wiederholung vergeben. Für den Einkauf lässt sich alles in **einer** Karte bündeln: eigener Eingabetext, Eingabe oben, Pille im Kopf, die einen Dienst ruft (z. B. ein Skript), und die Favoriten darunter.
+- **`fp-glance-card`** — „Today at a glance"-Banner für die Übersicht: tageszeitabhängige Begrüßung, Datum, nächster Termin (Präfix-Personen aufgelöst) und heutiges Abendessen, mit einem Hintergrund je Tageszeit (nach Uhrzeit): als Foto, aus dem Theme (`--fp-glance-*`) oder als Blauverlauf. Das Wetter wird als eingebettete `clock-weather-card` (echte Animationen + Vorschau) transparent auf den Banner geblendet. Klick pro Element navigiert getrennt (Datum/Termin → Kalender, Essen → Essensplan, Wetter → eigener Wetter-Tab); das More-Info-Popup der eingebetteten Karte wird unterdrückt. Mit `baby` stehen je Kind eine Zeile mit der Stillübersicht unter dem Gruß.
 - **`fp-cookbook-card`** — Kochbuch mit Rezepten (Zutaten, Schritt-für-Schritt-Anleitung, Portionen-Slider, Sterne-Bewertung, **Zubereitungszeit**), gespeichert in einer lokalen To-do-Liste. Die Übersicht ist ruhig gehalten: **Bildkacheln** mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips; Tags, Bewertung und Nährwerte stehen auf der Rezeptseite. **Bilder zu den Rezepten** in den Kacheln und auf der Rezeptseite: eigenes Foto hochladen (verkleinert in den HA-Medienordner, Admin-Konto nötig), freie Fotos über Openverse suchen (Creative Commons, der Fotografen-Hinweis wird mitgespeichert), KI-Bild (nur wenn das `ai_task` Bilder erzeugen kann) oder Bildadresse. **KI-Rezept** aus Name/Text und **KI-Vorschlag „überrasch mich"** ohne Eingabe (berücksichtigt Jahreszeit + Wetter, erzwingt Abwechslung, meidet zuletzt Vorgeschlagenes → keine Monotonie). Rezepte lassen sich **vollständig bearbeiten** (Name, Mahlzeit, Tags, Portionen, Zeiten, **Nährwerte**, Zutaten, Schritte). **Kalorien und Eiweiß je Portion** werden mitgeschätzt und auf der Rezeptseite angezeigt (auf der Kachel steht nur kcal); für Altbestand gibt es im Kopf kleine Pillen zum Nachrechnen von Zeiten und Nährwerten. Die Filter „schnell" und „proteinreich" werden aus Gesamtzeit bzw. Eiweißwert **berechnet** statt geraten. Mit `import_service` erscheint im „＋ Neu"-Dialog ein **Link-Feld**: Rezeptseiten werden aus ihrem JSON-LD ausgelesen, Videos vom Import-Dienst angeschaut. „In Plan legen" schreibt in den Essensplan-Kalender; „Zutaten → Einkauf" öffnet ein Auswahl-Popup und legt nur die angehakten (auf die Portionen skalierten) Zutaten auf die Einkaufsliste; steht dieselbe Zutat dort schon offen, wird die Menge addiert statt eine zweite Zeile anzulegen (g/kg und ml/l werden umgerechnet, die Menge darf im Titel oder in der Beschreibung stehen).
 - **`dobby-clock-card`** — **Schachuhr, die hochzählt.** Für Versteckspiele zu zweit: wer den Gegenstand versteckt hat, dessen Uhr läuft. Eine Wippe als Tastenpaar oben auf dem Gehäuse, die laufende Taste steht oben; darunter zwei Anzeigen. Die Rundenzeit wechselt die Einheit mit ihrer Länge (Minuten → Stunden → Tage → Wochen → Monate), darunter der Gesamtstand. Dazu eine **Bestenliste** mit den drei längsten Verstecken samt Zeitraum. Der Stand liegt in Helfern und übersteht Neustarts; die Uhr tickt nur im Browser, damit kein Sensor im Sekundentakt die Datenbank füllt.
 - **`fp-feeding-card`** — **Stillprotokoll** je Kind: Start/Stopp mit laufender Uhr, Seitenvorschlag, Fläschchen in ml, Nachtragen, Tabelle für heute und gestern mit Tagessummen. Groß die **Zeit seit der letzten Mahlzeit** mit Balken bis zur Erinnerung, aufklappbar ein **Rückblick über 7 Tage** (Mahlzeiten, Stillzeit, Ø Abstand, Fläschchen) und ein **Bericht** der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht.
 - **`fp-weight-card`** — **Gewichtsverlauf** mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog, Punkt antippen zum Bearbeiten. Optional mit **Perzentilkurven** aus einer eigenen Datendatei, auch für Frühgeborene nach korrigiertem Alter.
 - **`fp-diaper-card`** — **Windelprotokoll** je Kind: nass, voll oder beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, heute und gestern mit Summen, Rückblick über 7 Tage.
-- **`fp-milestone-card`** — **Meilensteine** je Kind zum Abhaken: **Erste Male** als Sticker-Album (erstes Lachen, erster Zahn, erste Schritte, erster Schnee …), **Entwicklung** nach Alter mit den Punkten, die gerade dran sind, und **Bewegung** mit den Zeitfenstern der WHO. Abhaken ist ein kleines Fest: Konfetti, ein Jubel-Dialog, Datum und Notiz, auch nachträglich und für Geschwister auf einmal. Eigene Momente lassen sich dazulegen. Frühgeborene nach korrigiertem Alter.
-- **`fp-baby-overview-card`** — **Übersicht** je Kind im Stil der App Buma, gespeist aus den Kalendern von Still-, Windel-, Gewichts- und Meilensteinkarte und einem eigenen Schlafkalender. **Heute:** am Tablet Schlafknöpfe („Beide schlafen“ und je Kind), farbige Schnellknöpfe für Stillen, Windel und Fläschchen, die Karte **„Nächste Mahlzeit“** mit Zeitfenster, **„Jetzt“** als Liste mit farbigen Symbolen (Zeit seit dem letzten Mal, Ausblick auf den nächsten Schlaf, „Fällig“), **„Tag“** mit Streifen und den Zahlen als Textzeile, Chips für Wachstum und Momente und die Einträge, mit ‹ › durch die letzten Wochen blättern. Am Handy steht unten eine Aktionsleiste mit Schlaf, Beide, Stillen, Windel und Fläschchen, und der Kopf mit der Kinderwahl klebt beim Scrollen kompakt oben. **Protokoll:** Still- und Windelkarte je Kind direkt in der Übersicht, mit Bearbeiten, Rückblick und Bericht. **Muster:** Zusammenfassung, Filter, Tagesschnitt und eine Zeile je Tag. **Wachstum:** aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern, Messungen, Wiegen direkt in der Karte. **Momente:** die Meilensteinkarte direkt in der Übersicht, ohne eigenen Tab. ✦ öffnet **„Frag nach“**: eine KI (`ai_task`) beantwortet Fragen zu allen Einträgen und sucht Muster. Folgt dem hellen oder dunklen Modus des Geräts, Farben aus dem Theme; Zwillinge am Tablet nebeneinander, am Handy per Schalter im Kopf oder Wischen zum Umschalten.
+- **`fp-milestone-card`** — **Meilensteine** je Kind zum Abhaken: **Erste Male** als Sticker-Album (erstes Lachen, erster Zahn, erste Schritte, erster Schnee …), **Entwicklung** nach Alter mit den Punkten, die gerade dran sind, und **Bewegung** mit den Zeitfenstern der WHO. Abhaken ist ein kleines Fest: Konfetti, ein Jubel-Dialog, Datum und Notiz, auch nachträglich und für Geschwister auf einmal. Eigene Momente lassen sich dazulegen, und zu jedem Meilenstein passt **ein Foto**. Frühgeborene nach korrigiertem Alter.
+- **`fp-baby-overview-card`** — **Übersicht** je Kind im Stil der App Buma, gespeist aus den Kalendern von Still-, Windel-, Gewichts- und Meilensteinkarte und einem eigenen Schlafkalender. **Heute:** am Tablet Schlafknöpfe („Beide schlafen“ und je Kind), farbige Schnellknöpfe für Stillen, Windel und Fläschchen, die Karte **„Nächste Mahlzeit“** mit Zeitfenster, **„Jetzt“** als Liste mit farbigen Symbolen (Zeit seit dem letzten Mal, Ausblick auf den nächsten Schlaf, „Fällig“), **„Tag“** mit Streifen und den Zahlen als Textzeile, Chips für Wachstum und Momente und die Einträge, mit ‹ › durch die letzten Wochen blättern. Am Handy steht unten eine Aktionsleiste mit Schlaf, Beide, Stillen, Windel und Fläschchen, und der Kopf mit der Kinderwahl klebt beim Scrollen kompakt oben. **Protokoll:** Still- und Windelkarte je Kind direkt in der Übersicht, mit Bearbeiten, Rückblick und Bericht. **Muster:** Zusammenfassung, Filter, Tagesschnitt und eine Zeile je Tag. **Wachstum:** aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern, Messungen, Wiegen direkt in der Karte. **Momente:** die Meilensteinkarte direkt in der Übersicht, ohne eigenen Tab. ✦ öffnet **„Frag nach“**: eine KI (`ai_task`) beantwortet Fragen zu allen Einträgen und sucht Muster. Folgt dem hellen oder dunklen Modus des Geräts, Farben aus dem Theme; Zwillinge am Tablet nebeneinander, am Handy per Schalter im Kopf oder Wischen zum Umschalten. Mit `layout: bar` wird daraus eine schmale **Baby-Leiste** für die Startseite (letzte und nächste Mahlzeit je Kind, ein Tipp öffnet den Baby-Tab bei diesem Kind).
 
 ## Installation (HACS)
 
@@ -47,14 +47,15 @@ Vierzehn eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 type: custom:meal-grid-card
 entity: calendar.essensplan
 mode: week            # oder "compact" (heute + morgen, ignoriert layout)
-layout: list          # "list" (Liste nach Tagen, Vorgabe), "today" (Heute groß, Woche kurz) oder "grid" (Tabelle)
+layout: list          # "list" (Liste nach Tagen, Vorgabe; ab 640 px als Tabelle), "today" (Heute groß, Woche kurz) oder "grid" (Tabelle)
 days_ahead: 4         # nur für "today": so viele Tage nach heute stehen in der kurzen Liste (0 bis 13)
 title: Wochenplan
 ai_entity: ai_task.google_ai_task
 background: "https://example.com/bild.jpg"
 hide_header: false    # true = ohne Kopf und Wochennavigation (für die Übersicht)
-meal_labels: true     # false = ohne Bezeichnung (Liste: nur der Punkt, Tabelle: nur das Symbol)
-empty_text: "+"       # was bei einer leeren Mahlzeit steht
+meal_labels: true     # false = ohne Bezeichnung (Liste und Listen-Tabelle: nur der Punkt, grid: nur das Symbol)
+empty_text: "＋"      # was bei einer leeren Mahlzeit steht (leise dargestellt, z. B. auch "offen")
+cookbook_path: /familienplaner/kochbuch   # optional: Seite des Kochbuchs; „Zum Rezept" springt dorthin, der Kopf zeigt den Knopf „📖 Kochbuch"
 meals:
   - { label: "Frühstück", start: 0, end: 11 }
   - { label: "Mittag", start: 11, end: 15 }
@@ -72,7 +73,9 @@ days_ahead: 4         # die nächsten 4 Tage nach heute
 
 Oben steht der Kopf „Essen heute" mit dem Datum als kleiner Pille (ein eigener `title` ersetzt den Text, `hide_header: true` blendet ihn aus). Darunter folgen die Mahlzeiten von heute nebeneinander, am sehr schmalen Handy untereinander, und der Abschnitt „Nächste Tage" mit allem Geplanten je Tag: rechts vom Wochentag stehen alle eingetragenen Mahlzeiten nebeneinander (bei Platzmangel umbrechend, jede mit ihrem Punkt), ein Tag ohne Eintrag zeigt „noch nichts geplant"; die Tage dürfen in die nächste Woche reichen. Jede Mahlzeit lässt sich antippen und bearbeiten, mit `nav_path` führt ein Tipp stattdessen zur angegebenen Seite.
 
-In der Liste und in der Tabelle blättert die Pille ‹ 13.–19. Okt › durch die Wochen; ist es nicht die aktuelle Woche, springt „Heute" zurück. „✨ Woche füllen" und „Leeren" stehen mit `ai_suggest` im Kopf. Mit `hide_header: true` bleiben sie als schmale Reihe stehen. Die Punktfarben kommen aus dem Theme (`fp-meal0` bis `fp-meal2`, ab der vierten Mahlzeit wie die dritte), das Feld der Tabelle weiter aus `fp-meal0-bg` bis `fp-meal2-bg`.
+In der Liste und in der Tabelle blättert die Pille ‹ 13.–19. Okt › durch die Wochen; ist es nicht die aktuelle Woche, springt „Heute" zurück. „✨ Woche füllen" und „Leeren" stehen mit `ai_suggest` im Kopf. Ist `cookbook_path` gesetzt, steht davor die Pille „📖 Kochbuch", ein Tipp öffnet die Seite. Mit `hide_header: true` bleiben „Woche füllen" und „Leeren" als schmale Reihe stehen, „📖 Kochbuch" gehört nur zum vollen Kopf; in „Heute groß" gibt es sie nicht. Die Punktfarben kommen aus dem Theme (`fp-meal0` bis `fp-meal2`, ab der vierten Mahlzeit wie die dritte), das Feld der Tabelle weiter aus `fp-meal0-bg` bis `fp-meal2-bg`.
+
+Bei `layout: list` entscheidet die Breite der Karte: darunter steht die Liste (Handy), ab 640 px die Tabelle (Tablet). Die Zellen sind wie die Liste antippbar, `layout: grid` und `mode: compact` bleiben unverändert.
 
 ### Beispiel: family-calendar-card
 
@@ -84,6 +87,7 @@ week_grid: false      # true: Woche als Stunden-Raster statt Terminkacheln
 days: 4               # nur fuer "agenda": 1 bis 14 Tage nebeneinander
 hide_header: false    # Kopf mit Titel, Ansichten und Datum ausblenden
 hide_legend: false    # Personenfilter ausblenden
+fill_height: false    # true: Karte reicht mindestens bis zum unteren Bildschirmrand (Tag, Woche, Monat)
 day_start: 6
 day_end: 23
 persons:
@@ -94,7 +98,9 @@ persons:
   - { name: Feiertage, color: "#78909C", calendar: calendar.feiertage, no_create: true }  # nur lesen, als Zeile über den Terminen
 ```
 
-Tag und Woche passen sich der Kartenbreite an: unter 560 px die Handy-Liste, darüber Spalten. Passen die Spalten nicht nebeneinander, brechen sie in eine zweite Zeile um, statt seitlich zu scrollen. Ein Tipp auf eine freie Fläche legt dort einen Termin an.
+Tag und Woche passen sich der Kartenbreite an: unter 560 px die Handy-Liste, darüber Spalten. Passen die Spalten nicht nebeneinander, brechen sie in eine zweite Zeile um, statt seitlich zu scrollen; passen sie, teilen sich die sieben Tage die volle Breite. Ein Tipp auf eine freie Fläche legt dort einen Termin an.
+
+Mit `fill_height: true` reicht die Karte mindestens bis zum unteren Bildschirmrand (sichtbare Höhe abzüglich Kopfzeile, Safe-Area und 8 px Rand; den Rand stellt `--fcc-fill-offset` im Theme ein). Die Spalten wachsen nach unten mit, die freie Fläche einer Spalte legt wie gewohnt einen Termin an. Gedacht für eine Panel-View; in der Mehrtagesansicht (`initial_view: agenda`) bleibt die Karte so hoch wie ihr Inhalt.
 
 Der Kopf ist schlicht: links der Titel, daneben die Ansichten als Schalter und das Datum als Pille (‹ 12.–18. Okt ›, in der Tagesansicht „Mi, 14. Okt“). „Heute“ erscheint nur, wenn nicht der aktuelle Tag, die aktuelle Woche oder der aktuelle Monat gezeigt wird. „+ Termin“ steht rechts; auf schmalen Karten stehen Titel und „+ Termin“ oben, darunter Datum und Ansichten. Die Personenfilter sind kleine Chips mit Punkt in der Personenfarbe: In Tag und Woche sind „Alle“ bzw. die gewählten Personen gefüllt, in Monat, Agenda und Stunden-Raster blendet ein Tipp die Person aus (der Chip wird blass). Farben und Flächen kommen aus dem Theme (`fp-accent`, `fp-surface` …); die Terminkacheln behalten die Personenfarbe.
 
@@ -110,6 +116,8 @@ columns: 3
 Der Helper `input_text.einkauf_favoriten` muss vorab angelegt sein (max. 255 Zeichen). Favoriten werden als kommagetrennte Liste gespeichert; der Knopf „✏️ Bearbeiten" im Kopf der Karte öffnet einen Editor.
 
 Die Favoriten erscheinen als **gleich breite Chips** in höchstens `columns` Spalten (auf schmalen Karten weniger, mindestens ca. 96 px breit), das Emoji steht über dem Namen. Steht ein Favorit **schon offen auf der Liste** `list_entity`, ist sein Chip mit ✓ und Akzentrand markiert, und ein Tipp darauf legt ihn **nicht doppelt** an, sondern zeigt nur einen Hinweis. Dazu liest die Karte die Liste live; Mengenangaben wie „200 g Butter" zählen für „Butter". Die Markierung gibt es nur ohne `assign` (dort wählt der Dialog das Ziel); schlägt das Lesen der Liste fehl, bleibt die Karte einfach ohne Markierung. Im „Hinzufügen"-Dialog zeigen die Favoriten dieselbe Markierung, solange das gewählte Ziel `list_entity` ist.
+
+Mit `embedded: true` zeichnet die Karte **ohne eigenen Rahmen**, Hintergrund und Innenabstand und mit kompakteren Kacheln: der Titel steht klein als Abschnitts-Label („SCHNELL DAZU"), „✏️ Bearbeiten" rechts daneben. Gedacht für die Einbettung in die `fp-todo-card` (siehe dort, Option `favorites`); die ✓-Markierung und der Editor bleiben unverändert. Ohne `embedded` ändert sich nichts.
 
 Optional mit Zuweisungs-Dialog (Tipp öffnet „Wer? / Bis wann?"):
 
@@ -190,6 +198,42 @@ todoist_service: rest_command.todoist_add_task
 - **Neu anlegen:** Die Eingabezeile „Neue Aufgabe" (Enter oder ＋) zeigt den Eintrag sofort leicht ausgegraut; er wird ersetzt, sobald das Backend nachzieht (spätestens nach 20 Sekunden). Dasselbe gilt für Aufgaben, die die `shopping-fav-card` über das Event `fp-todo-add` anlegt.
 - **Nicht mehr dabei:** Weil die Karte nicht mehr die native Liste einbettet, greifen `card_mod`-Regeln für deren Innereien nicht mehr, auch `hide_section_headers` hat keine Wirkung. Ziehen zum Umsortieren gibt es nicht.
 
+#### Einkauf in einer Karte
+
+Alle Optionen sind frei kombinierbar; ohne sie bleibt die Karte, wie sie ist.
+
+```yaml
+type: custom:fp-todo-card
+entity: todo.einkauf
+title: Einkaufsliste
+display_order: alpha_asc
+add_placeholder: Artikel hinzufügen   # Platzhalter der Eingabe (Vorgabe „Neue Aufgabe")
+create_position: top                  # top = Eingabe direkt unter dem Kopf (Vorgabe bottom = unten)
+header_actions:                       # kleine Pillen ganz rechts im Kopf, rufen einen Dienst
+  - { label: Bestellen, icon: "🛒", service: script.einkauf_bestellen }
+favorites:                            # eingebettete shopping-fav-card, unter der Liste
+  store_entity: input_text.einkauf_favoriten
+  columns: 4
+  title: Schnell dazu
+```
+
+Eine kleine zweite Karte für eine meist leere Liste:
+
+```yaml
+type: custom:fp-todo-card
+entity: todo.apotheke
+title: Apotheke
+add_placeholder: Artikel hinzufügen
+empty_style: compact                  # eine Zeile „✓ Nichts zu besorgen" statt des großen Hinweises
+empty_text: Nichts zu besorgen
+```
+
+- **`add_placeholder`:** Text im leeren Eingabefeld statt „Neue Aufgabe".
+- **`create_position: top`:** Die Eingabezeile steht direkt unter dem Kopf statt unter der Liste; praktisch, wenn die Liste länger wird und man im Geschäft zuerst die Liste braucht, aber oben schnell etwas ergänzen will. Mit `hide_create: true` gibt es sie weiterhin nicht.
+- **`header_actions`:** Liste mit `label`, `icon` (Emoji, optional), `service` (`domain.service`), optional `data` (Dienstdaten) und `confirm_text` (Rückfrage vor dem Aufruf). Jeder Eintrag ist eine kleine Pille mit Akzentrand rechts im Kopf; auf schmalen Karten brechen sie in eine zweite Zeile um. Ein Tipp ruft den Dienst und zeigt danach „✓ Bestellen“ bzw. „Bestellen hat nicht geklappt“; währenddessen ist die Pille gesperrt (ein Skript kann dauern).
+- **`favorites`:** Konfiguration einer `shopping-fav-card` (`store_entity`, `columns`, `title`, `big`, …). `list_entity` ist die `entity` der Karte, solange nichts anderes angegeben ist; die Favoriten werden mit `embedded: true` ohne Rahmen unter der Liste gezeichnet, mit Linie darüber (bei `create_position: top` direkt unter der Liste, sonst unter der Eingabe). Tippt man einen Favoriten, erscheint er sofort in der Liste.
+- **`empty_style: compact`:** Der Leer-Zustand ist eine leise Zeile „✓ " plus `empty_text` (Vorgabe „Alles erledigt“) statt des großen Hinweises mit Kreis.
+
 ### Beispiel: fp-glance-card
 
 ```yaml
@@ -211,9 +255,16 @@ backgrounds:                                # optional, sonst Theme bzw. Blauver
   day: /local/glance/day.jpg
   evening: /local/glance/evening.jpg
   night: /local/glance/night.jpg
+baby:                                       # optional: je Kind eine Zeile unter dem Gruß (Konfiguration der fp-baby-overview-card)
+  nav_path: /familien-planer/baby           # Tipp auf ein Kind öffnet den Baby-Tab bei diesem Kind
+  kids:
+    - { key: kind_a, name: Kind A, color: "#4A7A3A", feeding_calendar: calendar.stillprotokoll_kind_a, switch: input_boolean.stillen_kind_a, start: input_datetime.stillen_kind_a_beginn }
+    - { key: kind_b, name: Kind B, color: "#7A4A78", feeding_calendar: calendar.stillprotokoll_kind_b, switch: input_boolean.stillen_kind_b, start: input_datetime.stillen_kind_b_beginn }
 ```
 
 Ohne `backgrounds` nimmt die Karte Hintergrund, Schrift, Rand und Schatten aus den Theme-Variablen `--fp-glance-*` (siehe „Design-Variablen“), ohne diese die bisherigen Blauverläufe mit weißer Schrift. Das Wetter kann über `weather_card` mit einer vollständigen `clock-weather-card`-Config überschrieben werden; ansonsten wird eine sinnvolle Default-Config verwendet. Benötigt die HACS-Karte `clock-weather-card`.
+
+**Baby-Zeilen (`baby`):** Mit `baby` legt die Begrüßung eine eingebettete `fp-baby-overview-card` im Layout `bar` mit `bar_style: inline` an (siehe „Baby-Leiste“). Unter dem Gruß und der Trennlinie steht je Kind eine Zeile („Kind A · satt seit 1:56 h · 02:23–03:29“, „Fällig“-Chip, „stillt · 12 Min“ mit Puls), danach folgt die Zeile mit Termin und Abendessen. Schrift, Farbe und Größe erben von der Begrüßung. Ein Tipp auf ein Kind öffnet `nav_path` bei diesem Kind. `baby` nimmt alle Optionen der Baby-Leiste (`kids`, `nav_path`, `meal_pause_entity` …), `layout` und `bar_style` setzt die Begrüßung selbst. Ohne `baby` bleibt die Karte, wie sie ist.
 
 ### Beispiel: fp-cookbook-card
 
@@ -340,6 +391,7 @@ kids:                               # gleiche Angaben wie bei der fp-weight-card
   - { key: kind_a, name: Kind A, color: "#4A7A3A", birth: "2026-01-15", ga: "34+5" }
   - { key: kind_b, name: Kind B, color: "#7A4A78", birth: "2026-01-15", ga: "34+5" }
 sections: [firsts, development, motor]   # optional: welche Bereiche, in welcher Reihenfolge
+image_folder: meilensteine          # optional: Unterordner im HA-Medienordner für die Fotos (Vorgabe: meilensteine)
 ```
 
 Den Kalender vorab über die Integration **Local Calendar** anlegen (z. B. „Meilensteine“). Ein erreichter Meilenstein ist ein Ganztagstermin an dem Tag, an dem es passiert ist, etwa „🐢 Kind A: Krabbelt“. Wer den Kalender zusätzlich in der `family-calendar-card` einblendet, sieht die Meilensteine dort auch. Andere Termine im selben Kalender werden übersprungen.
@@ -349,6 +401,8 @@ Den Kalender vorab über die Integration **Local Calendar** anlegen (z. B. „Me
 - **👣 Bewegung:** Die sechs Meilensteine der WHO-Motorikstudie mit ihrem Zeitfenster (1. bis 99. Perzentil), dazu ein Punkt je Kind, wann es so weit war, und eine Linie bei heute.
 
 Ein Tipp auf einen offenen Meilenstein öffnet den Jubel-Dialog: Datum (heute, gestern oder frei), „Datum nur ungefähr“, eine Notiz und bei Geschwistern „Auch für … festhalten“ (bei Erlebnissen schon angehakt). „Festhalten“ zeigt Konfetti und lässt den Sticker hüpfen. Ein Tipp auf etwas Abgehaktes öffnet die Erinnerung zum Ändern. Derselbe Meilenstein in mehreren Bereichen wird nur einmal abgehakt: „Sitzt allein“ zählt auch für „Sitzt ohne Hilfe“ und das WHO-Fenster.
+
+**Foto:** Zu jedem Meilenstein lässt sich ein Foto anhängen, beim Festhalten oder später in der Erinnerung („📷 Foto“, am Handy wahlweise Kamera oder Mediathek; „Tauschen“ und „Entfernen“ gehen auch). Im Sticker-Album ersetzt das runde Foto das Symbol, bei Entwicklung und Bewegung sitzt ein kleines rundes Foto am erledigten Eintrag, in der Erinnerung steht es groß oben, und ein Tipp darauf zeigt es bildschirmfüllend. Der Ordner `image_folder` muss im Medienordner von Home Assistant einmal angelegt sein (bei `/media` also `/media/meilensteine`), und zum Hochladen braucht es ein Admin-Konto. Die Fotos werden vor dem Hochladen verkleinert (lange Seite 1280 px). Gespeichert wird nur der Verweis im Kalendereintrag. Ein Foto, das beim Abbrechen oder Tauschen noch an keinem Eintrag hängt, wird wieder gelöscht. Ein **gespeichertes** Foto bleibt dagegen auch nach „Tauschen“, „Entfernen“ oder „Nicht mehr abhaken“ im Medienordner liegen, denn bei Geschwistern kann dasselbe Foto an mehreren Einträgen hängen; aufräumen geht dort von Hand. „Auch für … festhalten“ übernimmt das Foto für alle Kinder.
 
 Mit `birth` zeigt die Karte das Alter. Mit `ga` (Schwangerschaftswoche bei der Geburt, z. B. `34+5`) rechnen „jetzt“ und die WHO-Fenster bei Kindern, die mindestens drei Wochen zu früh kamen, nach korrigiertem Alter.
 
@@ -409,6 +463,32 @@ Die Karte liest, was die anderen Karten schreiben, und braucht keine eigenen Hel
 - **Momente:** erscheint unten in der Leiste, sobald `milestone_calendar` gesetzt ist, und zeigt die `fp-milestone-card` in den Farben der Übersicht (Erste Male, Entwicklung, Bewegung, Abhaken mit Dialog). Ein eigener Tab für die Meilensteine ist damit nicht nötig. Das gewählte Kind ist in Übersicht und Meilensteinen dasselbe. `memories_path` wird nur noch genutzt, wenn kein `milestone_calendar` gesetzt ist.
 - **Wachstum:** erscheint unten in der Leiste, sobald `weight_calendar` gesetzt ist. Oben das letzte Gewicht mit Alter, Perzentile und der Zunahme seit der Messung davor (Ø g am Tag), darunter Zunahme seit der Geburt, Schnitt pro Woche und die Perzentile jetzt und bei der Geburt. Die Kurve zeigt das Gewicht nach Lebenswochen bzw. -monaten, mit `growth_data` und `sex` je Kind auch die Bänder P3–P97 und P50, ein Stück in die Zukunft und mit einer Linie bei heute. „Bemerkt“ nennt gerechnete Beobachtungen wie den tiefsten Wert nach der Geburt, wann das Geburtsgewicht wieder erreicht war oder eine neue Kilomarke. „⚖️ Wiegen“ trägt ein, ein Tipp auf eine Messung oder einen Punkt ändert oder löscht sie; pro Kind und Tag bleibt es bei einem Wert. Als Geburtsgewicht gilt der Wert am Geburtstag.
 - **Frag nach:** Vorschläge wie „Wie war die letzte Nacht?“ oder freie Fragen. Die Karte rechnet Tageswerte, Nächte und die Einträge der letzten drei Tage vor und gibt sie mit der Frage und dem bisherigen Gespräch an `ai_task.generate_data`. **Diese Daten gehen an den KI-Dienst, der hinter der `ai_task`-Entity steht.** Die Antworten sind kein ärztlicher Rat.
+
+#### Baby-Leiste (`layout: bar`)
+
+Mit `layout: bar` wird aus der Karte eine schmale Leiste für die Startseite (Sections-View, volle Breite): eine flache Pille ohne Überschrift, in der je Kind ein Element steht, mit Kürzel oder Foto, Name, der letzten Mahlzeit („satt seit 1:10 h“) und der Spanne der nächsten („22:24–22:49“). Liegt die Uhrzeit gerade in der Spanne, steht „jetzt–22:49“, danach ein „Fällig“-Chip. Während des Stillens zeigt ein pulsierender Punkt „stillt · 12 Min“, dann ohne Spanne. Ohne Prognose (weniger als vier Abstände in den letzten 72 Stunden) steht nur „satt seit …“, ohne Eintrag „noch nichts eingetragen“, und liegt die letzte Mahlzeit länger als acht Stunden zurück, „letzte vor …“. Die Zahlen und Regeln sind die der Karte „Nächste Mahlzeit“ im Baby-Tab. Ab 700 px Breite stehen die Kinder in einer Zeile, getrennt durch einen dünnen Strich, darunter in je einer Zeile untereinander. Farben und Ecken kommen aus dem Theme, hell und dunkel; bei „Bewegung reduzieren“ pulsiert nichts. Mit `bar_style: inline` entfallen Pille, Rahmen, Fläche und Außenabstand: Die Kinder stehen immer untereinander, Farbe und Schriftgröße erben vom Behälter, Gedämpftes ist über die Deckkraft abgesetzt. Das ist für die Begrüßung gedacht (`baby` der `fp-glance-card`), geht aber auch in einer eigenen Karte.
+
+```yaml
+type: custom:fp-baby-overview-card
+layout: bar
+nav_path: /familienplaner/baby       # optional: Tab, den ein Tipp auf ein Kind öffnet (ohne nav_path nur Anzeige)
+# bar_style: inline                  # optional: ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters
+meal_pause_entity: input_number.stillen_pause_bis_neue_mahlzeit   # optional, wie in der Übersicht
+kids:
+  - key: kind_a                      # dieselben key in derselben Reihenfolge wie im Baby-Tab
+    name: Kind A
+    color: "#4A7A3A"
+    picture: /local/kind_a.jpg       # optional: Foto (oder entity: person.kind_a)
+    feeding_calendar: calendar.stillprotokoll_kind_a
+    switch: input_boolean.stillen_kind_a
+    start: input_datetime.stillen_kind_a_beginn
+  - key: kind_b
+    name: Kind B
+    color: "#7A4A78"
+    # … gleich wie oben
+```
+
+Die `kids`-Angaben lassen sich aus dem Baby-Tab kopieren; die Leiste braucht davon `key`, `name`, `color`, `picture` bzw. `entity`, `feeding_calendar`, `switch` und `start`. Sie lädt nur die Stillkalender der letzten vier Tage und liest sonst die Schalter aus Home Assistant: Windeln, Schlaf, Gewicht, Meilensteine und `growth_data` bleiben außen vor, `reminder_entity` und `reminder_night_entity` braucht sie nicht. Ein Tipp auf ein Kind merkt sich dieses Kind im Browser (dieselbe Merkung wie der Kindschalter im Baby-Tab) und öffnet `nav_path`; der Baby-Tab springt beim Wiederöffnen zu diesem Kind. Das klappt nur, wenn Leiste und Tab dieselben `key` in derselben Reihenfolge haben. Am besten als eigene Karte ganz oben in einem Abschnitt der Startseite.
 
 ## Design-Variablen (Theme)
 

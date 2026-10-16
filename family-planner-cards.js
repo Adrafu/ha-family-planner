@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.0.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
+/* Family Planner custom cards v3.1.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -26,6 +26,29 @@
       el.style.height = "100%";
       const p = el.parentElement;
       if (p && p.localName === "hui-card") { p.style.display = "block"; p.style.height = "100%"; }
+    },
+    // Wie fill, aber im HA-Stapel (horizontal-stack) bleibt alles, wie HA es setzt.
+    // Dort gilt "#root > hui-card { display: contents }" und die Breite verteilt
+    // "#root > hui-card > * { flex: 1 1 0 }". Ein Inline-"display:block" am hui-card
+    // hebt das auf: er wird selbst zum Flex-Item mit Breite nach Inhalt, und eine
+    // Karte mit container-type:inline-size hat dann Eigenbreite 0 — alle Karten
+    // kleben zusammengedrueckt (~0 px) nebeneinander. Ein height:100% an der Karte
+    // verhindert dort ausserdem das Strecken auf gleiche Hoehe (Prozenthoehe in
+    // einer Zeile ohne feste Hoehe zaehlt nicht mehr als "auto").
+    // Also: nur wenn der hui-card nicht "contents" ist (Sections-Raster,
+    // vertical-stack), wird die Zelle geschlossen. Das braucht den berechneten Stil
+    // eines eingehaengten hui-card; vorher gilt die Raster-Annahme, und die Karte
+    // ruft nach dem Einhaengen (connectedCallback) noch einmal auf.
+    fillZelle: el => {
+      const p = el.parentElement;
+      const da = !!p && p.localName === "hui-card" && p.isConnected;
+      // Eigene Werte aus einem frueheren Aufruf (oder von fill) erst entfernen,
+      // sonst liest man unten das eigene "block" statt HAs Regel.
+      if (da && p.style.display === "block" && p.style.height === "100%") { p.style.removeProperty("display"); p.style.removeProperty("height"); }
+      const stapel = da && getComputedStyle(p).display === "contents";
+      el.style.display = "block";
+      if (stapel) el.style.removeProperty("height"); else el.style.height = "100%";
+      if (da && !stapel) { p.style.display = "block"; p.style.height = "100%"; }
     },
   };
   // In dasselbe Objekt hineinschreiben, nicht ersetzen: Karten der anderen
@@ -117,7 +140,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card v29 (Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
+/* ===== meal-grid-card v32 (Heute groß: oben so viel Luft wie seitlich, Nächste Tage enger; davor: Kopf mit „📖 Kochbuch“, wenn cookbook_path gesetzt ist; davor: am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -125,13 +148,13 @@ class MealGridCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
       title: "Wochenplan", mode: "week", week_offset: 0, nav_path: "",
-      layout: "list",                       // Wochenansicht: "list" (Liste nach Tagen), "today" (Heute groß, Woche kurz) oder "grid" (Tabelle)
+      layout: "list",                       // Wochenansicht: "list" (Liste nach Tagen, ab 640 px als Tabelle), "today" (Heute groß, Woche kurz) oder "grid" (Tabelle)
       days_ahead: 4,                        // nur layout "today": wie viele Tage nach heute in der kurzen Liste stehen
       show_emojis: true, meal_icons: true, background: "",
       ai_suggest: true, ai_entity: "", recipe_url: "https://www.chefkoch.de/rs/s0/{q}/Rezepte.html",
       hide_header: false,                   // Wochenansicht ohne Kopfleiste und Wochennavigation (fuer die Uebersicht)
       meal_labels: true,                    // Beschriftung neben dem Mahlzeit-Symbol
-      empty_text: "+",                      // was in einer leeren Zelle steht
+      empty_text: "＋",                     // was in einer leeren Zelle steht (leise dargestellt)
       cookbook_entity: "todo.kochbuch", weather_entity: "weather.home", cookbook_path: "",
       meals: [
         { label: "Frühstück", start: 0, end: 11 },
@@ -153,18 +176,26 @@ class MealGridCard extends HTMLElement {
   }
   // Grid: unter 560 px (Handy) wird das Raster gedreht, sieben Spalten wären dort zu schmal für die Gerichte.
   // Today: unter ca. 110 px je Mahlzeit stehen die Mahlzeiten untereinander statt nebeneinander.
-  // Die Liste braucht keine Umstellung. Neu zeichnen nur, wenn die Breite die Schwelle überschreitet.
+  // List: ab 640 px (bei mehr als drei Mahlzeiten entsprechend breiter) steht statt der Liste eine Tabelle,
+  // Tage als Zeilen, Mahlzeiten als Spalten. Darunter bleibt die Liste nach Tagen, in jeder Breite brauchbar.
+  // Gemessen wird wie beim Raster an der Breite der Karte selbst: Ein Container mit container-type würde
+  // in schrumpfenden Umgebungen (horizontal-stack) auf Breite 0 fallen, und die Liste braucht kein zweites DOM.
+  // Neu zeichnen nur, wenn die Breite die Schwelle überschreitet.
   _istSchmal() {
     const l = this._layout(), w = this.clientWidth;
     if (!(w > 0) || (l !== "grid" && l !== "today")) return false;
     return l === "today" ? w < 110 * Math.max(1, (this.config.meals || []).length) : w < 560;
+  }
+  _istBreit() {
+    const w = this.clientWidth, n = (this.config.meals || []).length;
+    return this._layout() === "list" && n > 0 && w >= Math.max(640, 160 + 160 * n);
   }
   _daysAhead() { const n = Number(this.config.days_ahead); return Number.isFinite(n) ? Math.max(0, Math.min(13, Math.floor(n))) : 4; }
   connectedCallback() {
     // Als Block, sonst ist das Element inline: Breite 0 und kein ResizeObserver-Signal.
     if (!this.style.display) this.style.display = "block";
     if (!this._ro && window.ResizeObserver) {
-      this._ro = new ResizeObserver(() => { if (this._istSchmal() !== !!this._quer) this._render(); });
+      this._ro = new ResizeObserver(() => { if (this._istSchmal() !== !!this._quer || this._istBreit() !== !!this._breit) this._render(); });
       this._ro.observe(this);
     }
   }
@@ -551,11 +582,13 @@ class MealGridCard extends HTMLElement {
     const wd = d => dn[(d.getDay() + 6) % 7];
     const colLabel = (d, i) => compact ? (i === 0 ? "Heute" : "Morgen") : wd(d);
     const quer = this._quer = this._istSchmal();
+    const breit = this._breit = this._istBreit();
 
     // ---------- Kopf ----------
     // Woche füllen / Leeren sitzen als kleine Pillen im Kopf (nicht in „Heute groß“: dort ist keine ganze Woche geladen)
-    const aktionen = (!compact && layout !== "today" && this.config.ai_suggest)
-      ? `<div class="mg-acts"><button class="mg-fill">${CP(0x2728)} Woche füllen</button><button class="mg-clear">${CP(0x1F5D1)} Leeren</button></div>` : "";
+    const ki = (!compact && layout !== "today" && this.config.ai_suggest)
+      ? `<button class="mg-fill">${CP(0x2728)} Woche füllen</button><button class="mg-clear">${CP(0x1F5D1)} Leeren</button>` : "";
+    const aktionen = ki ? `<div class="mg-acts">${ki}</div>` : "";
     let head = "";
     if (compact) {
       if (this.config.title) head = `<div class="mg-h">${this._esc(this.config.title)}</div>`;
@@ -571,12 +604,16 @@ class MealGridCard extends HTMLElement {
         ? `${a.getDate()}.–${b.getDate()}. ${mn[b.getMonth()]}`
         : `${a.getDate()}. ${mn[a.getMonth()]} – ${b.getDate()}. ${mn[b.getMonth()]}`;
       const heute = this._offset !== 0 ? `<button class="mg-today-btn" data-d="0" title="Aktuelle Woche">Heute</button>` : "";
+      // „📖 Kochbuch“ führt zur Kochbuch-Unteransicht; steht vor den Aktionen, damit es beim Umbruch in der ersten Reihe bleibt
+      // und nicht neben dem „Leeren“ sitzt. Nur im vollen Kopf (nicht bei hide_header, nicht in „Heute groß“).
+      const buch = this.config.cookbook_path ? `<button class="mg-book">${CP(0x1F4D6)} Kochbuch</button>` : "";
+      const acts = (buch || ki) ? `<div class="mg-acts${buch && ki ? " mg-acts3" : ""}">${buch}${ki}</div>` : "";
       head = `<div class="mg-head"><div class="mg-title">${this._esc(this.config.title)}</div>
         <div class="mg-hr">${heute}<div class="mg-wk">
           <button class="mg-nav" data-d="-1" title="Vorige Woche" aria-label="Vorige Woche">${CP(0x2039)}</button>
           <span class="mg-range">${range}</span>
           <button class="mg-nav" data-d="1" title="Nächste Woche" aria-label="Nächste Woche">${CP(0x203A)}</button>
-        </div></div>${aktionen}</div>`;
+        </div></div>${acts}</div>`;
     }
 
     // ---------- Bausteine ----------
@@ -636,10 +673,29 @@ class MealGridCard extends HTMLElement {
       }).join("") + `</div>`;
     };
 
+    // Liste als Tabelle (layout: list auf breiten Karten): Tage als Zeilen, Mahlzeiten als Spalten.
+    // Punkt und Name stehen nur im Kopf, die Zellen zeigen das Gericht oder das leise ＋ und sind wie in der Liste antippbar.
+    const listeBreit = () => {
+      const kopf = `<div class="mg-tr mg-tk"><span></span>` + meals.map((m, mi) =>
+        `<span class="mg-tmh ${dcls(mi)}"${lblOn ? "" : ` title="${this._esc(m.label)}"`}><i class="mg-dot"></i>${lblOn ? `<span class="mg-tml">${this._esc(m.label)}</span>` : ""}</span>`).join("") + `</div>`;
+      const zelle = (mi, ci, d) => {
+        const s = gericht(mi, ci, "<br>");
+        // ohne Mahlzeit-Name in der Zelle braucht die Vorlesehilfe Tag und Mahlzeit am Knopf
+        const klar = cells[mi][ci].filter(o => o.summary).map(o => o.summary).join(", ");
+        const al = `${wd(d)} ${d.getDate()}.${d.getMonth() + 1}., ${meals[mi].label}: ${klar || "leer"}`;
+        return `<button type="button" class="mg-cell mg-tz" data-mi="${mi}" data-ci="${ci}" aria-label="${this._esc(al)}"><span class="mg-tzs${s ? "" : " mg-e"}">${s || leer}</span></button>`;
+      };
+      return `<div class="mg-lt" style="--mg-n:${meals.length}">${kopf}` + cols.map((d, ci) => {
+        const t = isToday(d);
+        return `<div class="mg-tr${t ? " mg-today" : ""}"><div class="mg-tw"><div class="mg-dw">${t ? "Heute" : wd(d)}</div><div class="mg-dd">${d.getDate()}.${d.getMonth() + 1}.</div></div>${meals.map((m, mi) => zelle(mi, ci, d)).join("")}</div>`;
+      }).join("") + `</div>`;
+    };
+
     // Heute groß, Woche kurz (layout: today)
     const heuteGross = () => {
       const last = meals.length - 1;
-      let t = `<div class="mg-tbox${quer ? " mg-st" : ""}">` + meals.map((m, mi) => {
+      // ohne Kopf (hide_header) sitzt der Kasten ganz oben: dann gilt oben derselbe Rand wie seitlich
+      let t = `<div class="mg-tbox${quer ? " mg-st" : ""}${head ? "" : " mg-tb0"}">` + meals.map((m, mi) => {
         const s = gericht(mi, 0, "<br>");
         return `<button type="button" class="mg-cell mg-tc ${dcls(mi)}" data-mi="${mi}" data-ci="0"><span class="mg-tl"><i class="mg-dot"></i>${this._esc(m.label)}</span><span class="mg-td${s ? "" : " mg-e"}">${s || leer}</span></button>`;
       }).join("") + `</div>`;
@@ -658,7 +714,7 @@ class MealGridCard extends HTMLElement {
       return t;
     };
 
-    const body = (compact || layout === "grid") ? tabelle() : (layout === "today" ? heuteGross() : liste());
+    const body = (compact || layout === "grid") ? tabelle() : (layout === "today" ? heuteGross() : (breit ? listeBreit() : liste()));
     const html = `<ha-card class="mg-card">${head}${body}</ha-card>`;
 
     let bgImg = "";
@@ -686,12 +742,15 @@ class MealGridCard extends HTMLElement {
       .mg-nav{flex:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:none;border-radius:50%;background:transparent;color:var(--primary-text-color);font-size:1.25rem;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .mg-nav:active{background:var(--fp-surface-2,var(--divider-color));}
       .mg-today-btn{flex:none;min-height:32px;padding:0 12px;border:none;border-radius:999px;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);color:var(--fp-accent,var(--primary-color));font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-      .mg-acts{flex:none;display:flex;flex-wrap:wrap;gap:6px;}
-      .mg-fill,.mg-clear{flex:none;min-height:32px;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      /* max-width: drei Pillen dürfen auf schmalen Karten in der Reihe umbrechen statt überzulaufen */
+      .mg-acts{flex:none;max-width:100%;display:flex;flex-wrap:wrap;gap:6px;}
+      .mg-book,.mg-fill,.mg-clear{flex:none;min-height:32px;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      /* drei Pillen: auf Handybreite etwas enger, damit „Leeren“ nicht allein in eine dritte Reihe fällt (ab ca. 335 px Kartenbreite) */
+      @media (max-width:420px){.mg-acts3{gap:5px;}.mg-acts3 .mg-book,.mg-acts3 .mg-fill,.mg-acts3 .mg-clear{padding:0 10px;}}
       .mg-fill:disabled,.mg-clear:disabled{opacity:.6;cursor:default;}
       @media (hover:hover){
         .mg-nav:hover{background:var(--fp-surface-2,var(--divider-color));}
-        .mg-fill:hover{color:var(--fp-accent,var(--primary-color));border-color:var(--fp-accent,var(--primary-color));}
+        .mg-book:hover,.mg-fill:hover{color:var(--fp-accent,var(--primary-color));border-color:var(--fp-accent,var(--primary-color));}
         .mg-clear:hover{color:var(--error-color,#db4437);border-color:var(--error-color,#db4437);}
       }
       /* Datum als kleine Pille im Kopf von „Heute groß“ */
@@ -709,36 +768,54 @@ class MealGridCard extends HTMLElement {
       /* Liste nach Tagen: Linien statt Kästen; Heute mit Strich am Kartenrand */
       .mg-list{padding:0 0 6px;}
       .mg-dr{position:relative;display:flex;align-items:flex-start;gap:12px;padding:6px 16px;box-sizing:border-box;}
-      .mg-dr+.mg-dr{border-top:1px solid var(--divider-color);}
-      .mg-dr.mg-today::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--fp-accent,var(--primary-color));}
+      .mg-dr+.mg-dr,.mg-tr+.mg-tr{border-top:1px solid var(--divider-color);}
+      .mg-dr.mg-today::before,.mg-tr.mg-today::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--fp-accent,var(--primary-color));}
       .mg-dl{flex:none;width:56px;padding-top:8px;line-height:1.2;}
       .mg-dw{font-size:.95rem;font-weight:800;}
       .mg-dd{margin-top:1px;font-size:.68rem;color:var(--secondary-text-color);font-variant-numeric:tabular-nums;}
-      .mg-dr.mg-today .mg-dw,.mg-dr.mg-today .mg-dd{color:var(--fp-accent,var(--primary-color));}
+      .mg-dr.mg-today .mg-dw,.mg-dr.mg-today .mg-dd,.mg-tr.mg-today .mg-dw,.mg-tr.mg-today .mg-dd{color:var(--fp-accent,var(--primary-color));}
       .mg-dm{flex:1 1 0;min-width:0;display:flex;flex-direction:column;}
       .mg-mr{display:flex;align-items:center;gap:8px;align-self:stretch;min-height:36px;box-sizing:border-box;margin:0 -8px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .mg-lb{flex:none;width:calc(var(--mg-ll,6) * .82em);max-width:96px;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
+      /* Liste als Tabelle (ab 640 px): Kopf mit Punkt und Name je Mahlzeit, je Tag eine Zeile, Zellen nur mit dem Gericht.
+         Jede Zeile ist ein eigenes Raster mit gleichen Spalten, so liegen Kopf und Tage bündig und Heute lässt sich als ganze Zeile tönen. */
+      .mg-lt{padding:0 0 6px;}
+      .mg-tr{position:relative;display:grid;grid-template-columns:120px repeat(var(--mg-n,3),minmax(0,1fr));box-sizing:border-box;}
+      .mg-tr.mg-today{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 12%,transparent);}
+      .mg-tmh{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 12px;}
+      .mg-tml{min-width:0;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .mg-tw{display:flex;flex-direction:column;justify-content:center;min-width:0;padding:10px 12px 10px 16px;line-height:1.2;}
+      .mg-tz{display:flex;align-items:center;min-width:0;min-height:44px;box-sizing:border-box;margin:4px 2px;padding:6px 10px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-tzs{min-width:0;font-size:.9rem;font-weight:700;line-height:1.3;overflow-wrap:break-word;hyphens:auto;color:var(--primary-text-color);}
+      .mg-tzs.mg-e{font-weight:400;color:var(--secondary-text-color);}
+
       /* Heute groß: Mahlzeiten von heute nebeneinander in einem Kasten, darunter die nächsten Tage als kurze Liste */
       .mg-tbox{display:flex;margin:4px 16px 0;border:1px solid var(--divider-color);border-radius:var(--fp-radius-sm,12px);overflow:hidden;}
       .mg-tc{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px;box-sizing:border-box;padding:12px;border:none;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-tbox.mg-tb0{margin-top:16px;}
       .mg-tc+.mg-tc{border-left:1px solid var(--divider-color);}
       .mg-tbox.mg-st{flex-direction:column;}
       .mg-tbox.mg-st .mg-tc+.mg-tc{border-left:none;border-top:1px solid var(--divider-color);}
       .mg-tl{display:flex;align-items:center;gap:6px;max-width:100%;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);}
       .mg-td{max-width:100%;font-size:1rem;font-weight:900;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;hyphens:auto;color:var(--primary-text-color);}
       .mg-td.mg-e{font-weight:400;color:var(--secondary-text-color);}
-      .mg-nt{margin:16px 16px 2px;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
-      .mg-nx{display:flex;flex-direction:column;padding:0 16px 8px;}
-      /* Nächste Tage: links der Wochentag, rechts alle eingetragenen Mahlzeiten nebeneinander, bei Platzmangel umbrechend */
-      .mg-nxr{display:flex;align-items:flex-start;gap:12px;box-sizing:border-box;padding:4px 0;}
-      .mg-nxw{flex:none;width:44px;min-height:36px;display:flex;align-items:center;font-size:.9rem;font-weight:800;}
+      .mg-nt{margin:20px 16px 2px;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
+      .mg-nx{display:flex;flex-direction:column;padding:0 16px 6px;}
+      /* Nächste Tage: links der Wochentag, rechts alle eingetragenen Mahlzeiten nebeneinander, bei Platzmangel umbrechend.
+         Eine Zeile misst 36 px (Fläche 32 px + je 2 px Luft), umbrochene Gerichte im selben Abstand (4 px Lücke). Tag und Gericht teilen sich
+         Schriftgröße und Zeilenhöhe, so stehen beide auf einer Grundlinie. */
+      .mg-nxr{display:flex;align-items:flex-start;gap:12px;box-sizing:border-box;padding:2px 0;}
+      .mg-nxw{flex:none;width:44px;min-height:32px;display:flex;align-items:center;font-size:.9rem;font-weight:800;line-height:1.25;}
       .mg-nxm{flex:1 1 0;min-width:0;margin-left:-8px;display:flex;flex-wrap:wrap;gap:4px 12px;}
-      .mg-nxg{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-width:0;max-width:100%;min-height:36px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-nxg{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-width:0;max-width:100%;min-height:32px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .mg-nxs{min-width:0;font-size:.9rem;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--primary-text-color);}
       .mg-nxs.mg-e{font-weight:400;color:var(--secondary-text-color);}
-      .mg-tc:active,.mg-mr:active,.mg-nxg:active{background:var(--fp-surface,var(--secondary-background-color));}
-      @media (hover:hover){.mg-tc:hover,.mg-mr:hover,.mg-nxg:hover{background:var(--fp-surface,var(--secondary-background-color));}}
+      .mg-tc:active,.mg-mr:active,.mg-nxg:active,.mg-tz:active{background:var(--fp-surface,var(--secondary-background-color));}
+      @media (hover:hover){.mg-tc:hover,.mg-mr:hover,.mg-nxg:hover,.mg-tz:hover{background:var(--fp-surface,var(--secondary-background-color));}}
+      /* in der getönten Heute-Zeile hebt sich die Fläche nur durch etwas mehr Akzent ab */
+      .mg-tr.mg-today .mg-tz:active{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 14%,transparent);}
+      @media (hover:hover){.mg-tr.mg-today .mg-tz:hover{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 14%,transparent);}}
 
       /* Tabelle (layout: grid, mode: compact) */
       .mg-wrap{padding:14px 16px 18px;overflow-x:auto;}
@@ -791,6 +868,8 @@ class MealGridCard extends HTMLElement {
       ${bgImg}
     `;
     this.innerHTML = `<style>${css}</style>${html}`;
+    const kb = this.querySelector(".mg-book");
+    if (kb) kb.addEventListener("click", () => this._nav(this.config.cookbook_path));
     const fb = this.querySelector(".mg-fill");
     if (fb) fb.addEventListener("click", () => this._fillWeek(fb));
     const cb = this.querySelector(".mg-clear");
@@ -813,7 +892,7 @@ class MealGridCard extends HTMLElement {
   getCardSize() {
     const l = this._layout(), n = (this.config.meals || []).length || 3;
     if (l === "compact") return 3;
-    if (l === "today") return Math.ceil((60 + 90 + 40 + 44 * this._daysAhead()) / 50);
+    if (l === "today") return Math.ceil((60 + 90 + 40 + 36 * this._daysAhead()) / 50);
     if (l === "list") return Math.ceil((60 + 7 * (36 * n + 12)) / 50);
     return 6;
   }
@@ -825,18 +904,20 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v2.10 (schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
+/* ===== family-calendar-card v2.11 (Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
 class FamilyCalendarCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
-      title: "Kalender", initial_view: "week",   // week | month | day | agenda day_start: 6, day_end: 23, persons: [],
+      title: "Kalender", initial_view: "week",   // week | month | day | agenda
+      day_start: 6, day_end: 23, persons: [],
       days: 4,                 // nur fuer initial_view: "agenda"
       hide_header: false,      // Kopfleiste mit Navigation und Ansichtswechsel
       hide_legend: false,      // Personenfilter unter der Kopfleiste
       week_grid: false,        // Woche als Stundenraster statt Terminkacheln
+      fill_height: false,      // Karte reicht mindestens bis zum unteren Bildschirmrand (Tag, Woche, Monat)
     }, config || {});
     if (!this.config.persons || !this.config.persons.length) throw new Error("Bitte 'persons' konfigurieren");
     this._view = ["month", "agenda", "day"].includes(this.config.initial_view) ? this.config.initial_view : "week";
@@ -1544,7 +1625,9 @@ class FamilyCalendarCard extends HTMLElement {
     const kopf = this.config.hide_header ? "" : this._headerHTML(view.label);
     // Tag und Woche filtern ueber die Personen-Chips statt ueber die Legende
     const legende = this.config.hide_legend || this._view === "day" || (this._view === "week" && !this.config.week_grid) ? "" : this._legendHTML();
-    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card${this._schmal ? " fcc-narrow" : ""}" lang="de">${kopf}${legende}${view.html}</ha-card>`;
+    // fill_height gilt nicht in der Mehrtagesansicht (Startseite): dort bleibt die Karte so hoch wie ihr Inhalt
+    const fuell = this.config.fill_height && this._view !== "agenda";
+    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card${this._schmal ? " fcc-narrow" : ""}${fuell ? " fcc-fill" : ""}" lang="de">${kopf}${legende}${view.html}</ha-card>`;
     this.querySelectorAll(".fcc-bar .fcc-nav-b,.fcc-bar .fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._go(); }));
     this.querySelectorAll(".fcc-vw").forEach(b => b.addEventListener("click", () => { const v = b.dataset.v; if (v !== this._view) { this._view = v; this._offset = 0; this._maybeFetch(true); } }));
     this.querySelectorAll(".fcc-chip").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; if (this._hidden.has(n)) this._hidden.delete(n); else this._hidden.add(n); this._saveHidden(); this._render(); }));
@@ -1659,7 +1742,7 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-badge{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 20%,transparent);color:var(--fp-head,var(--primary-color));}
     .fcc-dy-extra{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;}
     .fcc-dy-chip{display:inline-flex;align-items:center;gap:6px;font-size:.88rem;padding:4px 10px;border-radius:999px;background:var(--secondary-background-color,rgba(0,0,0,.05));color:var(--primary-text-color);cursor:pointer;}
-    .fcc-dy-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px;padding:0 14px 4px;}
+    .fcc-dy-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 12px;padding:0 14px 4px;}
     .fcc-dy-col{min-width:0;display:flex;flex-direction:column;gap:8px;}
     .fcc-dy-h{display:flex;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:2px;border-bottom:3px solid #888;}
     .fcc-dy-av{flex:0 0 38px;width:38px;height:38px;border-radius:50%;border:2px solid #888;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:1.05rem;font-weight:700;background-size:cover;background-position:center;}
@@ -1698,7 +1781,8 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-wl-heute .fcc-wl-n,.fcc-wl-heute .fcc-wl-w{color:var(--fp-head,var(--primary-color));}
     .fcc-wl-vorbei .fcc-wl-h{opacity:.55;}
     .fcc-wl-day .fcc-dy-extra{padding-left:68px;}
-    .fcc-wt{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:14px 10px;padding:0 14px 4px;}
+    /* auto-fit statt auto-fill: auto-fill legt auch leere Spuren an, dann nähmen sieben Tage nur einen Teil der Breite ein */
+    .fcc-wt{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:14px 10px;padding:0 14px 4px;}
     .fcc-wt-day{min-width:0;display:flex;flex-direction:column;gap:7px;cursor:pointer;min-height:90px;}
     .fcc-dy-col{cursor:pointer;min-height:120px;}
     .fcc-wt-h{padding:2px 2px 7px;border-bottom:3px solid var(--divider-color,#e5e5e5);flex-wrap:wrap;}
@@ -1764,6 +1848,11 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-save{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:700;}
     .fcc-del{background:rgba(229,57,53,.15);color:#c62828;}
     .fcc-check{display:flex;align-items:center;gap:8px;font-size:.85rem;margin:10px 0 2px;color:var(--primary-text-color);}
+    /* fill_height: mindestens bis zum unteren Bildschirmrand (Kopfzeile, Safe-Area und --fcc-fill-offset abgezogen); die Spalten wachsen mit, freie Fläche gehört zur Spalte */
+    .fcc-fill{box-sizing:border-box;display:flex;flex-direction:column;min-height:calc(100vh - var(--header-height,56px) - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--fcc-fill-offset,8px));min-height:calc(100dvh - var(--header-height,56px) - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--fcc-fill-offset,8px));}
+    .fcc-fill>.fcc-dy,.fcc-fill>.fcc-m,.fcc-fill>.fcc-wk{flex:1 1 auto;display:flex;flex-direction:column;}
+    .fcc-fill .fcc-wt,.fcc-fill .fcc-dy-cols,.fcc-fill .fcc-m-grid{flex:1 1 auto;}
+    .fcc-fill .fcc-scroll{flex:1 1 0;min-height:240px;max-height:none;}
     `;
   }
   getCardSize() { return 10; }
@@ -1879,7 +1968,7 @@ if (!customElements.get("kids-routine-card")) {
 }
 })();
 
-/* ===== shopping-fav-card v22 (Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card v24 (embedded: true ohne eigenen Rahmen, kompakter, für die Aufgabenkarte; davor: großer Knopf unter der Schnellauswahl, wenn beides sichtbar ist; davor: Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1904,6 +1993,8 @@ class ShoppingFavCard extends HTMLElement {
       // Home Assistant reicht kein Wiederholungsmuster durch, deshalb legt die Karte solche
       // Aufgaben direkt ueber die Todoist-Schnittstelle an (rest_command).
       repeat_options: [], repeat_label: "Wiederholung", todoist_service: "rest_command.todoist_add_task",
+      // embedded: sitzt in der Aufgabenkarte (fp-todo-card, Option favorites), die den Rahmen stellt
+      embedded: false,
     }, config || {});
     this._editing = false; this._lastVal = null; this._built = false;
     this._open = []; this._optim.clear(); this._markSig = ""; this._failAt = 0;
@@ -1925,6 +2016,9 @@ class ShoppingFavCard extends HTMLElement {
     const t = setTimeout(() => { this._timers.delete(t); fn(); }, ms);
     this._timers.add(t);
   }
+  // Dialoge hängen an der Karte selbst. Eingebettet in die Aufgabenkarte (container-type) wäre
+  // position:fixed an deren Rahmen gebunden statt am Fenster; dann hängen sie am Element der Aufgabenkarte.
+  _ovRoot() { return this.config.embedded && this._ovHost && this._ovHost.isConnected ? this._ovHost : this; }
 
   // ---------- „Schon auf der Liste“ (Abo auf list_entity) ----------
   // Tipp legt direkt an (kein Zuweisen-Blatt) und es gibt Favoriten, die man markieren kann
@@ -2221,7 +2315,7 @@ class ShoppingFavCard extends HTMLElement {
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
     const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${this._emoji(name)} ${this._esc(name)}</div><div class="sf-sub">Wer?</div><div class="sf-tgts">${tbtns}</div>${this._dueHtml()}${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">OK</button></div></div>`;
-    this.appendChild(ov);
+    this._ovRoot().appendChild(ov);
     const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
     ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => {
@@ -2250,7 +2344,7 @@ class ShoppingFavCard extends HTMLElement {
     const dueHtml = this.config.show_due ? this._dueHtml() : "";
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${CP(0x2795)} ${this._esc(this.config.add_label || "Hinzufügen")}</div><input class="sf-addtext" type="text" placeholder="Eingeben..."/>${favChips ? `<div class="sf-sub">Favoriten</div><div class="sf-favs">${favChips}</div>` : ""}${tbtns ? `<div class="sf-sub">${this._esc(this.config.target_label || "Wer?")}</div><div class="sf-tgts">${tbtns}</div>` : ""}${dueHtml}${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">Hinzufügen</button></div></div>`;
-    this.appendChild(ov);
+    this._ovRoot().appendChild(ov);
     const txt = ov.querySelector(".sf-addtext");
     const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
@@ -2277,10 +2371,11 @@ class ShoppingFavCard extends HTMLElement {
     const showFavs = this._showFavs();
     const assign = this._assigning();
     const mark = this._marking();
-    let top = "", body = "";
+    let top = "", body = "", bottom = "";
     if (this.config.add_button) {
-      // bei „Schnell anlegen“ über dem Kopf mit den Favoriten
-      top = `<div class="sf-addbar"><button class="sf-addbig"><span class="sf-ic">${CP(0x2795)}</span><span>${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</span></button></div>`;
+      // Mit Favoriten („Schnell anlegen“) unter den Kacheln, sonst allein als Kachel
+      const bar = `<div class="sf-addbar${showFavs ? " sf-below" : ""}"><button class="sf-addbig"><span class="sf-ic">${CP(0x2795)}</span><span>${this._esc(this.config.add_label || "Aufgabe hinzufügen")}</span></button></div>`;
+      if (showFavs) bottom = bar; else top = bar;
     }
     if (showFavs) {
       const items = this._items();
@@ -2296,7 +2391,11 @@ class ShoppingFavCard extends HTMLElement {
            + `<div class="sf-grid" lang="de" style="--sf-cols:${cols};">${chips || `<div class="sf-empty">Noch keine Favoriten</div>`}</div>`;
     }
     this._markSig = this._marksSig();
-    this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${top}${body}</ha-card>${this._styles()}`;
+    if (this.config.embedded) {
+      // ohne ha-card: Rahmen, Hintergrund und Schatten gehören der Aufgabenkarte
+      this.style.display = "block";
+      this.innerHTML = `<div class="sf-card sf-emb">${top}${body}${bottom}</div>${this._styles()}`;
+    } else this.innerHTML = `<ha-card class="sf-card${this.config.add_button && !showFavs ? " sf-addcard" : ""}">${top}${body}${bottom}</ha-card>${this._styles()}`;
 
     const ab = this.querySelector(".sf-addbig");
     if (ab) ab.addEventListener("click", () => this._openAdd());
@@ -2314,7 +2413,7 @@ class ShoppingFavCard extends HTMLElement {
     this._draft = this._items();
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._ov = ov;
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">Favoriten bearbeiten</div><div class="sf-list"></div><div class="sf-addrow"><input class="sf-new" type="text" placeholder="Neuer Favorit..."><button class="sf-addbtn">${CP(0x2795)} Hinzufügen</button></div><div class="sf-foot"><button class="sf-done">Fertig</button></div></div>`;
-    this.appendChild(ov);
+    this._ovRoot().appendChild(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeEditor(); });
     const inp = ov.querySelector(".sf-new");
     ov.querySelector(".sf-addbtn").addEventListener("click", () => { this._add(inp.value); inp.value = ""; inp.focus(); });
@@ -2347,7 +2446,7 @@ class ShoppingFavCard extends HTMLElement {
       .sf-sec{font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
       .sf-edit{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:36px;box-sizing:border-box;padding:0 12px;border:1px solid var(--divider-color);border-radius:999px;background:transparent;color:var(--secondary-text-color);font-size:.76rem;font-weight:800;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       /* Raster: höchstens --sf-cols Spalten, auf schmalen Karten weniger (mindestens 96px), alle gleich breit */
-      .sf-grid{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(max(96px,calc((100% - (var(--sf-cols,3) - 1) * 8px) / var(--sf-cols,3) - 1px)),1fr));}
+      .sf-grid{display:grid;gap:var(--sf-gap,8px);grid-template-columns:repeat(auto-fill,minmax(max(var(--sf-min,96px),calc((100% - (var(--sf-cols,3) - 1) * var(--sf-gap,8px)) / var(--sf-cols,3) - 1px)),1fr));}
       .sf-chip{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:68px;box-sizing:border-box;padding:8px 6px;border:none;border-radius:var(--fp-radius-sm,12px);background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-size:.82rem;font-weight:700;line-height:1.15;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .sf-ic{flex:none;line-height:1;}
       .sf-em{font-size:1.45rem;line-height:1;}
@@ -2363,6 +2462,17 @@ class ShoppingFavCard extends HTMLElement {
       .sf-chip .sf-ck{position:absolute;top:5px;right:7px;font-size:.7rem;font-weight:800;line-height:1;}
       .sf-added{background:var(--fp-accent,var(--primary-color))!important;color:var(--fp-accent-fg,var(--text-primary-color,#fff))!important;box-shadow:none!important;}
       .sf-empty{grid-column:1/-1;color:var(--secondary-text-color);padding:8px;text-align:center;}
+      /* embedded: in der Aufgabenkarte ohne eigenen Rahmen und Innenabstand; Titel als kleines Abschnitts-Label, Kacheln kompakter */
+      .sf-card.sf-emb{padding:0;}
+      .sf-emb .sf-head{min-height:0;margin-bottom:8px;}
+      .sf-emb .sf-title,.sf-emb .sf-sec{font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
+      .sf-emb .sf-edit{min-height:30px;gap:4px;padding:0 10px;font-size:.7rem;}
+      .sf-emb .sf-grid{--sf-min:78px;--sf-gap:6px;}
+      .sf-emb .sf-chip{min-height:56px;gap:2px;padding:6px 4px;font-size:.78rem;}
+      .sf-emb .sf-em{font-size:1.2rem;}
+      .sf-emb .sf-chip.sf-big{min-height:64px;}
+      .sf-emb .sf-chip.sf-big .sf-em{font-size:1.35rem;}
+      .sf-emb .sf-chip.sf-big .sf-nm{font-size:.82rem;}
       .sf-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:20;}
       .sf-modal{background:var(--card-background-color,#fff);color:var(--primary-text-color);width:min(92vw,420px);max-height:82vh;overflow:auto;border-radius:18px;padding:18px;box-shadow:0 12px 40px rgba(0,0,0,.4);}
       .sf-mhead{font-size:1.05rem;font-weight:700;margin-bottom:12px;}
@@ -2401,8 +2511,9 @@ class ShoppingFavCard extends HTMLElement {
       .sf-datewrap.sf-dsel .sf-date{background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);border-color:transparent;font-weight:600;}
       .sf-foot .sf-cancel{border:none;border-radius:10px;padding:10px 16px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-weight:600;cursor:pointer;margin-right:8px;}
       .sf-foot .sf-ok{border:none;border-radius:10px;padding:10px 22px;background:rgba(var(--fp-accent-rgb,79,195,247),.95);color:var(--fp-accent-fg,#013);font-weight:700;cursor:pointer;}
-      /* Großer Knopf: volle Breite in Akzent; bei „Schnell anlegen“ über dem Kopf mit den Favoriten */
+      /* Großer Knopf: volle Breite in Akzent; bei „Schnell anlegen“ unter den Kacheln mit den Favoriten */
       .sf-addbar{display:flex;margin-bottom:14px;}
+      .sf-addbar.sf-below{margin:14px 0 0;}
       .sf-addbig{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;box-sizing:border-box;border:none;border-radius:var(--fp-radius-sm,12px);padding:12px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:800;font-size:1rem;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .sf-addbig:active{transform:scale(.99);}
       @media (hover:hover){.sf-addbig:hover{filter:brightness(1.06);}}
@@ -2431,7 +2542,7 @@ if (!customElements.get("shopping-fav-card")) {
 }
 })();
 
-/* ===== nav-card v3 (fuellt die Rasterzelle aus; wraps any card; pointer/text-cursor children stay interactive) ===== */
+/* ===== nav-card v4 (in horizontal-stack wieder nebeneinander statt zusammengedrueckt (fuellt die Rasterzelle, ohne HAs Stapel-Aufteilung zu ueberschreiben); davor: fuellt die Rasterzelle aus; wraps any card; pointer/text-cursor children stay interactive) ===== */
 (() => {
 const U = window.__fpUtils;
 class NavCard extends HTMLElement {
@@ -2439,6 +2550,11 @@ class NavCard extends HTMLElement {
     if (!config || !config.card) throw new Error("card (zu umhuellende Karte) erforderlich");
     this.config = config;
     this._built = false;
+  }
+  connectedCallback() {
+    // _build kann vor dem Einhaengen laufen; dann war der hui-card noch nicht erreichbar
+    const fz = U.fillZelle || U.fill;
+    if (fz) fz(this);
   }
   set hass(hass) {
     this._hass = hass;
@@ -2466,7 +2582,8 @@ class NavCard extends HTMLElement {
     wrap.addEventListener("click", e => this._onClick(e));
     // Hoehe bis zur umhuellten Karte durchreichen; deren ha-card braucht
     // zusaetzlich card_mod: "ha-card{height:100%}" in ihrer eigenen Config.
-    if (U.fill) U.fill(this); // defensiv: fehlender Helfer darf die Karte nie killen
+    const fz = U.fillZelle || U.fill; // defensiv: fehlender Helfer darf die Karte nie killen
+    if (fz) fz(this);
     if (el.style) el.style.height = "100%";
   }
   _isInteractive(path) {
@@ -2508,7 +2625,7 @@ if (!customElements.get("nav-card")) {
 }
 })();
 
-/* ===== fp-todo-card v17 (Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+/* ===== fp-todo-card v19 (Einkauf in einer Karte: add_placeholder, create_position: top, header_actions, eingebettete Favoriten, empty_style: compact; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
 // Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
 // selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
 // Hinzufügen über das Ereignis fp-todo-add bleiben.
@@ -2525,6 +2642,9 @@ class FpTodoCard extends HTMLElement {
     this._timers = new Set();
     this._gen = 0; this._pseq = 0; this._failAt = 0;
     this._unsub = null; this._subbing = false; this._built = false; this._sig = "";
+    this._acts = [];           // header_actions: Pillen im Kopf, die einen Dienst rufen
+    this._busy = new Set();    // Pillen, deren Dienst gerade läuft (Index in _acts)
+    this._favEl = null;        // eingebettete Favoriten (shopping-fav-card), einmal angelegt und behalten
     this._onAdd = e => {
       const d = e.detail || {};
       if (this.config && d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary), d.due || null, d.description);
@@ -2541,6 +2661,10 @@ class FpTodoCard extends HTMLElement {
     this._repeats = config.repeat_options || [];
     this._items = null; this._err = false; this._errShown = false; this._loadedOnce = false; this._failAt = 0;
     this._pending = []; this._ovr.clear(); this._keep.clear();
+    // Kopf-Pillen: nur Einträge mit Dienst „domain.service“ und etwas zum Beschriften
+    this._acts = (Array.isArray(config.header_actions) ? config.header_actions : [])
+      .filter(a => a && typeof a.service === "string" && a.service.indexOf(".") > 0 && (a.label || a.icon));
+    this._busy.clear(); this._favEl = null;
     this._built = false;
     if (this.isConnected) { this._build(); this._subscribe(); this._paint(); }
   }
@@ -2548,7 +2672,8 @@ class FpTodoCard extends HTMLElement {
     window.addEventListener("fp-todo-add", this._onAdd);
     if (!this._tick) this._tick = setInterval(() => this._paint(), 60000);   // „heute/morgen“ wandert mit dem Tag
     if (!this._built && this.config) this._build();
-    if (U.fill) U.fill(this);   // jetzt hängt die Karte im DOM, hui-card ist erreichbar
+    const fz = U.fillZelle || U.fill;
+    if (fz) fz(this);   // jetzt hängt die Karte im DOM, hui-card ist erreichbar
     this._subscribe();
     this._paint();
   }
@@ -2562,6 +2687,7 @@ class FpTodoCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._built && this.config) this._build();
+    if (this._favEl) this._favEl.hass = hass;
     this._subscribe();
   }
   _after(fn, ms) {
@@ -2722,20 +2848,44 @@ class FpTodoCard extends HTMLElement {
   _build() {
     this._closeEdit();
     this._built = true; this._sig = "";
-    const add = this.config.hide_create === true ? "" :
-      `<div class="fpt-add"><input class="fpt-in" type="text" placeholder="Neue Aufgabe" aria-label="Neue Aufgabe" enterkeyhint="done" autocomplete="off"><button type="button" class="fpt-plus" aria-label="Aufgabe hinzufügen">＋</button></div>`;
+    const c = this.config;
+    // add_placeholder: Platzhalter der Eingabe (Vorgabe „Neue Aufgabe“); create_position: top setzt die Eingabe unter den Kopf
+    const ph = c.add_placeholder != null && String(c.add_placeholder) !== "" ? String(c.add_placeholder) : "";
+    const top = c.create_position === "top";
+    const add = c.hide_create === true ? "" :
+      `<div class="fpt-add${top ? " fpt-add-top" : ""}"><input class="fpt-in" type="text" placeholder="${U.esc(ph || "Neue Aufgabe")}" aria-label="${U.esc(ph || "Neue Aufgabe")}" enterkeyhint="done" autocomplete="off"><button type="button" class="fpt-plus" aria-label="${ph ? "Hinzufügen" : "Aufgabe hinzufügen"}">＋</button></div>`;
+    // Favoriten (eingebettete shopping-fav-card) unter der Liste, bei unten stehender Eingabe unter dieser
+    const favs = c.favorites && typeof c.favorites === "object" ? `<div class="fpt-favs"></div>` : "";
     // Farbe des Abhak-Kreises: die Personenfarbe der Pille, bei der alten Form (bg + color) und ohne Farbe der Akzent
-    const pc = this.config.pill;
+    const pc = c.pill;
     const dot = pc && typeof pc === "object" && pc.color && !pc.bg ? String(pc.color) : "";
-    this.innerHTML = `<ha-card class="fpt-card"${dot ? ` style="${U.esc("--fpt-dot:" + dot)}"` : ""}><div class="fpt-body"><div class="fpt-head" hidden></div><div class="fpt-list" lang="de"></div>${add}</div></ha-card>${this._styles()}`;
-    if (U.fill) U.fill(this);
+    this.innerHTML = `<ha-card class="fpt-card"${dot ? ` style="${U.esc("--fpt-dot:" + dot)}"` : ""}><div class="fpt-body"><div class="fpt-head${this._acts.length ? " fpt-head-a" : ""}" hidden></div>${top ? add : ""}<div class="fpt-list" lang="de"></div>${top ? "" : add}${favs}</div></ha-card>${this._styles()}`;
+    const fz = U.fillZelle || U.fill;
+    if (fz) fz(this);
     const card = this.querySelector(".fpt-card");
     this._head = card.querySelector(".fpt-head");
     this._list = card.querySelector(".fpt-list");
+    if (favs) this._mountFavs(card.querySelector(".fpt-favs"));
     card.addEventListener("click", e => this._onClick(e));
     const inp = card.querySelector(".fpt-in");
     if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); this._add(); } });
     this._paint();
+  }
+  // Die Favoriten sind eine shopping-fav-card mit embedded: true. Die Instanz bleibt über Neuzeichnen und
+  // hass-Updates erhalten (neu angelegt wird sie nur mit setConfig); list_entity ist die eigene Liste.
+  _mountFavs(slot) {
+    if (!slot) return;
+    if (!this._favEl) {
+      const tag = "shopping-fav-card";
+      if (!customElements.get(tag)) { console.warn("[fp-todo-card] shopping-fav-card nicht geladen: Favoriten fehlen"); return; }
+      const el = document.createElement(tag);
+      try { el.setConfig(Object.assign({}, this.config.favorites, { list_entity: this.config.favorites.list_entity || this.config.entity, embedded: true })); }
+      catch (e) { console.warn("[fp-todo-card] favorites:", e); return; }
+      el._ovHost = this;   // Dialoge der Favoriten hängen an dieser Karte, nicht an deren Rahmen (siehe _ovRoot der Favoriten)
+      this._favEl = el;
+    }
+    slot.appendChild(this._favEl);
+    if (this._hass) this._favEl.hass = this._hass;
   }
   _pillStyle(p) {
     const bg = p.bg ? String(p.bg) : "", col = p.color ? String(p.color) : "";
@@ -2759,7 +2909,13 @@ class FpTodoCard extends HTMLElement {
       if (label) left = `<span class="fpt-pill"${st ? ` style="${st}"` : ""}>${U.esc(label)}</span>`;
     } else if (c.title) left = `<div class="fpt-title">${U.esc(c.title)}</div>`;
     const right = open > 0 ? `<div class="fpt-cnt"><b>${open}</b><small>offen</small></div>` : "";
-    return left + right;
+    return left + right + this._actsHtml();
+  }
+  // header_actions: kleine Pillen ganz rechts im Kopf; während der Dienst läuft, ist die Pille gesperrt
+  _actsHtml() {
+    if (!this._acts.length) return "";
+    return `<div class="fpt-acts">${this._acts.map((a, i) =>
+      `<button type="button" class="fpt-act" data-act="${i}"${this._busy.has(i) ? ` disabled aria-busy="true"` : ""}>${a.icon ? `<span class="fpt-act-i">${U.esc(a.icon)}</span>` : ""}${a.label ? `<span>${U.esc(a.label)}</span>` : ""}</button>`).join("")}</div>`;
   }
   _rowHtml(r) {
     const uid = U.esc(r.u);
@@ -2776,7 +2932,7 @@ class FpTodoCard extends HTMLElement {
     this._expire();
     const m = this._model();
     const state = this._items !== null ? "ok" : this._err ? "err" : "wait";
-    const sig = JSON.stringify([state, m.open, m.groups.map(g => [g.key, g.title, g.rows.map(r => [r.u, r.s, r.d, r.done, r.pend, r.chip ? r.chip.c + ":" + r.chip.t : ""])])]);
+    const sig = JSON.stringify([state, m.open, [...this._busy].join(), m.groups.map(g => [g.key, g.title, g.rows.map(r => [r.u, r.s, r.d, r.done, r.pend, r.chip ? r.chip.c + ":" + r.chip.t : ""])])]);
     if (sig === this._sig) return;
     this._sig = sig;
     this._nRows = m.groups.reduce((n, g) => n + g.rows.length, 0);
@@ -2790,7 +2946,10 @@ class FpTodoCard extends HTMLElement {
         + `<div class="fpt-rows">${g.rows.map(r => this._rowHtml(r)).join("")}</div>`).join("");
     } else if (state === "ok") {
       const t = this.config.empty_text != null ? String(this.config.empty_text) : "Alles erledigt";
-      html = `<div class="fpt-empty"><div class="fpt-empty-i">✓</div>${t ? `<div>${U.esc(t)}</div>` : ""}</div>`;
+      // empty_style: compact = eine leise Zeile „✓ Text“ statt des großen Hinweises mit Kreis
+      html = this.config.empty_style === "compact"
+        ? `<div class="fpt-empty fpt-empty-c"><i>✓</i>${t ? `<span>${U.esc(t)}</span>` : ""}</div>`
+        : `<div class="fpt-empty"><div class="fpt-empty-i">✓</div>${t ? `<div>${U.esc(t)}</div>` : ""}</div>`;
     } else if (state === "err") {
       html = `<div class="fpt-empty"><div>Liste konnte nicht geladen werden</div></div>`;
     }
@@ -2816,6 +2975,14 @@ class FpTodoCard extends HTMLElement {
       .fpt-cnt{display:flex;align-items:baseline;gap:5px;flex:none;margin-left:auto;white-space:nowrap;}
       .fpt-cnt b{font-size:1.45rem;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;}
       .fpt-cnt small{font-size:.72rem;font-weight:600;color:var(--fpt-mut);}
+      /* mit Kopf-Pillen: Zahl rückt neben den Titel, die Pillen sitzen ganz rechts und brechen auf schmalen Karten um */
+      .fpt-head-a{flex-wrap:wrap;justify-content:flex-start;row-gap:8px;}
+      .fpt-head-a .fpt-cnt{margin-left:0;}
+      .fpt-acts{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto;justify-content:flex-end;}
+      .fpt-act{flex:none;display:inline-flex;align-items:center;gap:5px;min-height:32px;box-sizing:border-box;padding:0 12px;border:1px solid var(--fpt-acc);border-radius:999px;background:transparent;color:var(--fpt-acc);font-size:.76rem;font-weight:800;white-space:nowrap;cursor:pointer;}
+      .fpt-act-i{line-height:1;}
+      .fpt-act:disabled{opacity:.55;cursor:default;}
+      @media (hover:hover){.fpt-act:not(:disabled):hover{background:color-mix(in srgb,var(--fpt-acc) 12%,transparent);}}
       /* Liste */
       .fpt-list{flex:1 1 auto;min-height:0;}
       .fpt-sec{margin:12px 0 0;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--fpt-mut);}
@@ -2847,13 +3014,18 @@ class FpTodoCard extends HTMLElement {
       /* leer / Fehler */
       .fpt-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px 8px;text-align:center;font-size:.9rem;font-weight:600;color:var(--fpt-mut);}
       .fpt-empty-i{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:var(--fpt-s);color:var(--fpt-acc);font-size:1.1rem;font-weight:800;}
+      .fpt-empty.fpt-empty-c{flex-direction:row;justify-content:flex-start;gap:8px;padding:4px 2px;text-align:left;font-size:.88rem;font-weight:700;}
+      .fpt-empty-c i{flex:none;font-style:normal;font-weight:900;color:var(--fpt-acc);}
       /* Eingabezeile */
       .fpt-add{display:flex;gap:8px;margin-top:12px;}
+      .fpt-add.fpt-add-top{margin:0 0 12px;}
       .fpt-in{flex:1 1 auto;min-width:0;box-sizing:border-box;min-height:46px;padding:0 14px;border:none;border-radius:var(--fpt-r);background:var(--fpt-s);color:var(--primary-text-color);font-size:1rem;font-weight:600;}
       .fpt-in::placeholder{color:var(--fpt-mut);font-weight:600;opacity:1;}
       .fpt-in:focus{outline:2px solid color-mix(in srgb,var(--fpt-acc) 55%,transparent);outline-offset:0;}
       .fpt-plus{flex:none;width:46px;min-height:46px;padding:0;border:none;border-radius:var(--fpt-r);background:var(--fpt-acc);color:var(--fp-accent-fg,#fff) !important;font-size:1.3rem;font-weight:700;line-height:1;cursor:pointer;}
       .fpt-plus:active{opacity:.8;}
+      /* Favoriten unter der Liste: durch eine dünne Linie abgesetzt, ohne eigenen Rahmen */
+      .fpt-favs{margin-top:14px;padding-top:12px;border-top:1px solid var(--divider-color);}
       /* schmale Karten (Handy-Spalten, ca. 120–140 px): Chip unter den Text, kleinere Tippfläche und Polster */
       @container (max-width: 280px){
         .fpt-body{padding:10px;}
@@ -2877,6 +3049,8 @@ class FpTodoCard extends HTMLElement {
     const chk = t.closest(".fpt-chk[data-uid]");
     if (chk) { this._toggle(chk.dataset.uid); return; }
     if (t.closest(".fpt-plus")) { this._add(); return; }
+    const act = t.closest(".fpt-act[data-act]");
+    if (act) { this._runAction(+act.dataset.act); return; }
     const txt = t.closest(".fpt-txt[data-uid]");
     if (txt && this._edit && !this._ov && !this._opening) {
       this._opening = true;
@@ -2923,6 +3097,23 @@ class FpTodoCard extends HTMLElement {
       this._pending = this._pending.filter(x => x !== p); this._paint();
       U.toast(this, "Aufgabe konnte nicht angelegt werden");
     });
+  }
+  // Kopf-Pille: Dienst rufen, danach Hinweis. Die Pille bleibt währenddessen gesperrt (ein Skript kann dauern).
+  async _runAction(i) {
+    const a = this._acts[i];
+    if (!a || !this._hass || this._busy.has(i)) return;
+    if (a.confirm_text && !window.confirm(String(a.confirm_text))) return;
+    const label = String(a.label || a.icon);
+    const k = a.service.indexOf(".");
+    this._busy.add(i); this._paint();
+    try {
+      await this._hass.callService(a.service.slice(0, k), a.service.slice(k + 1), a.data && typeof a.data === "object" ? a.data : {});
+      U.toast(this, `✓ ${label}`);
+    } catch (err) {
+      console.warn("[fp-todo-card] Kopf-Aktion fehlgeschlagen:", a.service, err);
+      U.toast(this, `${label} hat nicht geklappt`);
+    }
+    this._busy.delete(i); this._paint();
   }
   // Neuer Eintrag sofort in der Liste (leicht ausgegraut), bis er im Abo auftaucht, höchstens 20 s.
   _optimistic(summary, due, description) {
@@ -3106,7 +3297,7 @@ class FpTodoCard extends HTMLElement {
     </style>`;
   }
 
-  getCardSize() { return 2 + Math.max(1, this._nRows || 1); }
+  getCardSize() { return 2 + Math.max(1, this._nRows || 1) + (this._favEl ? 3 : 0); }
 }
 if (!customElements.get("fp-todo-card")) {
   customElements.define("fp-todo-card", FpTodoCard);
@@ -3115,7 +3306,7 @@ if (!customElements.get("fp-todo-card")) {
 }
 })();
 
-/* ===== fp-glance-card v7 (Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
+/* ===== fp-glance-card v9 (Baby-Zeilen unter dem Gruß über die Option baby; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -3139,9 +3330,12 @@ class FpGlanceCard extends HTMLElement {
       meals_path: "",                       // Klick auf Abendessen -> Essensplan
       weather_path: "",                     // Klick aufs Wetter -> Wetter-Tab
       nav_path: "",                         // (veraltet) Fallback fuer calendar_path
+      baby: null,                           // Konfiguration einer fp-baby-overview-card (kids, nav_path, meal_pause_entity …): je Kind eine Zeile unter dem Gruß
     }, config || {});
+    const bb = this.config.baby;
+    if (bb && !(typeof bb === "object" && Array.isArray(bb.kids) && bb.kids.length)) throw new Error("fp-glance-card: baby braucht kids (wie fp-baby-overview-card)");
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
-    this._built = false; this._wc = null; this._curBg = ""; this._curMode = ""; this._curFg = null;
+    this._built = false; this._wc = null; this._baby = null; this._curBg = ""; this._curMode = ""; this._curFg = null;
     // Eingebettete Wetterkarte (transparent aufs Banner geblendet); volle Config ueberschreibbar via weather_card
     if (this.config.show_weather) {
       // Kopie: eine aus der Dashboard-Konfiguration gereichte weather_card ist eingefroren
@@ -3161,10 +3355,16 @@ class FpGlanceCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (this._wc) this._wc.hass = hass;
+    if (this._baby) this._baby.hass = hass;   // die Leiste entscheidet selbst, ob sie neu zeichnet (nur bei geändertem Schalter oder Text)
     if (!this._built) this._build(); else this._paint();
     this._maybeFetch();
   }
-  connectedCallback() { if (!this._clock) this._clock = setInterval(() => { this._maybeFetch(); this._paint(); }, 60000); }
+  connectedCallback() {
+    if (!this._clock) this._clock = setInterval(() => { this._maybeFetch(); this._paint(); }, 60000);
+    // _build kann vor dem Einhängen laufen; dann war der hui-card noch nicht erreichbar
+    const fz = U.fillZelle || U.fill;
+    if (fz) fz(this);
+  }
   disconnectedCallback() { if (this._clock) { clearInterval(this._clock); this._clock = null; } }
 
   _esc(s) { return U.esc(s); }
@@ -3313,6 +3513,14 @@ class FpGlanceCard extends HTMLElement {
         .fpg-chip{display:inline-flex;align-items:center;gap:6px;}
         .fpg-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
         .fpg-muted{opacity:.72;}
+        /* Baby-Zeilen: eingebettete fp-baby-overview-card (bar_style: inline) unter der Trennlinie, die dann von der Termin-Zeile hierher wandert;
+           Schrift erbt von hier, Zeilenabstand der Kind-Zeilen (3 px oben und unten) mitgerechnet, damit die Luft zur Linie und zur Termin-Zeile
+           der sonstigen Zeilen entspricht. */
+        .fpg-baby{margin-top:13px;padding-top:8px;border-top:1px solid rgba(255,255,255,.28);font-size:.9rem;}
+        .fpg-baby > *{display:block;}
+        .fpg-dark .fpg-baby{border-top-color:var(--divider-color);}
+        .fpg-theme .fpg-baby{border-top-color:color-mix(in srgb, var(--fp-glance-fg, var(--primary-text-color)) 22%, transparent);}
+        .fpg-info.fpg-nl{margin-top:8px;padding-top:0;border-top:0;}
         .fpg-wc{margin-top:8px;position:relative;}
         .fpg-wc-ov{position:absolute;inset:0;z-index:2;cursor:pointer;}
         .fpg-wc-hidden{display:none;}
@@ -3320,17 +3528,29 @@ class FpGlanceCard extends HTMLElement {
       <div class="fpg-card">
         <div class="fpg-top">
           <div class="fpg-greet"><div class="fpg-date"></div><div class="fpg-hi"></div></div>
-        </div>
-        <div class="fpg-info"></div>
+        </div>${this.config.baby ? `
+        <div class="fpg-baby"></div>` : ""}
+        <div class="fpg-info${this.config.baby ? " fpg-nl" : ""}"></div>
         <div class="fpg-wc"></div>
       </div>`;
-    if (U.fill) U.fill(this); // defensiv: fehlender Helfer darf die Karte nie killen
+    const fz = U.fillZelle || U.fill; // defensiv: fehlender Helfer darf die Karte nie killen
+    if (fz) fz(this);
     if (this.config.shadow) this.style.setProperty("--fpg-shadow", this.config.shadow);
     this._elCard = this.querySelector(".fpg-card");
     this._elDate = this.querySelector(".fpg-date");
     this._elGreet = this.querySelector(".fpg-hi");
     this._elInfo = this.querySelector(".fpg-info");
     this._elWc = this.querySelector(".fpg-wc");
+    // Baby-Zeilen: einmal angelegt wie die Wetterkarte, _paint fasst sie nicht an; hass kommt in set hass
+    this._elBaby = this.querySelector(".fpg-baby");
+    if (this._elBaby) {
+      try {
+        const el = document.createElement("fp-baby-overview-card");
+        el.setConfig(Object.assign({}, this.config.baby, { layout: "bar", bar_style: "inline" }));
+        if (this._hass) el.hass = this._hass;
+        this._baby = el; this._elBaby.appendChild(el);
+      } catch (e) { this._elBaby.remove(); this._elInfo.classList.remove("fpg-nl"); if (this._loadedOnce) this._toast("Baby-Zeilen konnten nicht geladen werden"); }
+    }
     // Pro-Element-Navigation: Datum + Termin -> Kalender, Essen -> Essensplan, Wetter -> Wetter-Tab
     const calPath = this.config.calendar_path || this.config.nav_path || "";
     if (calPath) { this._elDate.classList.add("fpg-clk"); this._elDate.addEventListener("click", () => this._nav(calPath)); }
@@ -3390,7 +3610,10 @@ class FpGlanceCard extends HTMLElement {
     this._elInfo.innerHTML = chips.join("");
   }
 
-  getCardSize() { return (this._wc && this._wc.getCardSize) ? (this._wc.getCardSize() + 2) : 4; }
+  getCardSize() {
+    const kz = this.config.baby ? Math.round(this.config.baby.kids.length * .6) : 0;   // eine Kind-Zeile ist rund 28 px, eine Einheit 50
+    return ((this._wc && this._wc.getCardSize) ? (this._wc.getCardSize() + 2) : 4) + kz;
+  }
 }
 if (!customElements.get("fp-glance-card")) {
   customElements.define("fp-glance-card", FpGlanceCard);
@@ -6223,11 +6446,12 @@ if (!customElements.get("fp-diaper-card")) {
 }
 })();
 
-/* ===== fp-milestone-card v3 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
+/* ===== fp-milestone-card v4 (Foto je Meilenstein: hochladen beim Festhalten und später, rund im Album statt des Symbols, klein in Entwicklung und Bewegung, groß in der Erinnerung; davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
 // Ein erreichter Meilenstein = ein Ganztagstermin im eigenen Kalender an dem Tag,
 // an dem es passiert ist: Titel "🐢 Kind A: Krabbelt", Beschreibung
 // {"typ":"meilenstein","kind":"kind_a","id":"krabbeln"}, dazu optional notiz,
-// ca (Datum nur ungefähr) und bei eigenen Momenten t (Titel) und e (Symbol).
+// ca (Datum nur ungefähr), foto (ein Foto: media-source-ID aus dem Medienordner,
+// Unterordner image_folder) und bei eigenen Momenten t (Titel) und e (Symbol).
 // Dieselbe id in mehreren Bereichen ist derselbe Meilenstein: „Sitzt allein“ bei
 // den Ersten Malen hakt auch „Sitzt ohne Hilfe“ (Entwicklung, 9 Monate) und das
 // WHO-Fenster ab. Ids nie umbenennen — sie stehen in den Kalendereinträgen.
@@ -6453,6 +6677,7 @@ class FpMilestoneCard extends HTMLElement {
       title: "Meilensteine",
       kids: [{ key: "kind_a", name: "Kind A", color: "#4A7A3A" }],   // je Kind key, name, color, dazu birth und ga wie bei der fp-weight-card
       sections: SECTIONS,
+      image_folder: "meilensteine",   // Unterordner im HA-Medienordner für die Fotos
     }, config);
     if (!Array.isArray(this.config.kids) || !this.config.kids.length) throw new Error("fp-milestone-card braucht mindestens ein Kind unter kids");
     // Fehlt eine Angabe, trotzdem etwas Sinnvolles zeigen statt einer kaputten Farbe.
@@ -6461,6 +6686,7 @@ class FpMilestoneCard extends HTMLElement {
     const s = [].concat(this.config.sections || []).filter(x => SECTIONS.includes(x));
     this._secs = s.length ? s : SECTIONS;
     this._built = false; this._data = null; this._pend = []; this._hat = new Map(); this._sig = "";
+    this._img = new Map();   // aufgelöste Foto-Adressen je media-source-ID, damit das häufige Neuzeichnen nicht jedes Mal nachfragt
     this._pfx = `fp-milestone:${this.config.calendar}`;
     this._kind = this._pref("kind", "");
     if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
@@ -6474,7 +6700,7 @@ class FpMilestoneCard extends HTMLElement {
     if (!this._built) { this._build(); this._load(); }
   }
   connectedCallback() { if (!this._timer) this._timer = setInterval(() => this._load(), 5 * 60000); }
-  disconnectedCallback() { clearInterval(this._timer); this._timer = null; }
+  disconnectedCallback() { clearInterval(this._timer); this._timer = null; this._closeFull(); }
 
   // Gewähltes Kind und Bereich merken — reine Komfort-Einstellung.
   _pref(n, d) { try { return localStorage.getItem(`${this._pfx}:${n}`) || d; } catch (e) { return d; } }
@@ -6546,7 +6772,8 @@ class FpMilestoneCard extends HTMLElement {
     if (meta.typ !== "meilenstein" || !meta.id || !meta.kind) return null;   // fremde Termine im selben Kalender überspringen
     const start = (ev.start && (ev.start.date || ev.start.dateTime)) || ev.start;
     return { uid: ev.uid, kind: String(meta.kind), id: String(meta.id), date: this._day(start), ca: !!meta.ca,
-      notiz: meta.notiz ? String(meta.notiz) : "", t: meta.t ? String(meta.t) : "", e: meta.e ? String(meta.e) : "" };
+      notiz: meta.notiz ? String(meta.notiz) : "", t: meta.t ? String(meta.t) : "", e: meta.e ? String(meta.e) : "",
+      foto: typeof meta.foto === "string" && meta.foto.startsWith("media-source://") ? meta.foto : "" };   // nur Medienordner-IDs, nichts Fremdes laden
   }
   // Je Kind und Meilenstein zählt der früheste Eintrag; noch nicht gespeicherte stehen schon mit drin.
   _index() {
@@ -6580,12 +6807,13 @@ class FpMilestoneCard extends HTMLElement {
     const info = this._info(id, x), meta = { typ: "meilenstein", kind, id };
     if (x.ca) meta.ca = true;
     if (x.notiz) meta.notiz = x.notiz;
+    if (x.foto) meta.foto = x.foto;
     if (id.startsWith("eigen_")) { meta.t = info.t; meta.e = info.e; }
     return { summary: `${info.e} ${this._kid(kind).name}: ${info.t}`, description: JSON.stringify(meta) };
   }
   // Erscheint sofort (optimistisch), der Kalender zieht nach.
   async _create(kind, id, date, x) {
-    const tmp = { uid: `tmp-${Math.random()}`, kind, id, date, ca: !!x.ca, notiz: x.notiz || "", t: x.t || "", e: x.e || "" };
+    const tmp = { uid: `tmp-${Math.random()}`, kind, id, date, ca: !!x.ca, notiz: x.notiz || "", t: x.t || "", e: x.e || "", foto: x.foto || "" };
     this._pend.push(tmp);
     const d = this._ev(kind, id, x), nach = new Date(date); nach.setDate(nach.getDate() + 1);
     try {
@@ -6613,6 +6841,92 @@ class FpMilestoneCard extends HTMLElement {
       if (!(await this._delete(alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
       return true;
     }
+  }
+
+  // ---------- Fotos ----------
+  // Ein Foto je Meilenstein, wie im Kochbuch: verkleinert in den Medienordner laden, im Eintrag steht nur die
+  // media-source-ID. Zum Anzeigen braucht jede ID eine signierte Adresse — die wird einmal geholt und fast
+  // einen Tag gemerkt, sonst fragte jedes Neuzeichnen der Karte neu nach und die Bilder flackerten.
+  _fotoUrl(src) {
+    const t = Date.now(), c = this._img.get(src);
+    if (c && c.until > t) return c.p;
+    const c2 = { url: "", fail: false, until: t + 82800000 };
+    c2.p = this._hass.callWS({ type: "media_source/resolve_media", media_content_id: src, expires: 86400 })
+      .then(r => (c2.url = r.url))
+      .catch(err => { c2.fail = true; c2.until = Date.now() + 60000; throw err; });   // nach einer Minute nochmal versuchen
+    this._img.set(src, c2);
+    return c2.p;
+  }
+  // Ein Bild-Tag; ist die Adresse schon bekannt, steht sie gleich drin (kein Flackern), sonst setzt _fillImgs sie nach dem Zeichnen.
+  // fb = Symbol, das an die Stelle tritt, falls das Foto sich nicht laden lässt; ohne fb verschwindet das Bild einfach.
+  _foto(src, cls, fb) {
+    const c = this._img.get(src), url = c && !c.fail && c.until > Date.now() ? c.url : "";
+    return `<img class="${cls}" data-img="${U.esc(src)}"${fb ? ` data-fb="${U.esc(fb)}"` : ""}${url ? ` src="${U.esc(url)}"` : ""} alt="">`;
+  }
+  _fillImgs(root) {
+    root.querySelectorAll("img[data-img]").forEach(img => {
+      const src = img.dataset.img;
+      img.addEventListener("error", () => {   // Adresse abgelaufen oder Datei weg: eine Minute lang nicht erneut versuchen
+        const p = Promise.reject(new Error("img")); p.catch(() => {});
+        this._img.set(src, { url: "", fail: true, until: Date.now() + 60000, p });
+        this._noImg(img);
+      }, { once: true });
+      if (img.getAttribute("src")) return;
+      this._fotoUrl(src).then(u => { if (img.isConnected) img.src = u; }).catch(() => this._noImg(img));
+    });
+  }
+  _noImg(img) {
+    if (!img.isConnected) return;
+    if (img.dataset.fb) { const s = document.createElement("span"); s.className = "fm-st-e"; s.textContent = img.dataset.fb; img.replaceWith(s); }
+    else img.remove();
+  }
+  // Foto verkleinern (lange Seite 1280 px, JPEG) und hochladen; liefert die media-source-ID.
+  async _uploadFoto(file, id, tag) {
+    const url = URL.createObjectURL(file), fehler = code => Object.assign(new Error(code), { code });
+    try {
+      const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = url; });
+      const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      const blob = await new Promise(ok => cv.toBlob(ok, "image/jpeg", 0.84));
+      if (!blob) throw fehler("bild");
+      // Dateiname ohne Namen von Personen: Meilenstein, Tag und eine Zufallsmarke
+      const slug = String(id || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40) || "moment";
+      const fd = new FormData();
+      fd.append("media_content_id", `media-source://media_source/local/${this.config.image_folder}`);
+      fd.append("file", blob, `${slug}-${tag}-${Date.now().toString(36)}.jpg`);
+      const res = await this._hass.fetchWithAuth("/api/media_source/local_source/upload", { method: "POST", body: fd });
+      if (res.status === 401 || res.status === 403) throw fehler("admin");
+      if (res.status === 400) throw fehler("ordner");
+      if (!res.ok) throw fehler("upload");
+      const j = await res.json();
+      if (!j || !j.media_content_id) throw fehler("upload");
+      return j.media_content_id;
+    } finally { URL.revokeObjectURL(url); }
+  }
+  // Ein hochgeladenes, aber nie gespeichertes Foto wieder aus dem Medienordner räumen. Gespeicherte Fotos fasst das
+  // nie an: dieselbe ID kann bei Geschwistern am Eintrag hängen. Schlägt das Löschen fehl, bleibt eben eine Datei liegen.
+  async _verwerfeFoto(ref) {
+    this._img.delete(ref);
+    try { await this._hass.callWS({ type: "media_source/local_source/remove", media_content_id: ref }); } catch (e) { /* bleibt liegen */ }
+  }
+  // Foto bildschirmfüllend; ein Tipp oder Escape schließt es wieder.
+  _vollbild(src) {
+    this._closeFull();
+    const f = document.createElement("div");
+    f.className = "fm-full";
+    f.innerHTML = `${this._foto(src, "fm-full-img")}<button class="fm-full-x" aria-label="Schließen">✕</button>`;
+    f.addEventListener("click", () => this._closeFull());
+    this.appendChild(f); this._full = f;
+    this._fillImgs(f);
+    this._fullKey = ev => { if (ev.key === "Escape") { ev.stopPropagation(); this._closeFull(); } };
+    document.addEventListener("keydown", this._fullKey, true);
+  }
+  _closeFull() {
+    if (!this._full) return;
+    this._full.remove(); this._full = null;
+    document.removeEventListener("keydown", this._fullKey, true);
   }
 
   // ---------- Aufbau ----------
@@ -6648,7 +6962,7 @@ class FpMilestoneCard extends HTMLElement {
     if (!this._built || !this._data) return;
     // Ohne uid: wird aus dem vorläufigen Eintrag der echte, bleibt alles stehen und der Sticker hüpft zu Ende.
     const sig = JSON.stringify([this._kind, this._tab, this._band, this._iso(new Date()),
-      [...this._hat.values()].map(e => [e.kind, e.id, +e.date, e.ca, e.notiz, e.t, e.e])]);
+      [...this._hat.values()].map(e => [e.kind, e.id, +e.date, e.ca, e.notiz, e.t, e.e, e.foto])]);
     if (!force && sig === this._sig) return;
     this._sig = sig;
     const kid = this._kid(this._kind);
@@ -6656,6 +6970,7 @@ class FpMilestoneCard extends HTMLElement {
     this._paintHead(kid);
     const body = this.querySelector(".fm-body");
     body.innerHTML = this._tab === "development" ? this._htmlDev(kid) : this._tab === "motor" ? this._htmlMotor(kid) : this._htmlFirsts(kid);
+    this._fillImgs(body);
     // Am Handy passt die Leiste der Altersstufen nicht ganz drauf: die gewählte in die Mitte holen.
     const leiste = body.querySelector(".fm-bands"), sel = leiste && leiste.querySelector(".fm-sel");
     if (sel && leiste.scrollWidth > leiste.clientWidth) leiste.scrollLeft = sel.offsetLeft - (leiste.clientWidth - sel.offsetWidth) / 2;
@@ -6698,7 +7013,7 @@ class FpMilestoneCard extends HTMLElement {
     const wann = h ? `${h.ca ? "ca. " : ""}${this._alter(kid, h.date, false, true) || this._dm(h.date)}` : "";
     return `<button class="fm-st${h ? " fm-on" : ""}" data-id="${U.esc(it.id)}" data-label="${U.esc(it.t)}" aria-pressed="${h ? "true" : "false"}"${h ? ` title="${U.esc(`${it.t}: ${this._dmy(h.date)}`)}"` : ""}>
       ${h ? `<span class="fm-st-star">⭐</span>` : ""}${this._andere(kid, it.id)}
-      <span class="fm-st-e">${U.esc(it.e)}</span><span class="fm-st-t">${U.esc(it.t)}</span>${h ? `<span class="fm-st-d">${wann}</span>` : ""}</button>`;
+      ${h && h.foto ? this._foto(h.foto, "fm-st-ph", it.e) : `<span class="fm-st-e">${U.esc(it.e)}</span>`}<span class="fm-st-t">${U.esc(it.t)}</span>${h ? `<span class="fm-st-d">${wann}</span>` : ""}</button>`;
   }
 
   // ---------- Entwicklung ----------
@@ -6734,7 +7049,7 @@ class FpMilestoneCard extends HTMLElement {
   _row(kid, id, t) {
     const h = this._get(kid.key, id);
     return `<button class="fm-row${h ? " fm-on" : ""}" data-id="${U.esc(id)}" data-label="${U.esc(t)}" aria-pressed="${h ? "true" : "false"}">
-      <span class="fm-bub">${h ? "✓" : ""}</span><span class="fm-rt">${U.esc(t)}</span>${this._andere(kid, id)}${h ? `<span class="fm-rd">${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}</button>`;
+      <span class="fm-bub">${h ? "✓" : ""}</span><span class="fm-rt">${U.esc(t)}</span>${this._andere(kid, id)}${h && h.foto ? this._foto(h.foto, "fm-mini") : ""}${h ? `<span class="fm-rd">${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}</button>`;
   }
 
   // ---------- Bewegung ----------
@@ -6754,7 +7069,7 @@ class FpMilestoneCard extends HTMLElement {
         return `<span class="fm-dot${k.key === kid.key ? " fm-me" : ""}" style="left:${pos(m)};background:${U.esc(k.color)}" title="${U.esc(`${k.name}: ${this._dmy(x.date)}`)}">${U.esc(String(k.name).slice(0, 1))}</span>`;
       }).join("");
       return `<button class="fm-mo${h ? " fm-on" : ""}" data-id="${id}" data-label="${U.esc(t)}" aria-pressed="${h ? "true" : "false"}">
-        <span class="fm-ml"><span class="fm-mi">${e}</span><span class="fm-mt">${U.esc(t)}</span>${h ? `<span class="fm-md">⭐ ${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}</span>
+        <span class="fm-ml"><span class="fm-mi">${e}</span><span class="fm-mt">${U.esc(t)}</span>${h ? `<span class="fm-md">⭐ ${h.ca ? "ca. " : ""}${this._dm(h.date)}</span>` : ""}${h && h.foto ? this._foto(h.foto, "fm-mini") : ""}</span>
         <span class="fm-track"><span class="fm-win" style="left:${pos(lo)};width:${pos(hi - lo)}"></span>${now}${dots}</span></button>`;
     }).join("");
     // Zahlen, die mit „heute“ zusammenstoßen würden, fallen weg; am Rand steht „heute“ bündig statt mittig.
@@ -6816,7 +7131,12 @@ class FpMilestoneCard extends HTMLElement {
   }
 
   // ---------- Dialog ----------
-  _closeOv() { if (this._ov) { this._ov.remove(); this._ov = null; } }
+  _closeOv() {
+    this._closeFull();
+    if (!this._ov) return;
+    const o = this._ov; this._ov = null; o.remove();
+    if (o._aufraeumen) o._aufraeumen();   // ein noch ungespeichertes, gerade hochgeladenes Foto verwerfen
+  }
   _openSheet({ id, label, edit, custom }) {
     this._closeOv();
     const kid = this._kid(this._kind), e = edit || null, info = this._info(id || "eigen_", e);
@@ -6837,6 +7157,7 @@ class FpMilestoneCard extends HTMLElement {
         ${schon.map(x => `<div class="fm-sh-other"><span class="fm-od" style="background:${U.esc(x.k.color)}">${U.esc(String(x.k.name).slice(0, 1))}</span>Bei ${U.esc(x.k.name)} war’s am ${this._dmy(x.h.date)}</div>`).join("")}
       </div>
       <div class="fm-sh-body">
+        <div class="fm-gbox"></div>
         ${custom ? `<div class="fm-two"><label class="fm-emo"><span class="fm-lbl">Symbol</span><input class="fm-in fm-e" maxlength="12" value="${U.esc(e ? info.e : "✨")}"></label>
           <label class="fm-grow"><span class="fm-lbl">Was ist passiert?</span><input class="fm-in fm-t" maxlength="60" placeholder="z. B. Erstes Mal im Tiergarten" value="${e ? U.esc(info.t) : ""}"></label></div>` : ""}
         <span class="fm-lbl">Wann war’s?</span>
@@ -6847,6 +7168,8 @@ class FpMilestoneCard extends HTMLElement {
         ${frei.map(k => `<label class="fm-check"><input type="checkbox" class="fm-also" value="${U.esc(k.key)}"${GEMEINSAM.has(id) ? " checked" : ""}> Auch für ${U.esc(k.name)} festhalten</label>`).join("")}
         <span class="fm-lbl">Notiz <span class="fm-opt">– wenn du magst</span></span>
         <textarea class="fm-in fm-notiz" rows="2" maxlength="500" placeholder="Wo wart ihr? Was war lustig?">${e ? U.esc(e.notiz) : ""}</textarea>
+        <span class="fm-lbl">Foto <span class="fm-opt">– wenn du magst</span></span>
+        <div class="fm-foto"></div>
       </div>
       <div class="fm-foot">${e ? `<button class="fm-btn fm-del">Nicht mehr abhaken</button>` : ""}<span class="fm-flex"></span>
         <button class="fm-btn fm-cancel">${e ? "Schließen" : "Abbrechen"}</button><button class="fm-btn fm-ok">${e ? "Speichern" : "Festhalten ✨"}</button></div>
@@ -6864,20 +7187,62 @@ class FpMilestoneCard extends HTMLElement {
     datum.addEventListener("change", zeig); datum.addEventListener("input", zeig);
     zeig();
     if (custom && !e) setTimeout(() => ov.querySelector(".fm-t").focus(), 50);
+
+    // Foto: wird sofort beim Auswählen hochgeladen, der Verweis im Eintrag aber erst mit „Speichern“ festgehalten.
+    // neu = Foto, das erst in diesem Dialog hochgeladen wurde und noch an keinem Eintrag hängt: bei Abbruch, Tausch
+    // oder Entfernen wird es wieder gelöscht. Ein schon gespeichertes Foto bleibt dagegen immer liegen (siehe _verwerfeFoto).
+    let foto = e ? e.foto : "", neu = "", laedt = false;
+    let gross = !!foto;   // eine Erinnerung mit Foto zeigt es groß oben; die Vorschau unten gibt es dann nicht doppelt
+    const fotoBox = ov.querySelector(".fm-foto"), grossBox = ov.querySelector(".fm-gbox");
+    const fotoZeigen = () => {
+      grossBox.innerHTML = foto && gross ? this._foto(foto, "fm-gfoto") : "";
+      fotoBox.innerHTML = `${foto && !gross ? this._foto(foto, "fm-vorschau") : ""}<div class="fm-fotoact">${laedt
+        ? `<span class="fm-btn fm-busy">⏳ Lädt hoch …</span>`
+        : `<label class="fm-btn fm-fbtn">${foto ? "Tauschen" : "📷 Foto"}<input type="file" accept="image/*" hidden></label>${foto ? `<button type="button" class="fm-btn fm-fdel">Entfernen</button>` : ""}`}</div>`;
+      this._fillImgs(grossBox); this._fillImgs(fotoBox);
+    };
+    const fotoFehler = err => U.toast(this, err && err.code === "admin" ? "Hochladen geht nur mit einem Admin-Konto"
+      : err && err.code === "ordner" ? `Ordner „${this.config.image_folder}“ fehlt im Medienordner – bitte einmal anlegen` : "Foto konnte nicht hochgeladen werden");
+    const fotoWahl = async file => {
+      laedt = true; fotoZeigen();
+      let ref = "";
+      try {
+        const tag = /^\d{4}-\d{2}-\d{2}$/.test(datum.value) ? datum.value : this._iso(heute);
+        ref = await this._uploadFoto(file, id, tag);
+      } catch (err) { laedt = false; if (this._ov === ov) { fotoZeigen(); fotoFehler(err); } return; }
+      if (this._ov !== ov) { this._verwerfeFoto(ref); return; }   // Dialog wurde währenddessen geschlossen
+      if (neu) this._verwerfeFoto(neu);   // ein zuvor in diesem Dialog hochgeladenes Foto ist jetzt überholt
+      foto = neu = ref; laedt = false; fotoZeigen();
+    };
+    fotoBox.addEventListener("change", ev => {
+      const f = ev.target.files && ev.target.files[0];
+      if (f && ev.target.matches("input[type=file]")) fotoWahl(f);
+    });
+    fotoBox.addEventListener("click", ev => {
+      if (ev.target.closest(".fm-fdel")) {
+        if (neu) { this._verwerfeFoto(neu); neu = ""; }
+        foto = ""; gross = false; fotoZeigen();
+      } else if (ev.target.closest(".fm-vorschau")) this._vollbild(foto);
+    });
+    grossBox.addEventListener("click", () => { if (foto) this._vollbild(foto); });
+    ov._aufraeumen = () => { if (neu) { this._verwerfeFoto(neu); neu = ""; } };
+    fotoZeigen();
+
     ov.querySelector(".fm-cancel").addEventListener("click", () => this._closeOv());
     if (e) ov.querySelector(".fm-del").addEventListener("click", async () => {
       if (!window.confirm(`${kid.name}: „${titel}“ nicht mehr abhaken?`)) return;
-      this._closeOv();
+      this._closeOv();   // räumt auch ein neu hochgeladenes Foto ab; das gespeicherte bleibt (kann bei Geschwistern hängen)
       const alle = (this._data || []).filter(x => x.kind === e.kind && x.id === e.id);   // Duplikate gleich mit
       for (const x of alle) await this._delete(x.uid);
       this._load();
     });
     ov.querySelector(".fm-ok").addEventListener("click", async () => {
+      if (laedt) { U.toast(this, "Das Foto lädt noch hoch – einen Moment"); return; }
       if (!datum.value) { U.toast(this, "Bitte ein Datum wählen"); return; }
       const d = this._day(datum.value);
       if (d > heute) { U.toast(this, "Das Datum liegt in der Zukunft"); return; }
       if (kid.birth && d < this._day(kid.birth)) { U.toast(this, "Das Datum liegt vor der Geburt"); return; }
-      const x = { ca: ov.querySelector(".fm-ca").checked, notiz: ov.querySelector(".fm-notiz").value.trim() };
+      const x = { ca: ov.querySelector(".fm-ca").checked, notiz: ov.querySelector(".fm-notiz").value.trim(), foto };
       let mid = id;
       if (custom) {
         x.t = ov.querySelector(".fm-t").value.trim(); x.e = ov.querySelector(".fm-e").value.trim() || "✨";
@@ -6885,13 +7250,16 @@ class FpMilestoneCard extends HTMLElement {
         if (!mid) mid = `eigen_${Date.now().toString(36)}`;
       }
       const auch = [...ov.querySelectorAll(".fm-also:checked")].map(c => c.value);
+      const eigenes = neu; neu = "";   // hängt gleich am Eintrag, _closeOv soll es nicht mehr löschen
       this._closeOv();
-      if (e) { if (await this._update(e, d, x)) this._load(); return; }
+      // Klappt das Speichern nicht, hängt das neue Foto an nichts: dann weg damit.
+      if (e) { if (await this._update(e, d, x)) this._load(); else if (eigenes) this._verwerfeFoto(eigenes); return; }
       const kids = [kid.key, ...auch];
-      const jobs = kids.map(k => this._create(k, mid, d, x));   // legt die Einträge sofort vorläufig an
+      const jobs = kids.map(k => this._create(k, mid, d, x));   // legt die Einträge sofort vorläufig an; alle teilen sich dasselbe Foto
       this._index(); this._paint(true); this._feiern(mid, kids);
       const ok = await Promise.all(jobs);
       if (ok.includes(false)) { this._index(); this._paint(true); }
+      if (eigenes && !ok.includes(true)) this._verwerfeFoto(eigenes);
       this._load();
     });
   }
@@ -6938,6 +7306,9 @@ class FpMilestoneCard extends HTMLElement {
       .fm-st.fm-on{border:2px solid var(--fm-kt,var(--fm-k));background:linear-gradient(160deg,var(--fm-k1),var(--fm-k2));box-shadow:0 3px 10px var(--fm-k2);}
       .fm-st.fm-on .fm-st-e{opacity:1;transform:rotate(-6deg);filter:drop-shadow(0 0 1px var(--card-background-color,#fff)) drop-shadow(0 3px 3px rgba(0,0,0,.2));}
       .fm-st.fm-on .fm-st-t{color:var(--primary-text-color);font-weight:700;}
+      /* Foto statt Symbol: rund, so hoch wie die Symbolzeile (2.1rem bei 1.15 Zeilenhöhe), damit die Kacheln gleich hoch bleiben */
+      .fm-st-ph{display:block;flex:none;width:2.6rem;height:2.6rem;margin:-.09rem 0;box-sizing:border-box;border-radius:50%;object-fit:cover;
+        border:2px solid var(--card-background-color,#fff);background:var(--fm-s2);box-shadow:0 3px 6px var(--fm-k3);}
       .fm-st-d{margin-top:auto;font-size:.7rem;font-weight:800;color:var(--fm-kt,var(--fm-k));background:var(--card-background-color,#fff);border-radius:999px;padding:1px 8px;}
       .fm-st-star{position:absolute;top:-9px;right:-5px;font-size:1.15rem;transform:rotate(14deg);}
       .fm-add{border-style:dashed;border-color:color-mix(in srgb,var(--fm-kt,var(--fm-k)) 36%,transparent);}
@@ -6971,6 +7342,9 @@ class FpMilestoneCard extends HTMLElement {
       .fm-rt{flex:1;min-width:0;}
       .fm-rd{flex:none;font-size:.78rem;font-weight:800;color:var(--fm-kt,var(--fm-k));}
       .fm-row .fm-others{position:static;}
+      /* kleines rundes Foto am erledigten Eintrag (Entwicklung und Bewegung) */
+      .fm-mini{flex:none;width:28px;height:28px;box-sizing:border-box;border-radius:50%;object-fit:cover;
+        border:2px solid var(--card-background-color,#fff);background:var(--fm-s2);box-shadow:0 1px 3px var(--fm-k3);}
 
       /* Bewegung: Zeitfenster als Balken, Punkte zeigen, wann es so weit war */
       .fm-motor{display:flex;flex-direction:column;gap:8px;}
@@ -7034,12 +7408,24 @@ class FpMilestoneCard extends HTMLElement {
       .fm-btn{border:none;border-radius:var(--fm-rs);padding:12px 16px;font-weight:700;font-size:.95rem;cursor:pointer;background:var(--fm-s);color:var(--primary-text-color);}
       .fm-ok{background:var(--fm-k);color:#fff;box-shadow:0 4px 12px var(--fm-k3);}
       .fm-del{background:transparent;color:var(--secondary-text-color);font-size:.85rem;font-weight:600;padding-left:2px;padding-right:2px;}
+      /* Foto im Dialog: groß oben in der Erinnerung, sonst als Vorschau unter der Notiz; ein Tipp zeigt es bildschirmfüllend */
+      .fm-gbox{margin-top:14px;} .fm-gbox:empty{display:none;}
+      .fm-gfoto{display:block;width:100%;min-height:150px;max-height:min(320px,48vh);object-fit:cover;border-radius:var(--fm-rs);background:var(--fm-s);cursor:zoom-in;}
+      .fm-vorschau{display:block;max-width:100%;max-height:200px;min-width:120px;min-height:120px;object-fit:cover;border-radius:var(--fm-rs);background:var(--fm-s);cursor:zoom-in;margin-bottom:8px;}
+      .fm-fotoact{display:flex;flex-wrap:wrap;gap:8px;}
+      .fm-fbtn,.fm-busy{display:inline-block;text-align:center;}
+      .fm-busy{opacity:.75;cursor:default;}
+      .fm-full{position:fixed;inset:0;z-index:1002;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;cursor:zoom-out;
+        background:color-mix(in srgb,var(--fp-scrim,#000) 92%,transparent);animation:fm-fade .2s;}
+      .fm-full-img{max-width:100%;max-height:100%;object-fit:contain;}
+      .fm-full-x{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:12px;width:40px;height:40px;border:none;border-radius:50%;cursor:pointer;
+        background:color-mix(in srgb,var(--fp-scrim,#000) 50%,transparent);color:var(--text-primary-color,#fff);font-size:1.15rem;}
 
       /* Konfetti */
       .fm-fx{position:fixed;inset:0;pointer-events:none;z-index:1000;overflow:hidden;}
       .fm-cf{position:absolute;display:block;border-radius:2px;}
       .fm-cf-e{font-size:20px;line-height:1;}
-      @media (prefers-reduced-motion: reduce){ .fm-sh-e,.fm-spark,.fm-pop,.fm-bump,.fm-sheet,.fm-ov{animation:none !important;} }
+      @media (prefers-reduced-motion: reduce){ .fm-sh-e,.fm-spark,.fm-pop,.fm-bump,.fm-sheet,.fm-ov,.fm-full{animation:none !important;} }
     </style>`;
   }
   getCardSize() { return 10; }
@@ -7052,18 +7438,24 @@ if (!customElements.get("fp-milestone-card")) {
 })();
 
 
-/* ===== fp-baby-overview-card v18 (ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card v20 (bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card), Windeln
 // (fp-diaper-card), Gewicht (fp-weight-card) und Meilensteine (fp-milestone-card), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
 // Schreibt selbst Windeln, Fläschchen, Gewichte und nachgetragenes oder geändertes Stillen im Format
 // jener Karten und schaltet den Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
+// Mit layout: bar wird daraus eine schmale Leiste für die Startseite (letzte und nächste Mahlzeit je Kind, ohne Protokoll,
+// Schlaf, Wachstum oder Meilensteine); sie lädt nur die Stillkalender und führt per Tipp in den Baby-Tab.
+// Mit bar_style: inline fehlt der Pille Rahmen und Fläche: eine Zeile je Kind in Farbe und Größe des Behälters, so sitzt die Leiste
+// in der fp-glance-card (Option baby).
 (() => {
 const U = window.__fpUtils;
 const MIN = 60000, STD = 3600000, TAG = 86400000;
 const WT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const KIDCOLORS = ["#4A7A3A", "#7A4A78", "#3A6A8A", "#A0603A"];
 const LADETAGE = 28;   // für Muster: zwei Wochen und die zwei davor zum Vergleich
+const BARTAGE = 4;     // Leiste: so viele Tage Stillkalender (die Prognose braucht 72 h)
+const BARTAKT = 15000; // Leiste: alle 15 s prüfen, ob sich der Text geändert hat (Minuten), jede Minute neu laden
 // Kleine eigene Symbole für die Leiste unten, 24er-Raster.
 const ICO = {
   heute: '<path d="M4 11.2 12 4l8 7.2V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/>',
@@ -7093,6 +7485,9 @@ class FpBabyOverviewCard extends HTMLElement {
       meal_pause_entity: "",     // optional: input_number (Minuten), überschreibt meal_pause_minutes
       meal_pause_minutes: 45,    // höchstens so viel Pause zwischen zwei Einträgen derselben Mahlzeit
       bottle_minutes: 15,        // Fläschchen stehen mit „fertig um“: so viel früher war ihr Beginn
+      layout: "",                // "bar" = schmale Baby-Leiste für die Startseite statt der Übersicht
+      nav_path: "",              // Leiste: Pfad des Baby-Tabs, den ein Tipp auf ein Kind öffnet; leer = Tipp tut nichts
+      bar_style: "",             // Leiste: "inline" = ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters (für die fp-glance-card)
     }, config);
     this.config.kids = this.config.kids.map((k, i) => Object.assign({}, k, {
       key: String(k.key || k.name || `kind_${i + 1}`), name: String(k.name || k.key || `Kind ${i + 1}`),
@@ -7109,7 +7504,16 @@ class FpBabyOverviewCard extends HTMLElement {
     this._eAlle = false;   // Heute: alle Einträge des Tages statt der letzten fünf
     this._emb = {};        // Protokoll: eingebettete Still- und Windelkarte je Kind, einmal angelegt
     this._ref = null;
-    if (this.config.growth_data) this._loadRef();
+    // Leiste: nur Stillkalender und Schalter. Kurven, Perzentile und Raster der Übersicht braucht sie nicht; die Rasterhöhe
+    // (Sections-View) richtet sich nach der Leiste, volle Breite, Höhe nach Inhalt. Als Eigenschaft der Instanz, damit die Übersicht
+    // von Home Assistant nichts Neues angeboten bekommt.
+    this._bar = this.config.layout === "bar";
+    this._inline = this._bar && this.config.bar_style === "inline";
+    if (this._bar) this.getGridOptions = () => ({ columns: "full", rows: "auto" });
+    else delete this.getGridOptions;
+    this._barHtml = "";
+    if (this._timer) { clearInterval(this._timer); this._timer = setInterval(() => this._tick(), this._bar ? BARTAKT : 1000); }   // Editor: Takt passt zur Darstellung
+    if (this.config.growth_data && !this._bar) this._loadRef();
   }
   // Referenzkurven wie in der fp-weight-card; beide Karten teilen sich den Abruf über window.__fpGrowth.
   async _loadRef() {
@@ -7126,6 +7530,7 @@ class FpBabyOverviewCard extends HTMLElement {
   }
   set hass(hass) {
     this._hass = hass;
+    if (this._bar) { this._hassBar(); return; }
     if (this._ms) this._ms.hass = hass;
     Object.values(this._emb).forEach(e => { if (e.feed) e.feed.hass = hass; if (e.diaper) e.diaper.hass = hass; });
     // Verglichen wird mit dem, was die Karte zuletzt gesehen hat — nicht mit dem vorigen hass-Objekt.
@@ -7146,12 +7551,21 @@ class FpBabyOverviewCard extends HTMLElement {
     this._nachT = zeiten.map(ms => setTimeout(() => this._load(), ms));
   }
   connectedCallback() {
+    // Leiste: nach dem Wiederanhängen (zurück auf der Startseite) gleich frisch zeichnen und laden, der Takt stand solange still.
+    if (this._bar) {
+      if (this._abgehaengt) { this._abgehaengt = false; this._paintBar(); this._load(); }
+      if (!this._timer) this._timer = setInterval(() => this._tick(), BARTAKT);
+      return;
+    }
     // Home Assistant hängt die Karte beim Tabwechsel ab und wieder an: wer zurückkehrt, landet auf „Heute“ am heutigen Tag.
-    // Kind, Muster-Spanne, eingebettete Karten und Daten bleiben.
+    // Muster-Spanne, eingebettete Karten und Daten bleiben. Das Kind liest sie neu aus der Merkung: Die Baby-Leiste auf der Startseite
+    // legt dort das getippte Kind ab, der Baby-Tab soll bei ihm landen.
     if (this._abgehaengt) {
       this._abgehaengt = false;
       this._closeSheet();
       this._view = "heute"; this._off = 0; this._eAlle = false;
+      const gemerkt = this._pref("kind", "");
+      if (this.config.kids.some(k => k.key === gemerkt)) this._kind = gemerkt;
       if (this._built) this._paint(true);
     }
     if (!this._timer) this._timer = setInterval(() => this._tick(), 1000);
@@ -7169,6 +7583,8 @@ class FpBabyOverviewCard extends HTMLElement {
   // Jede Sekunde nur die laufenden Uhren; jede halbe Minute die „her“-Zeiten, jede Minute die Kalender.
   _tick() {
     this._t = (this._t || 0) + 1;
+    // Leiste: zeichnet nur neu, wenn sich ein Text geändert hat (Minuten), und lädt jede Minute (vier Takte)
+    if (this._bar) { this._paintBar(); if (this._t % 4 === 0) this._load(); return; }
     this.querySelectorAll(".fo-uhr[data-ab]").forEach(el => { el.textContent = this._uhr((Date.now() - Number(el.dataset.ab)) / 1000); });
     this.querySelectorAll(".fo-dauer[data-ab]").forEach(el => { el.textContent = this._hDauer(Date.now() - Number(el.dataset.ab)); });   // Schlaf: ohne Sekunden
     if (this._t % 30 === 0) this._paint();
@@ -7281,7 +7697,9 @@ class FpBabyOverviewCard extends HTMLElement {
 
   async _load() {
     if (!this._hass) return;
-    const jetzt = new Date(), von = this._mitternacht(jetzt, -Math.max(LADETAGE, Number(this.config.days || 14))), bis = this._mitternacht(jetzt, 1);
+    // Leiste: nur der Stillkalender der letzten Tage; Windeln, Schlaf, Gewichte und Meilensteine bleiben aus (leerer Kalender = kein Abruf)
+    const bar = this._bar, nur = c => (bar ? "" : c);
+    const jetzt = new Date(), von = this._mitternacht(jetzt, bar ? -BARTAGE : -Math.max(LADETAGE, Number(this.config.days || 14))), bis = this._mitternacht(jetzt, 1);
     let fehler = 0;
     const holen = async (cal, ab) => {
       if (!cal) return [];
@@ -7294,7 +7712,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const lange = new Date(2015, 0, 1);
     await Promise.all([
       ...this.config.kids.map(async k => {
-        const [f, w, sl] = await Promise.all([holen(k.feeding_calendar, von), holen(k.diaper_calendar, von), holen(k.sleep_calendar, von)]);
+        const [f, w, sl] = await Promise.all([holen(k.feeding_calendar, von), holen(nur(k.diaper_calendar), von), holen(nur(k.sleep_calendar), von)]);
         const a = alt.kids[k.key] || { feeds: [], diapers: [], sleeps: [] };
         d.kids[k.key] = {
           feeds: f ? f.map(x => this._parseFeed(x)).filter(x => x && !isNaN(x.start)).sort((x, y) => x.start - y.start) : a.feeds,
@@ -7302,8 +7720,8 @@ class FpBabyOverviewCard extends HTMLElement {
           sleeps: sl ? sl.map(x => this._parseSleep(x)).filter(x => x && !isNaN(x.start) && !isNaN(x.end)).sort((x, y) => x.start - y.start) : (a.sleeps || []),
         };
       }),
-      holen(this.config.weight_calendar, lange).then(r => { if (r) d.weights = r.map(x => this._parseWeight(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
-      holen(this.config.milestone_calendar, lange).then(r => { if (r) d.milestones = r.map(x => this._parseMilestone(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
+      holen(nur(this.config.weight_calendar), lange).then(r => { if (r) d.weights = r.map(x => this._parseWeight(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
+      holen(nur(this.config.milestone_calendar), lange).then(r => { if (r) d.milestones = r.map(x => this._parseMilestone(x)).filter(Boolean).sort((x, y) => x.date - y.date); }),
     ]);
     if (fehler && this._loadedOnce) U.toast(this, "Einige Einträge konnten nicht geladen werden");
     this._loadedOnce = true;   // allerersten Ladefehler (Startup-Flackern) nicht melden
@@ -7571,6 +7989,115 @@ class FpBabyOverviewCard extends HTMLElement {
     return { h, t: t.join(" ") };
   }
 
+  // ---------- Leiste (layout: bar) ----------
+  // Schmale Pille für die Startseite: je Kind ein Element mit Kürzel oder Foto, Name, letzter Mahlzeit und der Spanne der nächsten.
+  // Die Daten und Regeln sind die der Hauptkarte (_vm, _naechsteKarte): Leiste und Baby-Tab sagen dasselbe. Geladen wird nur der
+  // Stillkalender (siehe _load), gezeichnet wird, wenn sich ein Schalter ändert oder der Text (Minuten) — also nicht bei jedem hass.
+  // Ein Tipp merkt das Kind in derselben Preference wie der Baby-Tab und öffnet nav_path; der Tab liest sie beim Wiederanhängen.
+  _hassBar() {
+    const kids = this.config.kids, sts = this._hass.states;
+    const st = e => { const s = e && sts[e]; return s ? [s.state, s.last_changed, s.attributes && s.attributes.timestamp] : 0; };
+    const sig = JSON.stringify([kids.map(k => [st(k.switch), st(k.start), k.entity && sts[k.entity] && sts[k.entity].attributes && sts[k.entity].attributes.entity_picture]), this._pauseMin()]);
+    const lauf = kids.map(k => this._laeuft(k)), vorher = this._lauf;
+    this._lauf = lauf;
+    if (!this._built) { this._swSig = sig; this._buildBar(); this._load(); return; }
+    // Beim Stopp schreibt die Automation den Termin erst nach ein paar Sekunden — mehrfach nachladen, wie in der Übersicht.
+    if (vorher && vorher.some((v, i) => v && !lauf[i])) this._nachladen([3000, 8000, 20000, 40000]);
+    if (sig !== this._swSig) { this._swSig = sig; this._paintBar(); }
+  }
+  _buildBar() {
+    this._built = true; this._barHtml = "";
+    this.innerHTML = `<div class="fb-card${this._inline ? " fb-inline" : ""}"><div class="fb-pill"></div></div>${this._stylesBar()}`;
+    this.querySelector(".fb-card").addEventListener("click", ev => { const b = ev.target.closest("[data-kid]"); if (b) this._barTipp(b.dataset.kid); });
+    this._paintBar();
+  }
+  // Neu zeichnen nur, wenn der Text ein anderer ist (jede Minute ändert sich „satt seit“ bzw. „stillt“).
+  _paintBar() {
+    const pille = this._built && this.querySelector(".fb-pill");
+    if (!pille) return;
+    const html = this.config.kids.map(k => this._barKind(k)).join(this._inline ? "" : `<i class="fb-sep" aria-hidden="true"></i>`);
+    if (html === this._barHtml) return;
+    this._barHtml = html; pille.innerHTML = html;
+  }
+  // Ein Kind: Kürzel, Name und der Zustand nach den Regeln von _naechsteKarte. Spanne und „Fällig“ nur mit Prognose (ab vier Abständen)
+  // und höchstens acht Stunden nach der letzten Mahlzeit; danach „letzte vor …“. Ohne nav_path ist es kein Knopf.
+  _barKind(k) {
+    const jetzt = Date.now(), nav = !!this.config.nav_path, hm = t => this._hm(new Date(t));
+    // inline: Gedämpftes über Deckkraft in eigenem Span (Farbe erbt vom Behälter); Fett und „Fällig“ bleiben davon unberührt
+    const m = s => this._inline ? `<span class="fb-m">${s}</span>` : s;
+    let dot = "", txt;
+    if (!this._d) txt = m("lädt …");
+    else if (this._laeuft(k)) { dot = `<i class="fb-puls" aria-hidden="true"></i>`; txt = `<b>stillt</b>${m(` · ${this._minText(jetzt - this._beginn(k))}`)}`; }
+    else {
+      const vm = this._vm(k), l = vm.letzte, p = vm.prog, seit = l ? jetzt - l.start : 0;
+      if (!l) txt = m("noch nichts eingetragen");
+      else if (seit > 8 * STD) txt = m(`letzte vor ${this._her(seit)}`);
+      else {
+        txt = m(`satt seit ${this._hDauer(seit)}`);
+        if (p) txt += m(" · ") + (jetzt < p.lo ? `<b>${hm(p.lo)}–${hm(p.hi)}</b>` : jetzt <= p.hi ? `<b>jetzt–${hm(p.hi)}</b>` : `<span class="fb-due">Fällig</span>`);
+      }
+    }
+    return `<${nav ? `button type="button"` : "div"} class="fb-k" data-kid="${U.esc(k.key)}" style="${this._kidStyle(k)}">${this._avatar(k, 22)}
+      <b class="fb-n">${U.esc(k.name)}</b><span class="fb-o">·</span>${dot}<span class="fb-t">${txt}</span></${nav ? "button" : "div"}>`;
+  }
+  _barTipp(key) {
+    const p = this.config.nav_path;
+    if (!p || !this.config.kids.some(k => k.key === key)) return;
+    this._kind = key; this._setPref("kind", key);   // derselbe Schlüssel wie im Baby-Tab (_pfx hängt an den Kinder-Keys)
+    history.pushState(null, "", p);
+    window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
+  }
+  _stylesBar() {
+    return `<style>
+      /* Farben und Radien aus dem Theme (--fp-*), nach dem Komma der Rückfall; hell und dunkel macht das Theme */
+      .fb-card{display:block;--b-bg:var(--ha-card-background, var(--card-background-color, #fff));--b-line:var(--divider-color, rgba(0,0,0,.12));
+        --b-text:var(--primary-text-color, #212121);--b-mut:var(--secondary-text-color, #727272);--b-alert:var(--fp-alert, var(--warning-color, #B97F06));
+        --c-nurse:var(--fp-c-nurse, #D9719F);container:fb-card / inline-size;}
+      .fb-pill{display:flex;align-items:center;box-sizing:border-box;padding:7px 14px;border:1px solid var(--b-line);border-radius:999px;background:var(--b-bg);
+        color:var(--b-text);font-size:.9rem;line-height:1.3;font-variant-numeric:tabular-nums;}
+      .fb-k{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:7px;margin:0;padding:3px 8px;border:0;border-radius:999px;
+        background:none;font:inherit;color:inherit;text-align:left;cursor:default;-webkit-tap-highlight-color:transparent;}
+      button.fb-k{cursor:pointer;}
+      button.fb-k:active{background:var(--k1);}
+      @media (hover:hover){ button.fb-k:hover{background:var(--k1);} }
+      button.fb-k:focus-visible{outline:2px solid var(--k);outline-offset:1px;}
+      .fb-card .fo-av{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:800;flex:none;overflow:hidden;font-size:11px !important;}   /* wie .fo-av der Hauptkarte: weiße Initiale auf der Kinderfarbe, in beiden Themes lesbar; nur größer als der Standard von _avatar */
+      .fb-card .fo-av img{width:100%;height:100%;object-fit:cover;}
+      .fb-n{flex:0 1 auto;min-width:2.5ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800;}
+      .fb-o{flex:none;color:var(--b-mut);margin:0 -2px;}
+      .fb-t{flex:0 .0001 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--b-mut);font-weight:600;}
+      .fb-t b{color:var(--b-text);font-weight:800;}
+      .fb-due{display:inline-block;padding:0 9px;border-radius:999px;font-size:.84em;font-weight:800;line-height:1.5;color:var(--b-alert);
+        background:var(--fp-alert-bg, color-mix(in srgb, var(--b-alert) 18%, transparent));}
+      .fb-puls{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c-nurse);margin:0 -1px;animation:fb-puls 1.4s ease-in-out infinite;}
+      @keyframes fb-puls{50%{transform:scale(1.7);opacity:.35;}}
+      .fb-sep{flex:none;width:1px;align-self:stretch;margin:2px 8px;background:var(--b-line);}
+      /* Schmal (unter 700 px, gemessen: zwei Kinder mit „Name · satt seit 1:10 h · 22:24–22:49“ brauchen nebeneinander rund 690 px):
+         eine Zeile je Kind untereinander, die Pille nur noch abgerundet statt rund. Etwas enger gesetzt, damit eine Zeile in
+         343 px passt; der Name gibt als Erster nach (Ellipse). */
+      @container fb-card (max-width: 699px){
+        .fb-pill{flex-direction:column;align-items:stretch;gap:2px;padding:7px 12px;border-radius:var(--fp-radius, 16px);font-size:.86rem;}
+        .fb-k{flex:none;justify-content:flex-start;gap:6px;padding:3px 4px;}
+        .fb-sep{display:none;}
+      }
+      /* bar_style: inline (Begrüßung): keine Pille, kein Rahmen, keine Fläche, kein Außenabstand; immer eine Zeile je Kind untereinander.
+         Farbe und Größe kommen vom Behälter (color/font-size: inherit); Gedämpftes über opacity statt --secondary-text-color, damit es auch
+         auf dem farbigen Verlauf lesbar bleibt. Name und Text kürzen mit Ellipse, nichts läuft über. Steht hinter dem Container-Query,
+         damit es dessen schmale Werte der Pille überstimmt. */
+      .fb-inline .fb-pill{flex-direction:column;align-items:stretch;gap:0;padding:0;margin:0;border:0;border-radius:0;background:none;color:inherit;font-size:inherit;}
+      .fb-inline .fb-k{flex:none;justify-content:flex-start;gap:7px;padding:3px 0;border-radius:6px;}
+      .fb-inline .fb-sep{display:none;}
+      .fb-inline .fb-o{color:inherit;opacity:.72;}
+      .fb-inline .fb-t{color:inherit;}
+      .fb-inline .fb-t b{color:inherit;}
+      .fb-inline .fb-m{opacity:.8;}
+      .fb-inline .fb-due{text-shadow:none;}   /* der Schatten der Begrüßung auf Bild/Blauverlauf verschmiert sonst den Chip */
+      .fb-inline button.fb-k:active{background:none;opacity:.7;}
+      @media (hover:hover){ .fb-inline button.fb-k:hover{background:none;} .fb-inline button.fb-k:hover .fb-n{text-decoration:underline;} }
+      @media (prefers-reduced-motion: reduce){ .fb-puls{animation:none !important;} }
+    </style>`;
+  }
+
   // ---------- Aufbau ----------
   _build() {
     this._built = true;
@@ -7712,6 +8239,7 @@ class FpBabyOverviewCard extends HTMLElement {
   }
 
   _paint(force) {
+    if (this._bar) { this._paintBar(); return; }
     if (!this._built || !this._d) return;
     if ((this._view === "protokoll" && !this._hatProtokoll()) || (this._view === "wachstum" && !this.config.weight_calendar) || (this._view === "momente" && !this.config.milestone_calendar)) this._view = "heute";
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
@@ -9249,11 +9777,11 @@ class FpBabyOverviewCard extends HTMLElement {
       @media (prefers-reduced-motion: reduce){ .fo-puls,.fo-tipp i,.fo-sheet,.fo-ov{animation:none !important;} }
     </style>`;
   }
-  getCardSize() { return 12; }
+  getCardSize() { return this._bar ? 1 : 12; }
 }
 if (!customElements.get("fp-baby-overview-card")) {
   customElements.define("fp-baby-overview-card", FpBabyOverviewCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "fp-baby-overview-card", name: "FP Baby Overview Card", description: "Übersicht je Kind im Stil von Buma: nächste Mahlzeit, Jetzt-Liste, Tagesstreifen, Muster und KI-Chat „Frag nach“" });
+  window.customCards.push({ type: "fp-baby-overview-card", name: "FP Baby Overview Card", description: "Übersicht je Kind im Stil von Buma: nächste Mahlzeit, Jetzt-Liste, Tagesstreifen, Muster und KI-Chat „Frag nach“; mit layout: bar eine schmale Leiste für die Startseite" });
 }
 })();
