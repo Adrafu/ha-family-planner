@@ -140,7 +140,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card-beta v31 (Kopf mit „📖 Kochbuch“, wenn cookbook_path gesetzt ist; davor: am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
+/* ===== meal-grid-card-beta v32 (Heute groß: oben so viel Luft wie seitlich, Nächste Tage enger; davor: Kopf mit „📖 Kochbuch“, wenn cookbook_path gesetzt ist; davor: am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -694,7 +694,8 @@ class MealGridCard extends HTMLElement {
     // Heute groß, Woche kurz (layout: today)
     const heuteGross = () => {
       const last = meals.length - 1;
-      let t = `<div class="mg-tbox${quer ? " mg-st" : ""}">` + meals.map((m, mi) => {
+      // ohne Kopf (hide_header) sitzt der Kasten ganz oben: dann gilt oben derselbe Rand wie seitlich
+      let t = `<div class="mg-tbox${quer ? " mg-st" : ""}${head ? "" : " mg-tb0"}">` + meals.map((m, mi) => {
         const s = gericht(mi, 0, "<br>");
         return `<button type="button" class="mg-cell mg-tc ${dcls(mi)}" data-mi="${mi}" data-ci="0"><span class="mg-tl"><i class="mg-dot"></i>${this._esc(m.label)}</span><span class="mg-td${s ? "" : " mg-e"}">${s || leer}</span></button>`;
       }).join("") + `</div>`;
@@ -792,19 +793,22 @@ class MealGridCard extends HTMLElement {
       /* Heute groß: Mahlzeiten von heute nebeneinander in einem Kasten, darunter die nächsten Tage als kurze Liste */
       .mg-tbox{display:flex;margin:4px 16px 0;border:1px solid var(--divider-color);border-radius:var(--fp-radius-sm,12px);overflow:hidden;}
       .mg-tc{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:6px;box-sizing:border-box;padding:12px;border:none;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-tbox.mg-tb0{margin-top:16px;}
       .mg-tc+.mg-tc{border-left:1px solid var(--divider-color);}
       .mg-tbox.mg-st{flex-direction:column;}
       .mg-tbox.mg-st .mg-tc+.mg-tc{border-left:none;border-top:1px solid var(--divider-color);}
       .mg-tl{display:flex;align-items:center;gap:6px;max-width:100%;font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--secondary-text-color);}
       .mg-td{max-width:100%;font-size:1rem;font-weight:900;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;hyphens:auto;color:var(--primary-text-color);}
       .mg-td.mg-e{font-weight:400;color:var(--secondary-text-color);}
-      .mg-nt{margin:16px 16px 2px;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
-      .mg-nx{display:flex;flex-direction:column;padding:0 16px 8px;}
-      /* Nächste Tage: links der Wochentag, rechts alle eingetragenen Mahlzeiten nebeneinander, bei Platzmangel umbrechend */
-      .mg-nxr{display:flex;align-items:flex-start;gap:12px;box-sizing:border-box;padding:4px 0;}
-      .mg-nxw{flex:none;width:44px;min-height:36px;display:flex;align-items:center;font-size:.9rem;font-weight:800;}
+      .mg-nt{margin:20px 16px 2px;font-size:.64rem;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--secondary-text-color);}
+      .mg-nx{display:flex;flex-direction:column;padding:0 16px 6px;}
+      /* Nächste Tage: links der Wochentag, rechts alle eingetragenen Mahlzeiten nebeneinander, bei Platzmangel umbrechend.
+         Eine Zeile misst 36 px (Fläche 32 px + je 2 px Luft), umbrochene Gerichte im selben Abstand (4 px Lücke). Tag und Gericht teilen sich
+         Schriftgröße und Zeilenhöhe, so stehen beide auf einer Grundlinie. */
+      .mg-nxr{display:flex;align-items:flex-start;gap:12px;box-sizing:border-box;padding:2px 0;}
+      .mg-nxw{flex:none;width:44px;min-height:32px;display:flex;align-items:center;font-size:.9rem;font-weight:800;line-height:1.25;}
       .mg-nxm{flex:1 1 0;min-width:0;margin-left:-8px;display:flex;flex-wrap:wrap;gap:4px 12px;}
-      .mg-nxg{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-width:0;max-width:100%;min-height:36px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+      .mg-nxg{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-width:0;max-width:100%;min-height:32px;padding:0 8px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent;}
       .mg-nxs{min-width:0;font-size:.9rem;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--primary-text-color);}
       .mg-nxs.mg-e{font-weight:400;color:var(--secondary-text-color);}
       .mg-tc:active,.mg-mr:active,.mg-nxg:active,.mg-tz:active{background:var(--fp-surface,var(--secondary-background-color));}
@@ -888,7 +892,7 @@ class MealGridCard extends HTMLElement {
   getCardSize() {
     const l = this._layout(), n = (this.config.meals || []).length || 3;
     if (l === "compact") return 3;
-    if (l === "today") return Math.ceil((60 + 90 + 40 + 44 * this._daysAhead()) / 50);
+    if (l === "today") return Math.ceil((60 + 90 + 40 + 36 * this._daysAhead()) / 50);
     if (l === "list") return Math.ceil((60 + 7 * (36 * n + 12)) / 50);
     return 6;
   }
@@ -900,18 +904,20 @@ if (!customElements.get("meal-grid-card-beta")) {
 }
 })();
 
-/* ===== family-calendar-card-beta v2.10 (schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
+/* ===== family-calendar-card-beta v2.11 (Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
 class FamilyCalendarCard extends HTMLElement {
   setConfig(config) {
     this.config = Object.assign({
-      title: "Kalender", initial_view: "week",   // week | month | day | agenda day_start: 6, day_end: 23, persons: [],
+      title: "Kalender", initial_view: "week",   // week | month | day | agenda
+      day_start: 6, day_end: 23, persons: [],
       days: 4,                 // nur fuer initial_view: "agenda"
       hide_header: false,      // Kopfleiste mit Navigation und Ansichtswechsel
       hide_legend: false,      // Personenfilter unter der Kopfleiste
       week_grid: false,        // Woche als Stundenraster statt Terminkacheln
+      fill_height: false,      // Karte reicht mindestens bis zum unteren Bildschirmrand (Tag, Woche, Monat)
     }, config || {});
     if (!this.config.persons || !this.config.persons.length) throw new Error("Bitte 'persons' konfigurieren");
     this._view = ["month", "agenda", "day"].includes(this.config.initial_view) ? this.config.initial_view : "week";
@@ -1619,7 +1625,9 @@ class FamilyCalendarCard extends HTMLElement {
     const kopf = this.config.hide_header ? "" : this._headerHTML(view.label);
     // Tag und Woche filtern ueber die Personen-Chips statt ueber die Legende
     const legende = this.config.hide_legend || this._view === "day" || (this._view === "week" && !this.config.week_grid) ? "" : this._legendHTML();
-    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card${this._schmal ? " fcc-narrow" : ""}" lang="de">${kopf}${legende}${view.html}</ha-card>`;
+    // fill_height gilt nicht in der Mehrtagesansicht (Startseite): dort bleibt die Karte so hoch wie ihr Inhalt
+    const fuell = this.config.fill_height && this._view !== "agenda";
+    this.innerHTML = `<style>${css}</style><ha-card class="fcc-card${this._schmal ? " fcc-narrow" : ""}${fuell ? " fcc-fill" : ""}" lang="de">${kopf}${legende}${view.html}</ha-card>`;
     this.querySelectorAll(".fcc-bar .fcc-nav-b,.fcc-bar .fcc-today").forEach(b => b.addEventListener("click", () => { const dd = parseInt(b.dataset.d, 10); this._offset = dd === 0 ? 0 : this._offset + dd; this._go(); }));
     this.querySelectorAll(".fcc-vw").forEach(b => b.addEventListener("click", () => { const v = b.dataset.v; if (v !== this._view) { this._view = v; this._offset = 0; this._maybeFetch(true); } }));
     this.querySelectorAll(".fcc-chip").forEach(b => b.addEventListener("click", () => { const n = b.dataset.person; if (this._hidden.has(n)) this._hidden.delete(n); else this._hidden.add(n); this._saveHidden(); this._render(); }));
@@ -1734,7 +1742,7 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-dy-badge{font-size:.75rem;font-weight:700;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 20%,transparent);color:var(--fp-head,var(--primary-color));}
     .fcc-dy-extra{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 10px;}
     .fcc-dy-chip{display:inline-flex;align-items:center;gap:6px;font-size:.88rem;padding:4px 10px;border-radius:999px;background:var(--secondary-background-color,rgba(0,0,0,.05));color:var(--primary-text-color);cursor:pointer;}
-    .fcc-dy-cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px;padding:0 14px 4px;}
+    .fcc-dy-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px 12px;padding:0 14px 4px;}
     .fcc-dy-col{min-width:0;display:flex;flex-direction:column;gap:8px;}
     .fcc-dy-h{display:flex;align-items:center;gap:8px;padding-bottom:8px;margin-bottom:2px;border-bottom:3px solid #888;}
     .fcc-dy-av{flex:0 0 38px;width:38px;height:38px;border-radius:50%;border:2px solid #888;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-size:1.05rem;font-weight:700;background-size:cover;background-position:center;}
@@ -1773,7 +1781,8 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-wl-heute .fcc-wl-n,.fcc-wl-heute .fcc-wl-w{color:var(--fp-head,var(--primary-color));}
     .fcc-wl-vorbei .fcc-wl-h{opacity:.55;}
     .fcc-wl-day .fcc-dy-extra{padding-left:68px;}
-    .fcc-wt{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:14px 10px;padding:0 14px 4px;}
+    /* auto-fit statt auto-fill: auto-fill legt auch leere Spuren an, dann nähmen sieben Tage nur einen Teil der Breite ein */
+    .fcc-wt{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:14px 10px;padding:0 14px 4px;}
     .fcc-wt-day{min-width:0;display:flex;flex-direction:column;gap:7px;cursor:pointer;min-height:90px;}
     .fcc-dy-col{cursor:pointer;min-height:120px;}
     .fcc-wt-h{padding:2px 2px 7px;border-bottom:3px solid var(--divider-color,#e5e5e5);flex-wrap:wrap;}
@@ -1839,6 +1848,11 @@ class FamilyCalendarCard extends HTMLElement {
     .fcc-save{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-weight:700;}
     .fcc-del{background:rgba(229,57,53,.15);color:#c62828;}
     .fcc-check{display:flex;align-items:center;gap:8px;font-size:.85rem;margin:10px 0 2px;color:var(--primary-text-color);}
+    /* fill_height: mindestens bis zum unteren Bildschirmrand (Kopfzeile, Safe-Area und --fcc-fill-offset abgezogen); die Spalten wachsen mit, freie Fläche gehört zur Spalte */
+    .fcc-fill{box-sizing:border-box;display:flex;flex-direction:column;min-height:calc(100vh - var(--header-height,56px) - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--fcc-fill-offset,8px));min-height:calc(100dvh - var(--header-height,56px) - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--fcc-fill-offset,8px));}
+    .fcc-fill>.fcc-dy,.fcc-fill>.fcc-m,.fcc-fill>.fcc-wk{flex:1 1 auto;display:flex;flex-direction:column;}
+    .fcc-fill .fcc-wt,.fcc-fill .fcc-dy-cols,.fcc-fill .fcc-m-grid{flex:1 1 auto;}
+    .fcc-fill .fcc-scroll{flex:1 1 0;min-height:240px;max-height:none;}
     `;
   }
   getCardSize() { return 10; }
@@ -3292,7 +3306,7 @@ if (!customElements.get("fp-todo-card-beta")) {
 }
 })();
 
-/* ===== fp-glance-card-beta v8 (in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
+/* ===== fp-glance-card-beta v9 (Baby-Zeilen unter dem Gruß über die Option baby; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -3316,9 +3330,12 @@ class FpGlanceCard extends HTMLElement {
       meals_path: "",                       // Klick auf Abendessen -> Essensplan
       weather_path: "",                     // Klick aufs Wetter -> Wetter-Tab
       nav_path: "",                         // (veraltet) Fallback fuer calendar_path
+      baby: null,                           // Konfiguration einer fp-baby-overview-card-beta (kids, nav_path, meal_pause_entity …): je Kind eine Zeile unter dem Gruß
     }, config || {});
+    const bb = this.config.baby;
+    if (bb && !(typeof bb === "object" && Array.isArray(bb.kids) && bb.kids.length)) throw new Error("fp-glance-card-beta: baby braucht kids (wie fp-baby-overview-card-beta)");
     this._events = null; this._rangeKey = ""; this._lastFetch = 0;
-    this._built = false; this._wc = null; this._curBg = ""; this._curMode = ""; this._curFg = null;
+    this._built = false; this._wc = null; this._baby = null; this._curBg = ""; this._curMode = ""; this._curFg = null;
     // Eingebettete Wetterkarte (transparent aufs Banner geblendet); volle Config ueberschreibbar via weather_card
     if (this.config.show_weather) {
       // Kopie: eine aus der Dashboard-Konfiguration gereichte weather_card ist eingefroren
@@ -3338,6 +3355,7 @@ class FpGlanceCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (this._wc) this._wc.hass = hass;
+    if (this._baby) this._baby.hass = hass;   // die Leiste entscheidet selbst, ob sie neu zeichnet (nur bei geändertem Schalter oder Text)
     if (!this._built) this._build(); else this._paint();
     this._maybeFetch();
   }
@@ -3495,6 +3513,14 @@ class FpGlanceCard extends HTMLElement {
         .fpg-chip{display:inline-flex;align-items:center;gap:6px;}
         .fpg-dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
         .fpg-muted{opacity:.72;}
+        /* Baby-Zeilen: eingebettete fp-baby-overview-card-beta (bar_style: inline) unter der Trennlinie, die dann von der Termin-Zeile hierher wandert;
+           Schrift erbt von hier, Zeilenabstand der Kind-Zeilen (3 px oben und unten) mitgerechnet, damit die Luft zur Linie und zur Termin-Zeile
+           der sonstigen Zeilen entspricht. */
+        .fpg-baby{margin-top:13px;padding-top:8px;border-top:1px solid rgba(255,255,255,.28);font-size:.9rem;}
+        .fpg-baby > *{display:block;}
+        .fpg-dark .fpg-baby{border-top-color:var(--divider-color);}
+        .fpg-theme .fpg-baby{border-top-color:color-mix(in srgb, var(--fp-glance-fg, var(--primary-text-color)) 22%, transparent);}
+        .fpg-info.fpg-nl{margin-top:8px;padding-top:0;border-top:0;}
         .fpg-wc{margin-top:8px;position:relative;}
         .fpg-wc-ov{position:absolute;inset:0;z-index:2;cursor:pointer;}
         .fpg-wc-hidden{display:none;}
@@ -3502,8 +3528,9 @@ class FpGlanceCard extends HTMLElement {
       <div class="fpg-card">
         <div class="fpg-top">
           <div class="fpg-greet"><div class="fpg-date"></div><div class="fpg-hi"></div></div>
-        </div>
-        <div class="fpg-info"></div>
+        </div>${this.config.baby ? `
+        <div class="fpg-baby"></div>` : ""}
+        <div class="fpg-info${this.config.baby ? " fpg-nl" : ""}"></div>
         <div class="fpg-wc"></div>
       </div>`;
     const fz = U.fillZelle || U.fill; // defensiv: fehlender Helfer darf die Karte nie killen
@@ -3514,6 +3541,16 @@ class FpGlanceCard extends HTMLElement {
     this._elGreet = this.querySelector(".fpg-hi");
     this._elInfo = this.querySelector(".fpg-info");
     this._elWc = this.querySelector(".fpg-wc");
+    // Baby-Zeilen: einmal angelegt wie die Wetterkarte, _paint fasst sie nicht an; hass kommt in set hass
+    this._elBaby = this.querySelector(".fpg-baby");
+    if (this._elBaby) {
+      try {
+        const el = document.createElement("fp-baby-overview-card-beta");
+        el.setConfig(Object.assign({}, this.config.baby, { layout: "bar", bar_style: "inline" }));
+        if (this._hass) el.hass = this._hass;
+        this._baby = el; this._elBaby.appendChild(el);
+      } catch (e) { this._elBaby.remove(); this._elInfo.classList.remove("fpg-nl"); if (this._loadedOnce) this._toast("Baby-Zeilen konnten nicht geladen werden"); }
+    }
     // Pro-Element-Navigation: Datum + Termin -> Kalender, Essen -> Essensplan, Wetter -> Wetter-Tab
     const calPath = this.config.calendar_path || this.config.nav_path || "";
     if (calPath) { this._elDate.classList.add("fpg-clk"); this._elDate.addEventListener("click", () => this._nav(calPath)); }
@@ -3573,7 +3610,10 @@ class FpGlanceCard extends HTMLElement {
     this._elInfo.innerHTML = chips.join("");
   }
 
-  getCardSize() { return (this._wc && this._wc.getCardSize) ? (this._wc.getCardSize() + 2) : 4; }
+  getCardSize() {
+    const kz = this.config.baby ? Math.round(this.config.baby.kids.length * .6) : 0;   // eine Kind-Zeile ist rund 28 px, eine Einheit 50
+    return ((this._wc && this._wc.getCardSize) ? (this._wc.getCardSize() + 2) : 4) + kz;
+  }
 }
 if (!customElements.get("fp-glance-card-beta")) {
   customElements.define("fp-glance-card-beta", FpGlanceCard);
@@ -7398,7 +7438,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v19 (neu: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v20 (bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7406,6 +7446,8 @@ if (!customElements.get("fp-milestone-card-beta")) {
 // jener Karten und schaltet den Still-Schalter wie die Stillkarte — den Termin dazu legt weiterhin die Automation an.
 // Mit layout: bar wird daraus eine schmale Leiste für die Startseite (letzte und nächste Mahlzeit je Kind, ohne Protokoll,
 // Schlaf, Wachstum oder Meilensteine); sie lädt nur die Stillkalender und führt per Tipp in den Baby-Tab.
+// Mit bar_style: inline fehlt der Pille Rahmen und Fläche: eine Zeile je Kind in Farbe und Größe des Behälters, so sitzt die Leiste
+// in der fp-glance-card-beta (Option baby).
 (() => {
 const U = window.__fpUtils;
 const MIN = 60000, STD = 3600000, TAG = 86400000;
@@ -7445,6 +7487,7 @@ class FpBabyOverviewCard extends HTMLElement {
       bottle_minutes: 15,        // Fläschchen stehen mit „fertig um“: so viel früher war ihr Beginn
       layout: "",                // "bar" = schmale Baby-Leiste für die Startseite statt der Übersicht
       nav_path: "",              // Leiste: Pfad des Baby-Tabs, den ein Tipp auf ein Kind öffnet; leer = Tipp tut nichts
+      bar_style: "",             // Leiste: "inline" = ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters (für die fp-glance-card-beta)
     }, config);
     this.config.kids = this.config.kids.map((k, i) => Object.assign({}, k, {
       key: String(k.key || k.name || `kind_${i + 1}`), name: String(k.name || k.key || `Kind ${i + 1}`),
@@ -7465,6 +7508,7 @@ class FpBabyOverviewCard extends HTMLElement {
     // (Sections-View) richtet sich nach der Leiste, volle Breite, Höhe nach Inhalt. Als Eigenschaft der Instanz, damit die Übersicht
     // von Home Assistant nichts Neues angeboten bekommt.
     this._bar = this.config.layout === "bar";
+    this._inline = this._bar && this.config.bar_style === "inline";
     if (this._bar) this.getGridOptions = () => ({ columns: "full", rows: "auto" });
     else delete this.getGridOptions;
     this._barHtml = "";
@@ -7963,7 +8007,7 @@ class FpBabyOverviewCard extends HTMLElement {
   }
   _buildBar() {
     this._built = true; this._barHtml = "";
-    this.innerHTML = `<div class="fb-card"><div class="fb-pill"></div></div>${this._stylesBar()}`;
+    this.innerHTML = `<div class="fb-card${this._inline ? " fb-inline" : ""}"><div class="fb-pill"></div></div>${this._stylesBar()}`;
     this.querySelector(".fb-card").addEventListener("click", ev => { const b = ev.target.closest("[data-kid]"); if (b) this._barTipp(b.dataset.kid); });
     this._paintBar();
   }
@@ -7971,7 +8015,7 @@ class FpBabyOverviewCard extends HTMLElement {
   _paintBar() {
     const pille = this._built && this.querySelector(".fb-pill");
     if (!pille) return;
-    const html = this.config.kids.map(k => this._barKind(k)).join(`<i class="fb-sep" aria-hidden="true"></i>`);
+    const html = this.config.kids.map(k => this._barKind(k)).join(this._inline ? "" : `<i class="fb-sep" aria-hidden="true"></i>`);
     if (html === this._barHtml) return;
     this._barHtml = html; pille.innerHTML = html;
   }
@@ -7979,16 +8023,18 @@ class FpBabyOverviewCard extends HTMLElement {
   // und höchstens acht Stunden nach der letzten Mahlzeit; danach „letzte vor …“. Ohne nav_path ist es kein Knopf.
   _barKind(k) {
     const jetzt = Date.now(), nav = !!this.config.nav_path, hm = t => this._hm(new Date(t));
+    // inline: Gedämpftes über Deckkraft in eigenem Span (Farbe erbt vom Behälter); Fett und „Fällig“ bleiben davon unberührt
+    const m = s => this._inline ? `<span class="fb-m">${s}</span>` : s;
     let dot = "", txt;
-    if (!this._d) txt = "lädt …";
-    else if (this._laeuft(k)) { dot = `<i class="fb-puls" aria-hidden="true"></i>`; txt = `<b>stillt</b> · ${this._minText(jetzt - this._beginn(k))}`; }
+    if (!this._d) txt = m("lädt …");
+    else if (this._laeuft(k)) { dot = `<i class="fb-puls" aria-hidden="true"></i>`; txt = `<b>stillt</b>${m(` · ${this._minText(jetzt - this._beginn(k))}`)}`; }
     else {
       const vm = this._vm(k), l = vm.letzte, p = vm.prog, seit = l ? jetzt - l.start : 0;
-      if (!l) txt = "noch nichts eingetragen";
-      else if (seit > 8 * STD) txt = `letzte vor ${this._her(seit)}`;
+      if (!l) txt = m("noch nichts eingetragen");
+      else if (seit > 8 * STD) txt = m(`letzte vor ${this._her(seit)}`);
       else {
-        txt = `satt seit ${this._hDauer(seit)}`;
-        if (p) txt += jetzt < p.lo ? ` · <b>${hm(p.lo)}–${hm(p.hi)}</b>` : jetzt <= p.hi ? ` · <b>jetzt–${hm(p.hi)}</b>` : ` · <span class="fb-due">Fällig</span>`;
+        txt = m(`satt seit ${this._hDauer(seit)}`);
+        if (p) txt += m(" · ") + (jetzt < p.lo ? `<b>${hm(p.lo)}–${hm(p.hi)}</b>` : jetzt <= p.hi ? `<b>jetzt–${hm(p.hi)}</b>` : `<span class="fb-due">Fällig</span>`);
       }
     }
     return `<${nav ? `button type="button"` : "div"} class="fb-k" data-kid="${U.esc(k.key)}" style="${this._kidStyle(k)}">${this._avatar(k, 22)}
@@ -8034,6 +8080,20 @@ class FpBabyOverviewCard extends HTMLElement {
         .fb-k{flex:none;justify-content:flex-start;gap:6px;padding:3px 4px;}
         .fb-sep{display:none;}
       }
+      /* bar_style: inline (Begrüßung): keine Pille, kein Rahmen, keine Fläche, kein Außenabstand; immer eine Zeile je Kind untereinander.
+         Farbe und Größe kommen vom Behälter (color/font-size: inherit); Gedämpftes über opacity statt --secondary-text-color, damit es auch
+         auf dem farbigen Verlauf lesbar bleibt. Name und Text kürzen mit Ellipse, nichts läuft über. Steht hinter dem Container-Query,
+         damit es dessen schmale Werte der Pille überstimmt. */
+      .fb-inline .fb-pill{flex-direction:column;align-items:stretch;gap:0;padding:0;margin:0;border:0;border-radius:0;background:none;color:inherit;font-size:inherit;}
+      .fb-inline .fb-k{flex:none;justify-content:flex-start;gap:7px;padding:3px 0;border-radius:6px;}
+      .fb-inline .fb-sep{display:none;}
+      .fb-inline .fb-o{color:inherit;opacity:.72;}
+      .fb-inline .fb-t{color:inherit;}
+      .fb-inline .fb-t b{color:inherit;}
+      .fb-inline .fb-m{opacity:.8;}
+      .fb-inline .fb-due{text-shadow:none;}   /* der Schatten der Begrüßung auf Bild/Blauverlauf verschmiert sonst den Chip */
+      .fb-inline button.fb-k:active{background:none;opacity:.7;}
+      @media (hover:hover){ .fb-inline button.fb-k:hover{background:none;} .fb-inline button.fb-k:hover .fb-n{text-decoration:underline;} }
       @media (prefers-reduced-motion: reduce){ .fb-puls{animation:none !important;} }
     </style>`;
   }
