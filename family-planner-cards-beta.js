@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.0.2 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
+/* Family Planner custom cards v3.1.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -1864,107 +1864,306 @@ if (!customElements.get("family-calendar-card-beta")) {
 }
 })();
 
-/* ===== kids-routine-card-beta v6 (fehler-toasts) ===== */
+/* ===== kids-routine-card-beta v7 (ein Schritt groß, Tageszeit, Theme-Farben) ===== */
 (() => {
 const U = window.__fpUtils;
 const CPR = U.cp;
 class KidsRoutineCard extends HTMLElement {
   setConfig(config) {
-    this.config = Object.assign({ title: "Routinen", points_entity: "", reward_button: "", penalty_button: "", routines: [] }, config || {});
-    this._prev = {}; this._inited = false; this._built = false; this._sig = "";
+    const c = Object.assign({ name: "", title: "", color: "", points_entity: "", reward_button: "", penalty_button: "", routines: [] }, config || {});
+    if (!Array.isArray(c.routines)) c.routines = [];
+    this.config = c;
+    this._sig = ""; this._stSig = ""; this._built = false;
+    this._manual = null; this._manualAuto = null; this._lastKey = null;
+    this._clearBusy();
+  }
+  connectedCallback() {
+    if (this._tick) return;
+    // Tageszeit-Wechsel: einmal pro Minute neu berechnen, gerendert wird nur bei Änderung.
+    this._tick = setInterval(() => this._update(), 60000);
+    this._update();
+  }
+  disconnectedCallback() {
+    if (this._tick) { clearInterval(this._tick); this._tick = null; }
+    this._clearBusy();
   }
   set hass(hass) {
     this._hass = hass;
-    let sig = "";
-    if (this.config.points_entity && hass.states[this.config.points_entity]) sig += hass.states[this.config.points_entity].state;
-    this.config.routines.forEach(g => (g.tasks || []).forEach(t => { const s = hass.states[t.entity]; sig += "|" + (s ? s.state : "?"); }));
-    if (sig === this._sig) return;
-    this._sig = sig; this._render();
+    this._update();
   }
   _esc(s) { return U.esc(s); }
   _toast(msg) { U.toast(this, msg); }
   _isOn(e) { const s = this._hass && this._hass.states[e]; return !!(s && s.state === "on"); }
   _fmtStars(v) { const n = parseFloat(v); return isNaN(n) ? v : String(Math.round(n)); }
-  _toggle(task) {
-    if (!this._hass || !task || !task.entity) return;
-    const wasOn = this._isOn(task.entity);
-    this._hass.callService("input_boolean", "toggle", { entity_id: task.entity }).catch(() => this._toast("Aufgabe konnte nicht umgeschaltet werden"));
-    if (!wasOn) {
-      this._celebrate(task.emoji);
-      if (this.config.reward_button) this._hass.callService("button", "press", { entity_id: this.config.reward_button }).catch(() => {});
-    } else {
-      if (this.config.penalty_button) this._hass.callService("button", "press", { entity_id: this.config.penalty_button }).catch(() => {});
+  _reduced() { try { return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) { return false; } }
+  _domain(e) { return String(e).split(".")[0]; }
+  // Nur Schritte mit Entity zählen, ohne Entity lässt sich nichts speichern.
+  _tasks(g) { return ((g && g.tasks) || []).filter(t => t && t.entity); }
+
+  // ---- Tageszeit ----
+  _parseFrom(v) {
+    if (typeof v === "number") return isFinite(v) ? v : null;
+    if (typeof v === "string") {
+      const m = v.trim().match(/^(\d{1,2}):(\d{2})$/);
+      if (m) return +m[1] + (+m[2]) / 60;
+      const n = parseFloat(v.replace(",", "."));
+      return isFinite(n) ? n : null;
     }
+    return null;
   }
-  _resetGroup(tasks) { const ids = (tasks || []).map(t => t.entity).filter(Boolean); if (this._hass && ids.length) this._hass.callService("input_boolean", "turn_off", { entity_id: ids }).catch(() => this._toast("Zurücksetzen fehlgeschlagen")); }
-  _celebrate(emoji) {
-    if (!this._fx) return;
-    const e = emoji || CPR(0x2B50);
-    for (let i = 0; i < 14; i++) {
+  _froms() {
+    const out = [];
+    this.config.routines.forEach((g, i) => {
+      const f = this._parseFrom(g && g.from);
+      out.push(f != null ? f : (i === 0 ? 0 : i === 1 ? 12 : out[i - 1]));
+    });
+    return out;
+  }
+  _autoIdx() {
+    const f = this._froms();
+    if (!f.length) return -1;
+    const d = new Date(), now = d.getHours() + d.getMinutes() / 60;
+    let best = -1, top = 0;
+    f.forEach((v, i) => {
+      if (v <= now && (best < 0 || v >= f[best])) best = i;
+      if (v >= f[top]) top = i;
+    });
+    return best >= 0 ? best : top;
+  }
+  // Aktive Routine. Verwirft nebenbei die manuelle Wahl, sobald die automatische wechselt.
+  _activeIdx() {
+    const n = this.config.routines.length;
+    if (!n) return -1;
+    const auto = this._autoIdx();
+    if (this._manual != null && (this._manualAuto !== auto || this._manual >= n)) this._manual = null;
+    return this._manual != null ? this._manual : auto;
+  }
+  _pick(i) {
+    if (!(i >= 0 && i < this.config.routines.length)) return;
+    this._manual = i; this._manualAuto = this._autoIdx();
+    this._update();
+  }
+
+  // ---- Zustand ----
+  _stateSig() {
+    const st = this._hass.states;
+    const pe = this.config.points_entity;
+    let sig = pe && st[pe] ? st[pe].state : "";
+    this.config.routines.forEach(g => this._tasks(g).forEach(t => { const s = st[t.entity]; sig += "|" + (s ? s.state : "?"); }));
+    return sig;
+  }
+  _update() {
+    if (!this._hass || !this.config) return;
+    const stSig = this._stateSig();
+    const sig = this._activeIdx() + "#" + stSig;
+    if (this._busy && stSig !== this._stSig) this._arrived();
+    this._stSig = stSig;
+    if (sig === this._sig) return;
+    this._sig = sig;
+    this._render();
+  }
+
+  // ---- Doppeltipp-Schutz ----
+  _lock() {
+    this._clearBusy();
+    this._busy = true; this._busyT0 = Date.now();
+    this._busyMax = setTimeout(() => this._unlock(), 3000);
+    this._applyBusy();
+  }
+  // Neue Zustandsänderung ist da: frühestens nach 600 ms wieder freigeben.
+  _arrived() {
+    if (!this._busy) return;
+    const rest = this._busyT0 + 600 - Date.now();
+    if (rest <= 0) { this._unlock(); return; }
+    clearTimeout(this._busyMin);
+    this._busyMin = setTimeout(() => this._unlock(), rest);
+  }
+  _clearBusy() {
+    clearTimeout(this._busyMax); clearTimeout(this._busyMin);
+    this._busyMax = null; this._busyMin = null; this._busy = false;
+  }
+  _unlock() { this._clearBusy(); this._applyBusy(); }
+  _applyBusy() {
+    if (!this._content) return;
+    this._content.querySelectorAll(".kr-act").forEach(b => { b.disabled = !!this._busy; });
+  }
+
+  // ---- Aktionen ----
+  _call(domain, service, entity, onOk) {
+    if (!this._hass) return;
+    this._lock();
+    let p;
+    try { p = this._hass.callService(domain, service, { entity_id: entity }); } catch (e) { p = Promise.reject(e); }
+    Promise.resolve(p).then(() => {
+      try { if (onOk) onOk(); } catch (e) {}
+    }, () => {
+      this._unlock();
+      this._toast("Schritt konnte nicht gespeichert werden");
+    });
+  }
+  _press(entity) {
+    try { Promise.resolve(this._hass.callService("button", "press", { entity_id: entity })).catch(() => {}); } catch (e) {}
+  }
+  _done() {
+    if (this._busy || !this._hass) return;
+    const r = this.config.routines[this._activeIdx()];
+    if (!r) return;
+    const tasks = this._tasks(r);
+    const ci = tasks.findIndex(t => !this._isOn(t.entity));
+    if (ci < 0) return;
+    const last = tasks.every((t, i) => i === ci || this._isOn(t.entity));
+    this._call(this._domain(tasks[ci].entity), "turn_on", tasks[ci].entity, () => {
+      if (this.config.reward_button) this._press(this.config.reward_button);
+      if (last) this._celebrate(tasks.map(t => t.emoji));
+    });
+  }
+  _back() {
+    if (this._busy || !this._hass) return;
+    const r = this.config.routines[this._activeIdx()];
+    if (!r) return;
+    const tasks = this._tasks(r);
+    let ti = -1;
+    tasks.forEach((t, i) => { if (this._isOn(t.entity)) ti = i; });
+    if (ti < 0) return;
+    this._call(this._domain(tasks[ti].entity), "turn_off", tasks[ti].entity, () => {
+      if (this.config.penalty_button) this._press(this.config.penalty_button);
+    });
+  }
+  _onClick(ev) {
+    const b = ev.target && ev.target.closest ? ev.target.closest("[data-act]") : null;
+    if (!b || !this._content.contains(b) || b.disabled) return;
+    const act = b.dataset.act;
+    if (act === "tab") this._pick(+b.dataset.i);
+    else if (act === "done") this._done();
+    else if (act === "back") this._back();
+  }
+  _celebrate(emojis) {
+    if (!this._fx || this._reduced()) return;
+    const pool = (emojis || []).filter(Boolean);
+    pool.push(CPR(0x1F389));
+    const h = (this._fx.offsetHeight || 420) + 50;
+    for (let i = 0; i < 18; i++) {
       const s = document.createElement("span");
-      s.className = "kr-drop"; s.textContent = e;
+      s.className = "kr-drop"; s.textContent = pool[Math.floor(Math.random() * pool.length)];
       s.style.left = (Math.random() * 100) + "%";
       s.style.fontSize = (18 + Math.random() * 22) + "px";
       s.style.animationDelay = (Math.random() * 0.3) + "s";
       s.style.animationDuration = (1.1 + Math.random() * 0.9) + "s";
+      s.style.setProperty("--kr-h", h + "px");
       this._fx.appendChild(s);
       setTimeout(() => { if (s.parentNode) s.parentNode.removeChild(s); }, 2400);
     }
   }
+
+  // ---- Darstellung ----
   _render() {
     if (!this._hass) return;
     if (!this._built) {
       this.innerHTML = `<style>${this._css()}</style><ha-card class="kr-card"><div class="kr-fx"></div><div class="kr-content"></div></ha-card>`;
-      this._fx = this.querySelector(".kr-fx"); this._content = this.querySelector(".kr-content"); this._built = true;
+      this._fx = this.querySelector(".kr-fx"); this._content = this.querySelector(".kr-content");
+      // Ein delegierter Listener auf dem Container, überlebt jedes innerHTML.
+      this._content.addEventListener("click", ev => this._onClick(ev));
+      this._built = true;
     }
-    const stars = this.config.points_entity && this._hass.states[this.config.points_entity] ? this._hass.states[this.config.points_entity].state : null;
-    let html = `<div class="kr-head"><div class="kr-title">${this._esc(this.config.title)}</div>` + (stars != null ? `<div class="kr-stars">${CPR(0x2B50)} ${this._esc(this._fmtStars(stars))}</div>` : "") + `</div>`;
-    this.config.routines.forEach((g, gi) => {
-      const tasks = g.tasks || [];
-      const done = tasks.filter(t => this._isOn(t.entity)).length;
-      const all = tasks.length && done === tasks.length;
-      html += `<div class="kr-group${all ? " kr-done" : ""}"><div class="kr-glabel"><span>${this._esc(g.icon || "")} ${this._esc(g.label || "")}</span><span class="kr-prog">${done}/${tasks.length}</span><button class="kr-reset" data-g="${gi}" title="Zurücksetzen">${CPR(0x21BB)}</button></div><div class="kr-tasks">`;
-      tasks.forEach((t, ti) => {
-        const on = this._isOn(t.entity);
-        html += `<button class="kr-task${on ? " kr-on" : ""}" data-g="${gi}" data-t="${ti}"><span class="kr-emoji">${this._esc(t.emoji || "")}</span><span class="kr-lbl">${this._esc(t.label || "")}</span>${on ? `<span class="kr-check">${CPR(0x2714)}</span>` : ""}</button>`;
+    const c = this.config, routines = c.routines;
+    const ai = this._activeIdx();
+    const dis = this._busy ? " disabled" : "";
+
+    // Kopf
+    const pe = c.points_entity && this._hass.states[c.points_entity];
+    let html = `<div class="kr-head">` +
+      (c.color ? `<span class="kr-dotc" style="background:${this._esc(c.color)}"></span>` : "") +
+      `<div class="kr-title">${this._esc(c.title || c.name || "Routinen")}</div>` +
+      (pe ? `<div class="kr-stars">${CPR(0x2B50)} ${this._esc(this._fmtStars(pe.state))}</div>` : "") + `</div>`;
+
+    // Umschalter
+    if (routines.length > 1) {
+      html += `<div class="kr-tabs">`;
+      routines.forEach((g, i) => {
+        const ts = this._tasks(g);
+        const n = ts.filter(t => this._isOn(t.entity)).length;
+        html += `<button class="kr-tab${i === ai ? " kr-sel" : ""}" aria-pressed="${i === ai}" data-act="tab" data-i="${i}"><span>${this._esc(((g.icon || "") + " " + (g.label || "")).trim())}</span><span class="kr-n">${n}/${ts.length}</span></button>`;
       });
-      html += `</div></div>`;
-    });
+      html += `</div>`;
+    }
+
+    // Aktive Routine
+    const r = routines[ai];
+    const tasks = r ? this._tasks(r) : [];
+    if (!tasks.length) {
+      this._lastKey = ai + ":-";
+      html += `<div class="kr-empty">Keine Schritte eingetragen</div>`;
+    } else {
+      const on = tasks.map(t => this._isOn(t.entity));
+      const doneN = on.filter(Boolean).length;
+      const ci = on.indexOf(false);               // aktueller Schritt, -1 = alles erledigt
+      const key = ai + ":" + (ci < 0 ? "end" : ci);
+      const pop = this._lastKey != null && this._lastKey !== key && !this._reduced();
+      this._lastKey = key;
+
+      html += `<div class="kr-dots" aria-hidden="true">`;
+      tasks.forEach((t, i) => {
+        html += `<span class="kr-d${on[i] ? " kr-dn" : ""}${i === ci ? " kr-cur" : ""}">${this._esc(t.emoji || "")}</span>`;
+      });
+      html += `</div>`;
+
+      if (ci < 0) {
+        html += `<div class="kr-stage kr-fin"><div class="kr-big${pop ? " kr-pop" : ""}">${CPR(0x1F389)}</div>` +
+          `<div class="kr-txt">${this._esc(c.name ? "Geschafft, " + c.name + "!" : "Geschafft!")}</div>` +
+          `<div class="kr-sub">${this._esc(r.label ? r.label + " fertig" : "Alles erledigt")}</div>` +
+          `<button class="kr-act kr-back" data-act="back"${dis}>Letzten Schritt zurücknehmen</button></div>`;
+      } else {
+        const t = tasks[ci];
+        html += `<div class="kr-stage"><div class="kr-step">Schritt ${ci + 1} von ${tasks.length}</div>` +
+          `<div class="kr-big${pop ? " kr-pop" : ""}">${this._esc(t.emoji || "")}</div>` +
+          `<div class="kr-txt">${this._esc(t.label || "")}</div>` +
+          `<button class="kr-act kr-go" data-act="done"${dis}>Fertig ${CPR(0x2713)}</button>` +
+          (doneN > 0 ? `<button class="kr-act kr-back" data-act="back"${dis}>Zurück</button>` : "") + `</div>`;
+      }
+    }
     this._content.innerHTML = html;
-    this._content.querySelectorAll(".kr-task").forEach(b => b.addEventListener("click", () => { const g = +b.dataset.g, t = +b.dataset.t; this._toggle(this.config.routines[g].tasks[t]); }));
-    this._content.querySelectorAll(".kr-reset").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); this._resetGroup(this.config.routines[+b.dataset.g].tasks || []); }));
   }
   _css() {
     return `
-    .kr-card{position:relative;overflow:hidden;padding:6px 6px 12px;}
+    .kr-card{position:relative;overflow:hidden;padding:14px;box-sizing:border-box;}
     .kr-fx{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5;}
     .kr-drop{position:absolute;top:-34px;animation-name:kr-fall;animation-timing-function:linear;animation-fill-mode:forwards;}
-    @keyframes kr-fall{to{transform:translateY(380px) rotate(45deg);opacity:0;}}
-    .kr-head{display:flex;justify-content:space-between;align-items:center;padding:8px 8px 4px;}
-    .kr-title{font-size:1.2rem;font-weight:700;}
-    .kr-stars{font-size:1.05rem;font-weight:700;color:#f9a825;}
-    .kr-group{margin:6px 4px;border-radius:16px;padding:6px 8px;background:var(--secondary-background-color,rgba(0,0,0,.03));transition:background .2s;}
-    .kr-group.kr-done{background:rgba(67,160,71,.16);}
-    .kr-glabel{display:flex;align-items:center;gap:8px;font-weight:700;font-size:.95rem;padding:2px 2px 6px;}
-    .kr-glabel>span:first-child{flex:1;}
-    .kr-prog{font-size:.8rem;color:var(--secondary-text-color);font-weight:600;}
-    .kr-reset{border:none;background:transparent;color:var(--secondary-text-color);font-size:1.1rem;cursor:pointer;line-height:1;}
-    .kr-tasks{display:grid;grid-template-columns:repeat(auto-fill,minmax(82px,1fr));gap:8px;}
-    .kr-task{position:relative;border:none;border-radius:16px;padding:10px 6px;background:var(--card-background-color,#fff);box-shadow:0 1px 4px rgba(0,0,0,.14);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;transition:transform .1s,background .15s;}
-    .kr-task:active{transform:scale(.94);}
-    .kr-task.kr-on{background:rgba(67,160,71,.20);}
-    .kr-emoji{font-size:2rem;line-height:1;}
-    .kr-task.kr-on .kr-emoji{filter:grayscale(.15);}
-    .kr-lbl{font-size:.72rem;text-align:center;color:var(--primary-text-color);line-height:1.05;}
-    .kr-check{position:absolute;top:4px;right:6px;color:#2e7d32;font-weight:800;font-size:.9rem;}
+    @keyframes kr-fall{to{transform:translateY(var(--kr-h,420px)) rotate(45deg);opacity:0;}}
+    .kr-content{display:flex;flex-direction:column;gap:14px;}
+    .kr-head{display:flex;align-items:center;gap:8px;}
+    .kr-dotc{flex:none;width:12px;height:12px;border-radius:50%;}
+    .kr-title{flex:1;min-width:0;font-size:1.2rem;font-weight:700;color:var(--primary-text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .kr-stars{flex:none;padding:3px 10px;border-radius:999px;font-size:.95rem;font-weight:700;color:var(--primary-text-color);background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 14%,transparent);}
+    .kr-tabs{display:flex;flex-wrap:wrap;gap:6px;}
+    .kr-tab{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px;box-sizing:border-box;padding:6px 12px;border:none;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-size:.9rem;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .kr-tab.kr-sel{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));}
+    .kr-n{font-size:.78rem;font-weight:700;opacity:.8;}
+    .kr-dots{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;}
+    .kr-d{width:38px;height:38px;box-sizing:border-box;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.2rem;line-height:1;background:var(--fp-surface,var(--secondary-background-color));}
+    .kr-d.kr-dn{background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 22%,transparent);opacity:.7;}
+    .kr-d.kr-cur{box-shadow:inset 0 0 0 3px var(--fp-accent,var(--primary-color));}
+    .kr-stage{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding-top:4px;}
+    .kr-step{font-size:.75rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--secondary-text-color);}
+    .kr-big{font-size:4.6rem;line-height:1.1;}
+    .kr-big.kr-pop{animation:kr-pop .2s ease-out;}
+    @keyframes kr-pop{from{transform:scale(.85);opacity:0;}to{transform:scale(1);opacity:1;}}
+    .kr-txt{font-size:1.35rem;font-weight:800;line-height:1.2;color:var(--primary-text-color);overflow-wrap:anywhere;}
+    .kr-sub{font-size:.9rem;color:var(--secondary-text-color);}
+    .kr-go{width:100%;box-sizing:border-box;min-height:56px;margin-top:4px;padding:16px;border:none;border-radius:var(--fp-radius,16px);background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-size:1.15rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .1s;}
+    .kr-go:active:not(:disabled){transform:scale(.97);}
+    .kr-back{min-height:40px;padding:8px 14px;border:none;border-radius:var(--fp-radius-sm,12px);background:transparent;color:var(--secondary-text-color);font-size:.9rem;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .kr-act:disabled{opacity:.55;cursor:default;}
+    .kr-act:focus-visible,.kr-tab:focus-visible{outline:2px solid var(--fp-accent,var(--primary-color));outline-offset:2px;}
+    .kr-empty{text-align:center;padding:16px 0;font-size:.9rem;color:var(--secondary-text-color);}
+    @media (prefers-reduced-motion: reduce){.kr-drop,.kr-big.kr-pop{animation:none !important;}.kr-go{transition:none;}.kr-go:active:not(:disabled){transform:none;}}
     `;
   }
-  getCardSize() { return 6; }
+  getCardSize() { return 5; }
 }
 if (!customElements.get("kids-routine-card-beta")) {
   customElements.define("kids-routine-card-beta", KidsRoutineCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "kids-routine-card-beta", name: "Kids Routine Card", description: "Buddy-style routines with emoji + rewards" });
+  window.customCards.push({ type: "kids-routine-card-beta", name: "Kids Routine Card", description: "Kinder-Routinen Schritt für Schritt" });
 }
 })();
 
