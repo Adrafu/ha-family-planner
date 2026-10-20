@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.1.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
+/* Family Planner custom cards v3.1.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -7546,7 +7546,7 @@ if (!customElements.get("fp-milestone-card")) {
 })();
 
 
-/* ===== fp-baby-overview-card v20 (bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card v21 (Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card), Windeln
 // (fp-diaper-card), Gewicht (fp-weight-card) und Meilensteine (fp-milestone-card), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -8216,7 +8216,7 @@ class FpBabyOverviewCard extends HTMLElement {
         <div class="fo-wacht" aria-hidden="true"></div>
         <div class="fo-top"></div>
         <div class="fo-body"><div class="fo-laden">Einträge werden geladen …</div></div>
-        <div class="fo-dock"><div class="fo-act"></div><nav class="fo-tabbar"></nav></div>
+        <div class="fo-dock"><div class="fo-act"></div><nav class="fo-tabbar">${this._tabsHtml()}</nav></div>
       </ha-card>${this._styles()}`;
     this._card = this.querySelector(".fo-card");
     this._card.classList.toggle("fo-dark", this._dunkel());
@@ -8372,6 +8372,17 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this._view === "momente") this._zeigeMomente(body);
     else if (this._view === "protokoll") this._zeigeProtokoll(body);
     else body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
+    this.querySelector(".fo-tabbar").innerHTML = this._tabsHtml();
+    this.querySelector(".fo-act").innerHTML = this._aktionsleiste();   // in jeder Ansicht; am Tablet per CSS aus
+    this._klebt();   // fo-multi ist gesetzt: jetzt steht fest, ob die Kopfzeile klebt
+    if (this._view === "wachstum") this._zeichne();
+  }
+
+  // Ansichtsleiste unten. Hängt nur an der Konfiguration und der gewählten Ansicht, nicht an den Daten — deshalb steht sie
+  // schon im Gerüst (_build) und ist nie leer. Früher war sie bis zum ersten Laden leer und der Behälter per
+  // „.fo-dock:has(.fo-tabbar:empty)“ ausgeblendet; Safari (Wand-Tablet) wertet diese Regel nach dem Füllen nicht immer
+  // neu aus, dann fehlte die Leiste bis zum nächsten Neuaufbau.
+  _tabsHtml() {
     const views = [["heute", "Heute"]];
     if (this._hatProtokoll()) views.push(["protokoll", "Protokoll"]);
     views.push(["muster", "Muster"]);
@@ -8379,10 +8390,7 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this.config.milestone_calendar) views.push(["momente", "Momente"]);
     const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
     if (!this.config.milestone_calendar && this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
-    this.querySelector(".fo-tabbar").innerHTML = tabs.join("");
-    this.querySelector(".fo-act").innerHTML = this._aktionsleiste();   // in jeder Ansicht; am Tablet per CSS aus
-    this._klebt();   // fo-multi ist gesetzt: jetzt steht fest, ob die Kopfzeile klebt
-    if (this._view === "wachstum") this._zeichne();
+    return tabs.join("");
   }
 
   // Kopf wie in Buma: Foto, Name, Alter; rechts ⚙ (nur mit Helfern) und ✦ für „Frag nach“.
@@ -9802,7 +9810,6 @@ class FpBabyOverviewCard extends HTMLElement {
          Er selbst nimmt keine Tipps an, damit er den Inhalt daneben nicht verdeckt. */
       .fo-dock{position:sticky;bottom:12px;z-index:4;display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:22px;pointer-events:none;}
       .fo-dock > *{pointer-events:auto;}
-      .fo-dock:has(.fo-tabbar:empty){display:none;}
       .fo-act{display:none;}
       @container fo-card (max-width: 679px){
         .fo-act{display:flex;align-self:stretch;gap:8px;box-sizing:border-box;padding:8px;border-radius:var(--fp-radius, 16px);
