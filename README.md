@@ -275,6 +275,7 @@ entity: todo.kochbuch                  # lokale To-do-Liste als Rezept-Speicher
 essensplan_entity: calendar.essensplan  # Ziel für „In Plan legen"
 shopping_entity: todo.zuhause           # Ziel für „Zutaten → Einkauf"
 ai_entity: ai_task.google_ai_task       # für KI-Rezept + KI-Vorschlag
+ai_image_entity: ai_task.google_ai_task # optional: eigene KI nur fürs KI-Bild (braucht generate_image); leer = ai_entity
 weather_entity: weather.home            # optional, für Saison-/Wetterbezug
 base_portions: 2
 quick_max_min: 20                       # bis hierher gilt ein Gericht als „schnell"

@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.1.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
+/* Family Planner custom cards v3.1.3 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -3728,7 +3728,7 @@ if (!customElements.get("fp-glance-card")) {
 }
 })();
 
-/* ===== fp-cookbook-card v23 (Zutaten → Einkauf übersteht einen Ausfall der Einkaufsliste: wird nachgeschickt; davor: ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
+/* ===== fp-cookbook-card v24 (KI-Bild kann über ai_image_entity eine eigene KI nutzen, z. B. Gemini, während der Rest auf einer anderen läuft; davor: Zutaten → Einkauf übersteht einen Ausfall der Einkaufsliste: wird nachgeschickt; davor: ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -3740,6 +3740,7 @@ class FpCookbookCard extends HTMLElement {
       essensplan_entity: "calendar.essensplan",
       shopping_entity: "todo.zuhause",
       ai_entity: "ai_task.google_ai_task",
+      ai_image_entity: "",          // eigene ai_task-Entity nur fürs KI-Bild (z. B. Gemini); leer = ai_entity
       weather_entity: "weather.home",
       base_portions: 2,
       quick_max_min: 20,            // bis hierher gilt ein Gericht als „schnell"
@@ -4155,14 +4156,16 @@ class FpCookbookCard extends HTMLElement {
   }
   async _aiImage(d) {
     const data = { task_name: "Kochbuch-Bild", instructions: `Appetizing realistic food photograph of the dish "${d.name}"${(d.ingredients || []).length ? ` (main ingredients: ${(d.ingredients || []).slice(0, 6).map(i => i.item).join(", ")})` : ""}, served on a plate on a wooden kitchen table, natural daylight, shallow depth of field, landscape 4:3, no text, no people.` };
-    if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+    const imgEnt = this.config.ai_image_entity || this.config.ai_entity;
+    if (imgEnt) data.entity_id = imgEnt;
     const r = await this._hass.callService("ai_task", "generate_image", data, undefined, false, true);
     const id = r && r.response && r.response.media_source_id;
     if (!id) throw new Error("kein Bild");
     return { src: id, credit: "KI-Bild" };
   }
   _aiImageOk() {
-    const st = this.config.ai_entity && this._hass.states[this.config.ai_entity];
+    const imgEnt = this.config.ai_image_entity || this.config.ai_entity;
+    const st = imgEnt && this._hass.states[imgEnt];
     return !!(st && (Number(st.attributes.supported_features) & 4));
   }
 
