@@ -348,7 +348,7 @@ kids:
   - { key: kind_b, name: Kind B, color: "#7A4A78" }
 ```
 
-Gewichtsverlauf mehrerer Kinder auf einer gemeinsamen Zeitachse. „＋ Eintragen“ öffnet einen Dialog mit Kind, Datum und Gewicht (Gramm oder Kilo). Ein Tipp auf einen Punkt öffnet Bearbeiten oder Löschen. Pro Kind und Tag wird höchstens ein Wert gespeichert.
+Gewichtsverlauf mehrerer Kinder auf einer gemeinsamen Zeitachse. „＋ Eintragen“ öffnet einen Dialog mit Kind, Datum und Gewicht (Gramm oder Kilo). Ein Tipp auf einen Punkt öffnet Bearbeiten oder Löschen. Pro Kind und Tag wird höchstens ein Wert gespeichert. Die Uhrzeit der Eingabe gilt als Wiegezeit und steht im Termin (`"zeit": "HH:MM"` in der Beschreibung); beim Korrigieren eines Werts bleibt sie erhalten.
 
 **Perzentilkurven (optional).** Mit `growth_data` und je Kind Geburtsdatum, Gestationsalter und Geschlecht zeichnet die Karte die Bänder P3–P97 und P10–P90 sowie P50 und zeigt neben dem letzten Wert die ungefähre Perzentile. Kinder mit gleichen Angaben (Zwillinge) teilen sich eine Kurvenschar.
 
