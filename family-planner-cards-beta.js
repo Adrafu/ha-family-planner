@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.1.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
+/* Family Planner custom cards v3.1.4 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -55,6 +55,95 @@
   // Datei halten bereits eine Referenz darauf.
   const u = window.__fpUtils || (window.__fpUtils = {});
   for (const k of Object.keys(defaults)) if (!(k in u)) u[k] = defaults[k];
+
+  // ---------- Einträge anlegen, die einen Ausfall der Liste überstehen ----------
+  // Cloud-Listen (Bring!, Todoist …) sind bei einem Verbindungsabriss kurz
+  // "unavailable". Ein todo.add_item in dieser Zeit nimmt HA kommentarlos an und
+  // verwirft es (nur eine Warnung im Log) — die Karte bekommt keinen Fehler zu sehen.
+  // addItem prüft deshalb vorher, ob die Liste erreichbar ist, und schickt bei
+  // Ausfall oder Fehler aus einer Warteschlange nach, sobald sie wieder da ist.
+  // Die Warteschlange lebt im Speicher der Seite (gemeinsam für alle Karten);
+  // ein Neuladen der Seite verwirft sie.
+  const queue = (() => {
+    const RETRY_MS = 10000;               // so oft wird nachgesehen, ob die Liste wieder da ist
+    const MAX_AGE_MS = 6 * 3600 * 1000;   // danach aufgeben und Bescheid geben
+    const KEEP_MS = 60000;                // so lange merkt sich addState den Ausgang
+    const q = [];                         // { id, data, el, t, n, next }
+    const done = new Map();               // id -> Zeitpunkt der Zustellung | "failed"
+    let seq = 0, timer = null, busy = false, lastHass = null, lastNote = 0;
+    const host = el => (el && el.isConnected ? el : document.querySelector("home-assistant"));
+    const note = (el, msg) => u.toast(host(el), msg);
+    const curHass = () => {
+      try { const ha = document.querySelector("home-assistant"); if (ha && ha.hass) return ha.hass; } catch (e) {}
+      return lastHass;
+    };
+    const emit = () => { try { window.dispatchEvent(new CustomEvent("fp-todo-queue")); } catch (e) {} };
+    const forget = id => setTimeout(() => done.delete(id), KEEP_MS);
+    // Liste erreichbar? Fehlt sie (noch nicht geladen) oder ist sie "unavailable", nein.
+    const listUp = (hass, ent) => {
+      const s = hass && hass.states ? hass.states[ent] : null;
+      return !!s && s.state !== "unavailable";
+    };
+    const schedule = ms => { if (!timer && q.length) timer = setTimeout(pump, ms == null ? RETRY_MS : ms); };
+    async function pump() {
+      timer = null;
+      if (busy) return;
+      busy = true;
+      const delivered = [];
+      try {
+        const hass = curHass(), now = Date.now();
+        for (const e of [...q]) {
+          if (now - e.t > MAX_AGE_MS) {
+            q.splice(q.indexOf(e), 1); done.set(e.id, "failed"); forget(e.id);
+            note(e.el, `„${e.data.item}“ konnte nicht angelegt werden – die Liste war zu lange nicht erreichbar`);
+            continue;
+          }
+          if (now < e.next || !hass || !listUp(hass, e.data.entity_id)) continue;
+          try {
+            await hass.callService("todo", "add_item", e.data);
+            q.splice(q.indexOf(e), 1); done.set(e.id, Date.now()); forget(e.id); delivered.push(e);
+          } catch (err) {
+            e.n++; e.next = Date.now() + Math.min(RETRY_MS * Math.pow(2, e.n), 120000);   // Fehler trotz Verbindung: langsamer nachfassen
+          }
+        }
+      } finally {
+        busy = false;
+        if (delivered.length) {
+          const last = delivered[delivered.length - 1];
+          note(last.el, delivered.length === 1 ? `„${last.data.item}“ nachgetragen` : `${delivered.length} Einträge nachgetragen`);
+        }
+        emit();
+        schedule();
+      }
+    }
+    const enqueue = (id, el, data) => {
+      q.push({ id, data, el, t: Date.now(), n: 0, next: 0 });
+      // pro Ausfall nur ein Hinweis, nicht für jeden Eintrag
+      if (Date.now() - lastNote > 30000) { lastNote = Date.now(); note(el, `Liste gerade nicht erreichbar – „${data.item}“ wird nachgeschickt`); }
+      emit();
+      schedule();
+    };
+    return {
+      // Legt data (entity_id, item, …) auf die Liste. Liefert sofort { id, done };
+      // done wird zu "sent" (zugestellt) oder "queued" (wartet auf die Liste).
+      addItem(el, hass, data) {
+        const id = "fpq-" + (++seq);
+        if (hass) lastHass = hass;
+        const h = curHass() || hass;
+        if (!h || !listUp(h, data.entity_id)) { enqueue(id, el, data); return { id, done: Promise.resolve("queued") }; }
+        const p = h.callService("todo", "add_item", data).then(
+          () => { done.set(id, Date.now()); forget(id); return "sent"; },
+          err => { console.warn("[fp] Anlegen fehlgeschlagen, wird nachgeschickt:", data.entity_id, err); enqueue(id, el, data); return "queued"; });
+        return { id, done: p };
+      },
+      // "queued" (wartet), Zeitpunkt der Zustellung, "failed" (aufgegeben) oder null (unbekannt/abgelaufen)
+      addState(id) { return q.some(e => e.id === id) ? "queued" : (done.get(id) || null); },
+      // Namen der Einträge, die für diese Liste noch warten
+      addPending(ent) { return q.filter(e => e.data.entity_id === ent).map(e => String(e.data.item)); },
+      listUp,
+    };
+  })();
+  for (const k of Object.keys(queue)) if (!(k in u)) u[k] = queue[k];
 
   // Formularelemente erben die Schrift nicht — sie nehmen die des Systems.
   // Unsere Karten leben im Light DOM, ein Stil im Kopf reicht also aus.
@@ -2167,7 +2256,7 @@ if (!customElements.get("kids-routine-card-beta")) {
 }
 })();
 
-/* ===== shopping-fav-card-beta v24 (embedded: true ohne eigenen Rahmen, kompakter, für die Aufgabenkarte; davor: großer Knopf unter der Schnellauswahl, wenn beides sichtbar ist; davor: Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card-beta v25 (Liste kurz nicht erreichbar: Eintrag wartet und wird nachgeschickt statt still verloren, wartende Favoriten bleiben mit ✓ markiert; davor: embedded: true ohne eigenen Rahmen, kompakter, für die Aufgabenkarte; davor: großer Knopf unter der Schnellauswahl, wenn beides sichtbar ist; davor: Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2181,6 +2270,7 @@ class ShoppingFavCard extends HTMLElement {
     this._open = [];           // Namen der offenen Einträge, normalisiert
     this._optim = new Map();   // gerade angelegt, noch nicht im Abo: Name -> Zeit
     this._markSig = ""; this._flashing = 0;
+    this._onQueue = () => this._sync();   // Warteschlange hat sich bewegt: Markierungen neu
   }
   setConfig(config) {
     if (!config || !config.list_entity) throw new Error("list_entity (todo-Liste) erforderlich");
@@ -2199,8 +2289,9 @@ class ShoppingFavCard extends HTMLElement {
     this._open = []; this._optim.clear(); this._markSig = ""; this._failAt = 0;
     if (this.isConnected) this._subscribe();
   }
-  connectedCallback() { this._subscribe(); this._sync(); }
+  connectedCallback() { window.addEventListener("fp-todo-queue", this._onQueue); this._subscribe(); this._sync(); }
   disconnectedCallback() {
+    window.removeEventListener("fp-todo-queue", this._onQueue);
     this._timers.forEach(t => clearTimeout(t)); this._timers.clear();
     this._unsubscribe();
   }
@@ -2269,6 +2360,8 @@ class ShoppingFavCard extends HTMLElement {
     const k = this._key(name);
     if (!k) return false;
     if (this._isOpen(k)) return true;
+    // wartet noch in der Warteschlange (Liste kurz nicht erreichbar): zählt als „auf der Liste“, kein Doppel
+    if (U.addPending(this.config.list_entity).some(s => this._key(s) === k)) return true;
     const t = this._optim.get(k);
     return !!t && Date.now() - t < 20000;
   }
@@ -2388,8 +2481,9 @@ class ShoppingFavCard extends HTMLElement {
     const data = { entity_id: ent, item: name };
     if (due) data.due_date = due;
     if (ent === this.config.list_entity) this._markOptimistic(name);   // gilt sofort als „auf der Liste“, bis das Abo es bringt
-    window.dispatchEvent(new CustomEvent("fp-todo-add", { detail: { entity: ent, summary: name, due: due || null } }));
-    this._hass.callService("todo", "add_item", data).catch(() => this._toast("Konnte nicht zur Liste hinzugefügt werden"));
+    // Ist die Liste gerade weg, wartet der Eintrag und wird nachgeschickt (U.addItem, mit Hinweis)
+    const t = U.addItem(this, this._hass, data);
+    window.dispatchEvent(new CustomEvent("fp-todo-add", { detail: { entity: ent, summary: name, due: due || null, qid: t.id } }));
   }
 
   // Serienaufgabe direkt bei Todoist anlegen. Ein gewaehltes Datum wird als
@@ -2824,7 +2918,7 @@ if (!customElements.get("nav-card-beta")) {
 }
 })();
 
-/* ===== fp-todo-card-beta v19 (Einkauf in einer Karte: add_placeholder, create_position: top, header_actions, eingebettete Favoriten, empty_style: compact; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+/* ===== fp-todo-card-beta v20 (Liste kurz nicht erreichbar: neue Einträge bleiben ausgegraut mit Hinweis stehen und werden nachgeschickt, Verschieben bricht ab statt den Eintrag zu verlieren; davor: Einkauf in einer Karte: add_placeholder, create_position: top, header_actions, eingebettete Favoriten, empty_style: compact; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
 // Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
 // selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
 // Hinzufügen über das Ereignis fp-todo-add bleiben.
@@ -2846,8 +2940,10 @@ class FpTodoCard extends HTMLElement {
     this._favEl = null;        // eingebettete Favoriten (shopping-fav-card-beta), einmal angelegt und behalten
     this._onAdd = e => {
       const d = e.detail || {};
-      if (this.config && d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary), d.due || null, d.description);
+      if (this.config && d.entity === this.config.entity && d.summary) this._optimistic(String(d.summary), d.due || null, d.description, d.qid);
     };
+    // Warteschlange (U.addItem) hat sich bewegt: wartende Zeilen neu zeichnen, zugestellte nach 20 s aufräumen
+    this._onQueue = () => { this._paint(); this._after(() => this._paint(), 20100); };
   }
   setConfig(config) {
     if (!config || !config.entity) throw new Error("entity erforderlich");
@@ -2869,6 +2965,7 @@ class FpTodoCard extends HTMLElement {
   }
   connectedCallback() {
     window.addEventListener("fp-todo-add", this._onAdd);
+    window.addEventListener("fp-todo-queue", this._onQueue);
     if (!this._tick) this._tick = setInterval(() => this._paint(), 60000);   // „heute/morgen“ wandert mit dem Tag
     if (!this._built && this.config) this._build();
     const fz = U.fillZelle || U.fill;
@@ -2878,6 +2975,7 @@ class FpTodoCard extends HTMLElement {
   }
   disconnectedCallback() {
     window.removeEventListener("fp-todo-add", this._onAdd);
+    window.removeEventListener("fp-todo-queue", this._onQueue);
     if (this._tick) { clearInterval(this._tick); this._tick = null; }
     this._timers.forEach(t => clearTimeout(t)); this._timers.clear();
     this._unsubscribe();
@@ -2939,7 +3037,13 @@ class FpTodoCard extends HTMLElement {
   }
   _expire() {
     const now = Date.now();
-    this._pending = this._pending.filter(p => now - p.t < 20000);
+    // Vorab-Zeilen: 20 s ab Anlegen bzw. ab Zustellung aus der Warteschlange; wartende bleiben stehen
+    this._pending = this._pending.filter(p => {
+      const s = p.qid ? U.addState(p.qid) : null;
+      if (s === "queued") return true;
+      if (s === "failed") return false;
+      return now - (typeof s === "number" ? Math.max(p.t, s) : p.t) < 20000;
+    });
     for (const [uid, o] of this._ovr) if (now - o.t >= 20000) this._ovr.delete(uid);
     for (const [uid, k] of this._keep) if (k.until <= now) this._keep.delete(uid);
   }
@@ -2999,7 +3103,7 @@ class FpTodoCard extends HTMLElement {
     const hideUndated = cfg.hide_undated === true;   // Vorgabe aus: Aufgaben ohne Datum bleiben sichtbar
     const showDesc = cfg.show_description !== false;   // Vorgabe an: Beschreibung (z. B. Menge bei Einkaufslisten) als zweite Zeile
     const src = [];
-    for (const p of this._pending) src.push({ uid: p.uid, summary: p.summary, description: p.description, status: "needs_action", due: p.due, pend: true });
+    for (const p of this._pending) src.push({ uid: p.uid, summary: p.summary, description: p.description, status: "needs_action", due: p.due, pend: true, wait: !!p.qid && U.addState(p.qid) === "queued" });
     const seen = new Set();
     for (const it of (this._items || [])) { src.push(it); seen.add(it.uid); }
     // gerade abgehakt und aus der Liste schon verschwunden (z. B. Cloud-Listen): kurz noch zeigen
@@ -3018,7 +3122,7 @@ class FpTodoCard extends HTMLElement {
       }
       if (hideUndated && !due && !it.pend) return;   // hide_undated: Aufgaben ohne Datum ausblenden
       const grp = done && !kept ? "done" : !due ? "none" : due.day < today ? "ov" : due.day === today ? "td" : "nx";
-      rows.push({ u: it.uid, s: String(it.summary == null ? "" : it.summary), d: showDesc ? this._descText(it.description) : "", done, pend: !!it.pend, due, i, grp, chip: !done && due ? this._chip(due, today) : null });
+      rows.push({ u: it.uid, s: String(it.summary == null ? "" : it.summary), d: it.wait ? "⏳ Liste nicht erreichbar – wird nachgeschickt" : showDesc ? this._descText(it.description) : "", done, pend: !!it.pend, due, i, grp, chip: !done && due ? this._chip(due, today) : null });
     });
     const open = rows.filter(r => !r.done).length;
     const groups = [];
@@ -3290,12 +3394,10 @@ class FpTodoCard extends HTMLElement {
     const v = inp ? inp.value.trim() : "";
     if (!v || !this._hass) return;
     inp.value = "";
-    const p = this._optimistic(v, null);
-    this._hass.callService("todo", "add_item", { entity_id: this.config.entity, item: v }).catch(err => {
-      console.warn("[fp-todo-card-beta] Anlegen fehlgeschlagen:", this.config.entity, err);
-      this._pending = this._pending.filter(x => x !== p); this._paint();
-      U.toast(this, "Aufgabe konnte nicht angelegt werden");
-    });
+    // Ist die Liste gerade weg, wartet der Eintrag (ausgegraut mit Hinweis) und wird nachgeschickt.
+    const t = U.addItem(this, this._hass, { entity_id: this.config.entity, item: v });
+    this._optimistic(v, null, null, t.id);
+    t.done.then(() => this._paint());
   }
   // Kopf-Pille: Dienst rufen, danach Hinweis. Die Pille bleibt währenddessen gesperrt (ein Skript kann dauern).
   async _runAction(i) {
@@ -3315,12 +3417,13 @@ class FpTodoCard extends HTMLElement {
     this._busy.delete(i); this._paint();
   }
   // Neuer Eintrag sofort in der Liste (leicht ausgegraut), bis er im Abo auftaucht, höchstens 20 s.
-  _optimistic(summary, due, description) {
+  // qid: Ticket aus U.addItem — solange der Eintrag dort wartet, bleibt die Zeile stehen.
+  _optimistic(summary, due, description, qid) {
     const text = String(summary).trim();
     if (!text) return null;
     const key = this._key(text);
     const base = (this._items || []).filter(i => i.status !== "completed" && this._key(i.summary) === key).length;
-    const p = { uid: "fpt-pend-" + (++this._pseq), summary: text, description: description == null ? "" : String(description), key, due: due || null, base, t: Date.now() };
+    const p = { uid: "fpt-pend-" + (++this._pseq), summary: text, description: description == null ? "" : String(description), key, due: due || null, base, t: Date.now(), qid: qid || null };
     this._pending.push(p);
     this._after(() => this._paint(), 20100);
     this._paint();
@@ -3437,7 +3540,7 @@ class FpTodoCard extends HTMLElement {
       try {
         await this._saveEdit({ uid, src, sel, name, due, rep, old: item });
         this._closeEdit();
-      } catch (err) { U.toast(this, "Änderung fehlgeschlagen"); btn.disabled = false; }
+      } catch (err) { U.toast(this, err && err.message === "Liste nicht erreichbar" ? "Liste gerade nicht erreichbar – bitte gleich nochmal versuchen" : "Änderung fehlgeschlagen"); btn.disabled = false; }
     });
   }
   async _saveEdit({ uid, src, sel, name, due, rep, old }) {
@@ -3452,6 +3555,9 @@ class FpTodoCard extends HTMLElement {
       await this._hass.callService("todo", "remove_item", { entity_id: src, item: uid });
       U.toast(this, `„${name}" ist jetzt eine Serie`);
     } else if (moved) {
+      // Ist eine der Listen gerade weg, würde HA das Anlegen still verwerfen und danach
+      // das Original löschen — der Eintrag wäre verloren. Dann lieber abbrechen.
+      if (!U.listUp(this._hass, sel) || !U.listUp(this._hass, src)) throw new Error("Liste nicht erreichbar");
       const data = { entity_id: sel, item: name };
       if (due) data.due_date = due;
       await this._hass.callService("todo", "add_item", data);
@@ -3821,7 +3927,7 @@ if (!customElements.get("fp-glance-card-beta")) {
 }
 })();
 
-/* ===== fp-cookbook-card-beta v22 (ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
+/* ===== fp-cookbook-card-beta v24 (KI-Bild kann über ai_image_entity eine eigene KI nutzen, z. B. Gemini, während der Rest auf einer anderen läuft; davor: Zutaten → Einkauf übersteht einen Ausfall der Einkaufsliste: wird nachgeschickt; davor: ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -3833,6 +3939,7 @@ class FpCookbookCard extends HTMLElement {
       essensplan_entity: "calendar.essensplan",
       shopping_entity: "todo.zuhause",
       ai_entity: "ai_task.google_ai_task",
+      ai_image_entity: "",          // eigene ai_task-Entity nur fürs KI-Bild (z. B. Gemini); leer = ai_entity
       weather_entity: "weather.home",
       base_portions: 2,
       quick_max_min: 20,            // bis hierher gilt ein Gericht als „schnell"
@@ -4141,7 +4248,9 @@ class FpCookbookCard extends HTMLElement {
       if (g) g.menge += p.menge; else gruppen.push(p);
     });
     let ziele = [];
-    try {
+    // Liste gerade nicht erreichbar: nichts zusammenfassen (ein Ändern würde HA still verwerfen),
+    // alles als neue Zeilen über die Warteschlange anlegen, die sie nachschickt
+    if (U.listUp(this._hass, ent)) try {
       const res = await this._hass.callWS({ type: "todo/item/list", entity_id: ent });
       ziele = (res.items || []).filter(x => x.status === "needs_action").map(x => {
         const p = this._parseZeile(x.summary);
@@ -4163,10 +4272,10 @@ class FpCookbookCard extends HTMLElement {
           continue;
         } catch (e) { /* Ändern fehlgeschlagen: als eigene Zeile anlegen, damit nichts verloren geht */ }
       }
-      await this._hass.callService("todo", "add_item", { entity_id: ent, item: `${this._fmtMenge(g.dim, g.menge, g.label)} ${g.name}` });
+      await U.addItem(this, this._hass, { entity_id: ent, item: `${this._fmtMenge(g.dim, g.menge, g.label)} ${g.name}` }).done;
       neu++;
     }
-    for (const l of einzeln) { await this._hass.callService("todo", "add_item", { entity_id: ent, item: l }); neu++; }
+    for (const l of einzeln) { await U.addItem(this, this._hass, { entity_id: ent, item: l }).done; neu++; }
     return { neu, zus };
   }
 
@@ -4246,14 +4355,16 @@ class FpCookbookCard extends HTMLElement {
   }
   async _aiImage(d) {
     const data = { task_name: "Kochbuch-Bild", instructions: `Appetizing realistic food photograph of the dish "${d.name}"${(d.ingredients || []).length ? ` (main ingredients: ${(d.ingredients || []).slice(0, 6).map(i => i.item).join(", ")})` : ""}, served on a plate on a wooden kitchen table, natural daylight, shallow depth of field, landscape 4:3, no text, no people.` };
-    if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
+    const imgEnt = this.config.ai_image_entity || this.config.ai_entity;
+    if (imgEnt) data.entity_id = imgEnt;
     const r = await this._hass.callService("ai_task", "generate_image", data, undefined, false, true);
     const id = r && r.response && r.response.media_source_id;
     if (!id) throw new Error("kein Bild");
     return { src: id, credit: "KI-Bild" };
   }
   _aiImageOk() {
-    const st = this.config.ai_entity && this._hass.states[this.config.ai_entity];
+    const imgEnt = this.config.ai_image_entity || this.config.ai_entity;
+    const st = imgEnt && this._hass.states[imgEnt];
     return !!(st && (Number(st.attributes.supported_features) & 4));
   }
 
@@ -7637,7 +7748,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v20 (bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v22 („Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7691,8 +7802,9 @@ class FpBabyOverviewCard extends HTMLElement {
     this.config.kids = this.config.kids.map((k, i) => Object.assign({}, k, {
       key: String(k.key || k.name || `kind_${i + 1}`), name: String(k.name || k.key || `Kind ${i + 1}`),
       color: k.color || KIDCOLORS[i % KIDCOLORS.length] }));
-    this._built = false; this._d = null; this._sig = ""; this._chat = []; this._busy = false;
+    this._built = false; this._d = null; this._sig = ""; this._busy = false;
     this._pfx = `fp-overview:${this.config.kids.map(k => k.key).join(",")}`;
+    this._chat = this._chatLaden();   // „Frag nach“ bleibt am Gerät, bis „Neues Gespräch“ getippt wird
     this._kind = this._pref("kind", "");
     if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
     this._view = "heute";   // beim Öffnen des Tabs immer „Heute“; die Ansicht wird nicht gemerkt
@@ -7792,6 +7904,11 @@ class FpBabyOverviewCard extends HTMLElement {
   _dunkel() { return !!(this._hass && this._hass.themes && this._hass.themes.darkMode); }   // hell oder dunkel entscheidet das Gerät
   _pref(n, d) { try { return localStorage.getItem(`${this._pfx}:${n}`) || d; } catch (e) { return d; } }
   _setPref(n, v) { try { localStorage.setItem(`${this._pfx}:${n}`, v); } catch (e) { /* nur Komfort */ } }
+  _chatLaden() {
+    try { const a = JSON.parse(this._pref("chat", "[]")); return Array.isArray(a) ? a.filter(m => m && (m.role === "me" || m.role === "ai") && typeof m.text === "string").slice(-12) : []; }
+    catch (e) { return []; }
+  }
+  _chatMerken() { this._setPref("chat", JSON.stringify(this._chat.slice(-12))); }
 
   // ---------- Hilfen ----------
   _p(n) { return String(n).padStart(2, "0"); }
@@ -8307,7 +8424,7 @@ class FpBabyOverviewCard extends HTMLElement {
         <div class="fo-wacht" aria-hidden="true"></div>
         <div class="fo-top"></div>
         <div class="fo-body"><div class="fo-laden">Einträge werden geladen …</div></div>
-        <div class="fo-dock"><div class="fo-act"></div><nav class="fo-tabbar"></nav></div>
+        <div class="fo-dock"><div class="fo-act"></div><nav class="fo-tabbar">${this._tabsHtml()}</nav></div>
       </ha-card>${this._styles()}`;
     this._card = this.querySelector(".fo-card");
     this._card.classList.toggle("fo-dark", this._dunkel());
@@ -8463,6 +8580,17 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this._view === "momente") this._zeigeMomente(body);
     else if (this._view === "protokoll") this._zeigeProtokoll(body);
     else body.innerHTML = kopf + `<div class="fo-grid" style="--rows:${n + (multi ? 1 : 0)}">${spalten}</div>`;
+    this.querySelector(".fo-tabbar").innerHTML = this._tabsHtml();
+    this.querySelector(".fo-act").innerHTML = this._aktionsleiste();   // in jeder Ansicht; am Tablet per CSS aus
+    this._klebt();   // fo-multi ist gesetzt: jetzt steht fest, ob die Kopfzeile klebt
+    if (this._view === "wachstum") this._zeichne();
+  }
+
+  // Ansichtsleiste unten. Hängt nur an der Konfiguration und der gewählten Ansicht, nicht an den Daten — deshalb steht sie
+  // schon im Gerüst (_build) und ist nie leer. Früher war sie bis zum ersten Laden leer und der Behälter per
+  // „.fo-dock:has(.fo-tabbar:empty)“ ausgeblendet; Safari (Wand-Tablet) wertet diese Regel nach dem Füllen nicht immer
+  // neu aus, dann fehlte die Leiste bis zum nächsten Neuaufbau.
+  _tabsHtml() {
     const views = [["heute", "Heute"]];
     if (this._hatProtokoll()) views.push(["protokoll", "Protokoll"]);
     views.push(["muster", "Muster"]);
@@ -8470,10 +8598,7 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this.config.milestone_calendar) views.push(["momente", "Momente"]);
     const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
     if (!this.config.milestone_calendar && this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
-    this.querySelector(".fo-tabbar").innerHTML = tabs.join("");
-    this.querySelector(".fo-act").innerHTML = this._aktionsleiste();   // in jeder Ansicht; am Tablet per CSS aus
-    this._klebt();   // fo-multi ist gesetzt: jetzt steht fest, ob die Kopfzeile klebt
-    if (this._view === "wachstum") this._zeichne();
+    return tabs.join("");
   }
 
   // Kopf wie in Buma: Foto, Name, Alter; rechts ⚙ (nur mit Helfern) und ✦ für „Frag nach“.
@@ -9489,7 +9614,8 @@ class FpBabyOverviewCard extends HTMLElement {
       if (q) { inp.value = ""; this._frage(q); }
     });
     ov.querySelector(".fo-sugg").addEventListener("click", ev => { const b = ev.target.closest("button"); if (b) this._frage(b.textContent); });
-    ov.querySelector(".fo-neu").addEventListener("click", () => { if (!this._busy) { this._chat = []; this._paintChat(); } });
+    ov.querySelector(".fo-neu").addEventListener("click", () => { if (!this._busy) { this._chat = []; this._chatMerken(); this._paintChat(); } });
+    if (!this._busy) this._chat = this._chatLaden();   // eine Antwort, die nach dem Rausklicken noch kam, steht schon im Gerät
     this._paintChat();
   }
   _paintSugg() {
@@ -9526,7 +9652,7 @@ class FpBabyOverviewCard extends HTMLElement {
   async _frage(q) {
     if (this._busy) return;
     if (!this._d) { U.toast(this, "Die Einträge laden noch – gleich nochmal versuchen"); return; }
-    this._chat.push({ role: "me", text: q }); this._busy = true; this._paintChat();
+    this._chat.push({ role: "me", text: q }); this._busy = true; this._chatMerken(); this._paintChat();
     try {
       const data = { task_name: "Frag nach", instructions: this._prompt(q) };
       if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
@@ -9540,6 +9666,7 @@ class FpBabyOverviewCard extends HTMLElement {
     }
     this._busy = false;
     this._chat = this._chat.slice(-12);
+    this._chatMerken();
     this._paintChat();
   }
   _prompt(q) {
@@ -9893,7 +10020,6 @@ class FpBabyOverviewCard extends HTMLElement {
          Er selbst nimmt keine Tipps an, damit er den Inhalt daneben nicht verdeckt. */
       .fo-dock{position:sticky;bottom:12px;z-index:4;display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:22px;pointer-events:none;}
       .fo-dock > *{pointer-events:auto;}
-      .fo-dock:has(.fo-tabbar:empty){display:none;}
       .fo-act{display:none;}
       @container fo-card (max-width: 679px){
         .fo-act{display:flex;align-self:stretch;gap:8px;box-sizing:border-box;padding:8px;border-radius:var(--fp-radius, 16px);
