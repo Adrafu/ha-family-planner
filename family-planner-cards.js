@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.1.3 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
+/* Family Planner custom cards v3.1.4 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -7549,7 +7549,7 @@ if (!customElements.get("fp-milestone-card")) {
 })();
 
 
-/* ===== fp-baby-overview-card v21 (Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card v22 („Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card), Windeln
 // (fp-diaper-card), Gewicht (fp-weight-card) und Meilensteine (fp-milestone-card), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7603,8 +7603,9 @@ class FpBabyOverviewCard extends HTMLElement {
     this.config.kids = this.config.kids.map((k, i) => Object.assign({}, k, {
       key: String(k.key || k.name || `kind_${i + 1}`), name: String(k.name || k.key || `Kind ${i + 1}`),
       color: k.color || KIDCOLORS[i % KIDCOLORS.length] }));
-    this._built = false; this._d = null; this._sig = ""; this._chat = []; this._busy = false;
+    this._built = false; this._d = null; this._sig = ""; this._busy = false;
     this._pfx = `fp-overview:${this.config.kids.map(k => k.key).join(",")}`;
+    this._chat = this._chatLaden();   // „Frag nach“ bleibt am Gerät, bis „Neues Gespräch“ getippt wird
     this._kind = this._pref("kind", "");
     if (!this.config.kids.some(k => k.key === this._kind)) this._kind = this.config.kids[0].key;
     this._view = "heute";   // beim Öffnen des Tabs immer „Heute“; die Ansicht wird nicht gemerkt
@@ -7704,6 +7705,11 @@ class FpBabyOverviewCard extends HTMLElement {
   _dunkel() { return !!(this._hass && this._hass.themes && this._hass.themes.darkMode); }   // hell oder dunkel entscheidet das Gerät
   _pref(n, d) { try { return localStorage.getItem(`${this._pfx}:${n}`) || d; } catch (e) { return d; } }
   _setPref(n, v) { try { localStorage.setItem(`${this._pfx}:${n}`, v); } catch (e) { /* nur Komfort */ } }
+  _chatLaden() {
+    try { const a = JSON.parse(this._pref("chat", "[]")); return Array.isArray(a) ? a.filter(m => m && (m.role === "me" || m.role === "ai") && typeof m.text === "string").slice(-12) : []; }
+    catch (e) { return []; }
+  }
+  _chatMerken() { this._setPref("chat", JSON.stringify(this._chat.slice(-12))); }
 
   // ---------- Hilfen ----------
   _p(n) { return String(n).padStart(2, "0"); }
@@ -9409,7 +9415,8 @@ class FpBabyOverviewCard extends HTMLElement {
       if (q) { inp.value = ""; this._frage(q); }
     });
     ov.querySelector(".fo-sugg").addEventListener("click", ev => { const b = ev.target.closest("button"); if (b) this._frage(b.textContent); });
-    ov.querySelector(".fo-neu").addEventListener("click", () => { if (!this._busy) { this._chat = []; this._paintChat(); } });
+    ov.querySelector(".fo-neu").addEventListener("click", () => { if (!this._busy) { this._chat = []; this._chatMerken(); this._paintChat(); } });
+    if (!this._busy) this._chat = this._chatLaden();   // eine Antwort, die nach dem Rausklicken noch kam, steht schon im Gerät
     this._paintChat();
   }
   _paintSugg() {
@@ -9446,7 +9453,7 @@ class FpBabyOverviewCard extends HTMLElement {
   async _frage(q) {
     if (this._busy) return;
     if (!this._d) { U.toast(this, "Die Einträge laden noch – gleich nochmal versuchen"); return; }
-    this._chat.push({ role: "me", text: q }); this._busy = true; this._paintChat();
+    this._chat.push({ role: "me", text: q }); this._busy = true; this._chatMerken(); this._paintChat();
     try {
       const data = { task_name: "Frag nach", instructions: this._prompt(q) };
       if (this.config.ai_entity) data.entity_id = this.config.ai_entity;
@@ -9460,6 +9467,7 @@ class FpBabyOverviewCard extends HTMLElement {
     }
     this._busy = false;
     this._chat = this._chat.slice(-12);
+    this._chatMerken();
     this._paintChat();
   }
   _prompt(q) {
