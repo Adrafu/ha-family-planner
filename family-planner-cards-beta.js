@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.1.4 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
+/* Family Planner custom cards v3.1.5 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -6065,7 +6065,7 @@ if (!customElements.get("fp-feeding-card-beta")) {
 }
 })();
 
-/* ===== fp-weight-card-beta v7 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Datumsfeld passt aufs iPhone, Kopfzeile bricht nur ganze Werte um; Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
+/* ===== fp-weight-card-beta v8 (Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert und beim Korrigieren behalten; davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Datumsfeld passt aufs iPhone, Kopfzeile bricht nur ganze Werte um; Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
 // Ein Eintrag = ein Ganztagstermin im Kalender: Titel "Kind A 3450 g",
 // Beschreibung {"typ":"gewicht","kind":"kind_a","g":3450}. Pro Kind und Tag gibt
 // es höchstens einen Wert — wer denselben Tag nochmal einträgt, korrigiert ihn.
@@ -6179,7 +6179,8 @@ class FpWeightCard extends HTMLElement {
     let g = Number(meta.g) || 0;
     if (!g) { const m = sum.match(/([\d.,]+)\s*(kg|g)/i); if (m) g = this._gramm(m[1] + m[2]); }
     const start = (ev.start && (ev.start.date || ev.start.dateTime)) || ev.start;
-    return { uid: ev.uid, kind, g, date: this._day(start) };
+    const zeit = /^\d{2}:\d{2}$/.test(String(meta.zeit || "")) ? meta.zeit : "";   // Wiegezeit = Eingabezeit (ab v3.1.5)
+    return { uid: ev.uid, kind, g, zeit, date: this._day(start) };
   }
 
   async _load() {
@@ -6242,7 +6243,7 @@ class FpWeightCard extends HTMLElement {
         delta = `<span class="fw-delta ${d >= 0 ? "fw-up" : "fw-down"}">${d >= 0 ? "+" : "−"}${Math.abs(d)} g</span><span class="fw-muted"> in ${tage} ${tage === 1 ? "Tag" : "Tagen"}</span>`;   // bleibt als Ganzes zusammen
       }
       const pz = this._perzentil(kid, last);
-      return `<div class="fw-chip"><span class="fw-dot" style="background:${U.esc(kid.color)}"></span><b>${U.esc(kid.name)}</b><span>${this._kg(last.g)}</span><span class="fw-muted">(${this._dm(last.date)})</span><span>${delta}</span>${pz ? `<span class="fw-pz">${pz}</span>` : ""}</div>`;
+      return `<div class="fw-chip"><span class="fw-dot" style="background:${U.esc(kid.color)}"></span><b>${U.esc(kid.name)}</b><span>${this._kg(last.g)}</span><span class="fw-muted">(${this._dm(last.date)}${last.zeit ? `, ${last.zeit}` : ""})</span><span>${delta}</span>${pz ? `<span class="fw-pz">${pz}</span>` : ""}</div>`;
     }).join("");
   }
 
@@ -6312,7 +6313,7 @@ class FpWeightCard extends HTMLElement {
       const c = U.esc(kid.color);
       if (pts.length > 1) linien += `<g class="fw-ser" style="--k:${c}"><polyline points="${pts.map(p => `${x(+p.date)},${y(p.g)}`).join(" ")}" fill="none" stroke="var(--kl)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/></g>`;
       pts.forEach(p => {
-        const tip = `${kid.name}: ${this._kg(p.g)} am ${this._dmy(p.date)}`;
+        const tip = `${kid.name}: ${this._kg(p.g)} am ${this._dmy(p.date)}${p.zeit ? ` um ${p.zeit}` : ""}`;
         punkte += `<g data-uid="${U.esc(p.uid)}" class="fw-pt fw-ser" style="--k:${c}"><title>${U.esc(tip)}</title>` +
           `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="14" fill="transparent"/>` +
           `<circle cx="${x(+p.date)}" cy="${y(p.g)}" r="4.5" fill="var(--kl)" stroke="var(--ha-card-background,var(--card-background-color,#fff))" stroke-width="2"/></g>`;
@@ -6326,12 +6327,14 @@ class FpWeightCard extends HTMLElement {
   }
 
   // ---------- Schreiben ----------
-  _ev(kind, g) {
+  // Wiegezeit: wer einträgt, hat gerade gewogen — die Uhrzeit der Eingabe ist die Wiegezeit.
+  _jetztHM() { const n = new Date(); return `${this._p(n.getHours())}:${this._p(n.getMinutes())}`; }
+  _ev(kind, g, zeit) {
     const k = this._kid(kind);
-    return { summary: `${k.name} ${g} g`, description: JSON.stringify({ typ: "gewicht", kind, g }) };
+    return { summary: `${k.name} ${g} g`, description: JSON.stringify(Object.assign({ typ: "gewicht", kind, g }, zeit ? { zeit } : {})) };
   }
-  async _create(kind, date, g) {
-    const d = this._ev(kind, g), nach = new Date(date); nach.setDate(nach.getDate() + 1);
+  async _create(kind, date, g, zeit = this._jetztHM()) {
+    const d = this._ev(kind, g, zeit), nach = new Date(date); nach.setDate(nach.getDate() + 1);
     try {
       await this._hass.callService("calendar", "create_event", {
         entity_id: this.config.calendar, summary: d.summary, description: d.description,
@@ -6344,15 +6347,16 @@ class FpWeightCard extends HTMLElement {
     try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this.config.calendar, uid }); return true; }
     catch (e) { if (!leise) U.toast(this, "Eintrag konnte nicht gelöscht werden"); return false; }
   }
-  async _update(alt, kind, date, g) {
-    const d = this._ev(kind, g), nach = new Date(date); nach.setDate(nach.getDate() + 1);
+  // Korrigieren behält die Wiegezeit; wer am selben Tag neu wiegt, übergibt die neue.
+  async _update(alt, kind, date, g, zeit = alt.zeit) {
+    const d = this._ev(kind, g, zeit), nach = new Date(date); nach.setDate(nach.getDate() + 1);
     try {
       await this._hass.callWS({ type: "calendar/event/update", entity_id: this.config.calendar, uid: alt.uid,
         event: { summary: d.summary, description: d.description, dtstart: this._iso(date), dtend: this._iso(nach) } });
       return true;
     } catch (e) {
       // Rückfall wie im Stillprotokoll: neu anlegen, dann alt löschen — und laut sagen, falls der alte bleibt.
-      if (!(await this._create(kind, date, g))) return false;
+      if (!(await this._create(kind, date, g, zeit))) return false;
       if (!(await this._delete(alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
       return true;
     }
@@ -6404,7 +6408,7 @@ class FpWeightCard extends HTMLElement {
       this._closeOv();
       let ok;
       if (e) ok = await this._update(e, kind, date, g);
-      else if (gleich) { ok = await this._update(gleich, kind, date, g); if (ok) U.toast(this, `Wert vom ${this._dmy(date)} ersetzt`); }
+      else if (gleich) { ok = await this._update(gleich, kind, date, g, this._jetztHM()); if (ok) U.toast(this, `Wert vom ${this._dmy(date)} ersetzt`); }
       else ok = await this._create(kind, date, g);
       if (ok) this._load();
     });
@@ -7748,7 +7752,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v22 („Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v23 (Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7999,7 +8003,8 @@ class FpBabyOverviewCard extends HTMLElement {
     const kid = this.config.kids.find(k => (k.weight_key || k.key) === meta.kind) || this.config.kids.find(k => sum.toLowerCase().startsWith(k.name.toLowerCase()));
     let g = Number(meta.g) || 0;
     if (!g) { const m = sum.match(/([\d.,]+)\s*(kg|g)\b/i); if (m) { const n = Number(m[1].replace(",", ".")); g = Math.round(/kg/i.test(m[2]) || n < 30 ? n * 1000 : n); } }
-    return kid && g > 0 ? { uid: ev.uid, kind: kid.key, g, date: this._datum(ev) } : null;
+    const zeit = /^\d{2}:\d{2}$/.test(String(meta.zeit || "")) ? meta.zeit : "";   // Wiegezeit = Eingabezeit (ab v3.1.5)
+    return kid && g > 0 ? { uid: ev.uid, kind: kid.key, g, zeit, date: this._datum(ev) } : null;
   }
   _parseMilestone(ev) {
     const meta = this._meta(ev);
@@ -8561,7 +8566,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const kids = this.config.kids, vms = kids.map(k => this._vm(k)), dunkel = this._dunkel();
     const sig = JSON.stringify([this._kind, this._view, this._off, this._filter, this._spanne, this._wAlle, this._eAlle, !!this._ref, dunkel, Math.floor(Date.now() / 30000),
       kids.map(k => [this._laeuft(k), this._seite(k), this._schlaeft(k)]),
-      vms.map(v => [v.raw.feeds.map(e => `${e.uid}:${+e.start}:${+e.end}:${e.typ}:${e.ml}:${e.seite}`).join(), v.raw.diapers.map(e => `${e.uid}:${+e.start}:${e.art}`).join(), v.weights.map(w => `${w.uid}:${w.g}:${+w.date}`).join(), v.ms.length,
+      vms.map(v => [v.raw.feeds.map(e => `${e.uid}:${+e.start}:${+e.end}:${e.typ}:${e.ml}:${e.seite}`).join(), v.raw.diapers.map(e => `${e.uid}:${+e.start}:${e.art}`).join(), v.weights.map(w => `${w.uid}:${w.g}:${+w.date}:${w.zeit}`).join(), v.ms.length,
         v.schlaf.filter(x => !x.laeuft).map(x => `${x.uid}:${+x.start}:${+x.end}`).join()])]);
     if (!force && sig === this._sig) return;
     this._sig = sig;
@@ -9077,7 +9082,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const geb = this._geburtsgewicht(k, w), erst = geb || w[0], pzL = this._pz(k, l), alt = this._alterAm(k, l.date);
     const b = [`<div class="fo-next"><div class="fo-nl">Aktuelles Gewicht</div>
       <div class="fo-nb">${this._kg(l.g)}</div>
-      <div class="fo-ns">am ${this._dm(l.date)}${alt ? ` · ${alt}` : ""}${pzL != null ? ` · ${this._pzText(pzL)}` : ""}</div>
+      <div class="fo-ns">am ${this._dm(l.date)}${l.zeit ? ` um ${l.zeit}` : ""}${alt ? ` · ${alt}` : ""}${pzL != null ? ` · ${this._pzText(pzL)}` : ""}</div>
       ${vor ? `<div class="fo-nf">${this._g(l.g - vor.g)} seit ${this._dm(vor.date)} · Ø ${this._g((l.g - vor.g) / tage)} am Tag</div>` : ""}
       ${wiegen}</div>`];
     // Kennzahlen als Liste wie „Jetzt“ in „Heute“, nur ohne Symbolkreis: Wert groß, darunter klein „Titel · Unterzeile“.
@@ -9100,7 +9105,7 @@ class FpBabyOverviewCard extends HTMLElement {
     b.push(`<div class="fo-sec">Messungen</div><div class="fo-box">${zeig.map(x => {
       const i = w.indexOf(x), p = i > 0 ? w[i - 1] : null, pz = this._pz(k, x);
       return `<button class="fo-li fo-wli" type="button" data-wuid="${U.esc(x.uid)}"><i style="background:${U.esc(k.color)}"></i><span>${this._kg(x.g)}${x === geb ? "<em>Geburt</em>" : ""}</span>
-        <small>${[p ? this._g(x.g - p.g) : "", this._pzText(pz)].filter(Boolean).join(" · ")}</small><time>${this._dm(x.date)}</time></button>`;
+        <small>${[p ? this._g(x.g - p.g) : "", this._pzText(pz)].filter(Boolean).join(" · ")}</small><time>${this._dm(x.date)}${x.zeit ? ` ${x.zeit}` : ""}</time></button>`;
     }).join("")}</div>${liste.length > 6 ? `<button class="fo-more" type="button" data-walle>${this._wAlle ? "Weniger zeigen" : `Alle ${liste.length} Messungen`}</button>` : ""}`);
     b.push(!this._hatRef(k) ? "" : `<div class="fo-quelle">Kurven P3–P97: ${this._ref.preterm && Object.keys(this._ref.preterm).length
       ? "INTERGROWTH-21st für Frühgeborene bis 64 Wochen nach Beginn der Schwangerschaft, danach WHO" : "WHO"} nach korrigiertem Alter. Einzelne Messungen schwanken – der Verlauf zählt.</div>`);
@@ -9488,7 +9493,7 @@ class FpBabyOverviewCard extends HTMLElement {
       this._closeSheet();
       let ok;
       if (e) ok = await this._gewichtAendern(e, kid, date, g);
-      else if (gleich) { ok = await this._gewichtAendern(gleich, kid, date, g); if (ok) U.toast(this, `Wert vom ${this._dmy(date)} ersetzt`); }
+      else if (gleich) { ok = await this._gewichtAendern(gleich, kid, date, g, this._jetztHM()); if (ok) U.toast(this, `Wert vom ${this._dmy(date)} ersetzt`); }
       else { ok = await this._gewichtNeu(kid, date, g); if (ok) U.toast(this, `${kid.name}: ${this._kg(g)} eingetragen ✓`); }
       if (ok) this._load();
     });
@@ -9573,12 +9578,14 @@ class FpBabyOverviewCard extends HTMLElement {
     const n = Number(String(v || "").trim().toLowerCase().replace(/\s*(kg|g)$/, "").replace(",", "."));
     return isFinite(n) && n > 0 ? Math.round(n < 30 ? n * 1000 : n) : 0;
   }
-  _gewichtEv(kid, date, g) {
+  // Wiegezeit: wer einträgt, hat gerade gewogen — die Uhrzeit der Eingabe ist die Wiegezeit.
+  _jetztHM() { const n = new Date(); return `${this._p(n.getHours())}:${this._p(n.getMinutes())}`; }
+  _gewichtEv(kid, date, g, zeit) {
     const nach = new Date(date); nach.setDate(nach.getDate() + 1);
-    return { summary: `${kid.name} ${g} g`, description: JSON.stringify({ typ: "gewicht", kind: kid.weight_key || kid.key, g }), von: this._isoTag(date), bis: this._isoTag(nach) };
+    return { summary: `${kid.name} ${g} g`, description: JSON.stringify(Object.assign({ typ: "gewicht", kind: kid.weight_key || kid.key, g }, zeit ? { zeit } : {})), von: this._isoTag(date), bis: this._isoTag(nach) };
   }
-  async _gewichtNeu(kid, date, g) {
-    const d = this._gewichtEv(kid, date, g);
+  async _gewichtNeu(kid, date, g, zeit = this._jetztHM()) {
+    const d = this._gewichtEv(kid, date, g, zeit);
     try {
       await this._hass.callService("calendar", "create_event", { entity_id: this.config.weight_calendar, summary: d.summary, description: d.description, start_date: d.von, end_date: d.bis });
       return true;
@@ -9588,15 +9595,16 @@ class FpBabyOverviewCard extends HTMLElement {
     try { await this._hass.callWS({ type: "calendar/event/delete", entity_id: this.config.weight_calendar, uid }); return true; }
     catch (x) { if (!leise) U.toast(this, "Messung konnte nicht gelöscht werden"); return false; }
   }
-  async _gewichtAendern(alt, kid, date, g) {
-    const d = this._gewichtEv(kid, date, g);
+  // Korrigieren behält die Wiegezeit; wer am selben Tag neu wiegt, übergibt die neue.
+  async _gewichtAendern(alt, kid, date, g, zeit = alt.zeit) {
+    const d = this._gewichtEv(kid, date, g, zeit);
     try {
       await this._hass.callWS({ type: "calendar/event/update", entity_id: this.config.weight_calendar, uid: alt.uid,
         event: { summary: d.summary, description: d.description, dtstart: d.von, dtend: d.bis } });
       return true;
     } catch (x) {
       // Rückfall wie in der Gewichtskarte: neu anlegen, dann alt löschen — und laut sagen, falls der alte bleibt.
-      if (!(await this._gewichtNeu(kid, date, g))) return false;
+      if (!(await this._gewichtNeu(kid, date, g, zeit))) return false;
       if (!(await this._gewichtLoeschen(alt.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
       return true;
     }
@@ -9746,7 +9754,7 @@ class FpBabyOverviewCard extends HTMLElement {
         if (neu.length) { L.push("Schlafphasen seit vorgestern:"); neu.forEach(e => L.push(`${tagName(new Date(e.start))} ${this._hm(e.start)}–${e.laeuft ? "jetzt" : this._hm(e.end)} (${this._hDauer(e.end - e.start)})${e.auto ? " automatisch beendet, Ende unsicher" : ""}`)); }
         if (vm.schlafProg) L.push(`Typische Wachzeit zuletzt: ${this._hDauer(vm.schlafProg.med)}; nächster Schlaf erwartet etwa ${this._hm(new Date(vm.schlafProg.lo))}–${this._hm(new Date(vm.schlafProg.hi))}.`);
       }
-      if (vm.weights.length) L.push(`Gewicht: ${vm.weights.map(w => `${this._dmy(w.date)} ${w.g} g`).join("; ")}`);
+      if (vm.weights.length) L.push(`Gewicht: ${vm.weights.map(w => `${this._dmy(w.date)}${w.zeit ? ` ${w.zeit}` : ""} ${w.g} g`).join("; ")}`);
       if (vm.ms.length) L.push(`Meilensteine: ${vm.ms.map(m => `${this._dmy(m.date)} ${m.t}`).join("; ")}`);
     }
     return L.join("\n");
