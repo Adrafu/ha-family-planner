@@ -10118,3 +10118,1084 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
   window.customCards.push({ type: "fp-baby-overview-card-beta", name: "FP Baby Overview Card", description: "Übersicht je Kind im Stil von Buma: nächste Mahlzeit, Jetzt-Liste, Tagesstreifen, Muster und KI-Chat „Frag nach“; mit layout: bar eine schmale Leiste für die Startseite" });
 }
 })();
+
+/* ===== fp-assistant-card-beta v1 (Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+(() => {
+const U = window.__fpUtils;
+// Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
+// dass genau eine schwebende Figur ("Dock") an document.body hängt. Das Dock lebt weiter, wenn man
+// zwischen den Tabs wechselt, und startet beim Laden des Moduls von selbst, sobald für den
+// aktuellen Dashboard-Pfad eine Konfiguration gespeichert ist.
+// Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen: Element-Name und
+// Speicher-Schlüssel tragen deshalb den Namen "fp-pip-dock-beta" (in der Beta mit Endung), mehr teilen sich beide nicht.
+const TAG = "fp-pip-dock-beta";
+const STORE = "fp-pip-dock-beta:";
+const EVT = "fp_pip_karte";
+const SUGG = [
+  { icon: "📅", text: "Was steht heute an?" },
+  { icon: "🍽", text: "Was gibt's heute zum Abendessen?" },
+  { icon: "🍼", text: "Wann haben die Zwillinge zuletzt getrunken?" },
+  { icon: "🛒", text: "Was steht auf der Einkaufsliste?" },
+  { icon: "☂️", text: "Brauchen wir morgen einen Schirm?" },
+  { icon: "🔒", text: "Ist die Wohnungstür zugesperrt?" },
+];
+const THEME_VARS = ["--fp-accent", "--fp-accent-fg", "--fp-surface", "--fp-surface-2", "--fp-radius", "--fp-radius-sm",
+  "--primary-color", "--text-primary-color", "--card-background-color", "--primary-text-color", "--secondary-text-color",
+  "--divider-color", "--secondary-background-color", "--primary-font-family"];
+const STATUS = { idle: "Bereit", listen: "Hört zu …", think: "Denkt nach …", speak: "Spricht" };
+const ERR = {
+  conn: "Ich habe gerade keine Verbindung zu Home Assistant.",
+  timeout: "Das hat zu lange gedauert. Versuch es bitte noch einmal.",
+  pipeline: "Die Assist-Pipeline wurde nicht gefunden. Bitte die Einstellung prüfen.",
+  "pipeline-not-found": "Die Assist-Pipeline wurde nicht gefunden. Bitte die Einstellung prüfen.",
+  "stt-no-text-recognized": "Ich habe dich nicht verstanden. Versuch es bitte noch einmal.",
+  "stt-stream-failed": "Die Spracherkennung hat gerade nicht geklappt.",
+  "stt-provider-missing": "In der Pipeline ist keine Spracherkennung eingerichtet. Du kannst mir schreiben.",
+  "intent-failed": "Dabei konnte ich gerade nicht helfen.",
+  generic: "Das hat leider nicht geklappt.",
+};
+const ICON = {
+  mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12,2A3,3 0 0,1 15,5V11A3,3 0 0,1 12,14A3,3 0 0,1 9,11V5A3,3 0 0,1 12,2M19,11C19,14.53 16.39,17.44 13,17.93V21H11V17.93C7.61,17.44 5,14.53 5,11H7A5,5 0 0,0 12,16A5,5 0 0,0 17,11H19Z"/></svg>',
+  send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2,21L23,12L2,3V10L17,12L2,14V21Z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor"/></svg>',
+};
+const GO_LABEL = { mic: "Sprechen", send: "Senden", stop: "Aufnahme beenden" };
+const PIP = '<span class="pip st-idle"><span class="ring r1"></span><span class="ring r2"></span><span class="ball"><span class="eye"></span><span class="eye"></span></span></span>';
+// AudioWorklet für die Aufnahme: sammelt je 2048 Werte und reicht sie an die Seite weiter.
+const WORKLET = 'class P extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(2048);this.n=0;}'
+  + 'process(i){var c=i[0]&&i[0][0];if(c){for(var k=0;k<c.length;k++){this.b[this.n++]=c[k];if(this.n===2048){this.port.postMessage(this.b.slice(0));this.n=0;}}}return true;}}'
+  + 'registerProcessor("fp-pip-rec",P);';
+// Stilles WAV (ein paar Byte): iOS erlaubt späteres Abspielen erst, wenn das Audio-Element einmal per Tipp gestartet wurde.
+const SILENT = (() => {
+  try {
+    const n = 8, b = new Uint8Array(44 + n * 2), dv = new DataView(b.buffer);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
+    w(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); dv.setUint32(16, 16, true);
+    dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, 16000, true); dv.setUint32(28, 32000, true);
+    dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, "data"); dv.setUint32(40, n * 2, true);
+    let s = ""; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+    return "data:audio/wav;base64," + btoa(s);
+  } catch (e) { return ""; }
+})();
+
+const delay = ms => new Promise(r => setTimeout(r, ms));
+const pathPart = () => { try { return location.pathname.split("/").filter(Boolean)[0] || ""; } catch (e) { return ""; } };
+const loadCfg = p => { try { const s = localStorage.getItem(STORE + p); return s ? JSON.parse(s) : null; } catch (e) { return null; } };
+const saveCfg = (p, c) => { try { const s = JSON.stringify(c); if (localStorage.getItem(STORE + p) !== s) localStorage.setItem(STORE + p, s); } catch (e) {} };
+const toI16 = x => { const s = x > 1 ? 1 : x < -1 ? -1 : x; return s < 0 ? Math.round(s * 32768) : Math.round(s * 32767); };
+
+function normCfg(c) {
+  c = c || {};
+  let sug = Array.isArray(c.suggestions) ? c.suggestions : SUGG;
+  sug = sug.map(s => typeof s === "string" ? { icon: "", text: s } : { icon: String((s && s.icon) || ""), text: String((s && s.text) || "") })
+    .filter(s => s.text.trim());
+  // lift: { <letzter Pfadteil>: px }. Am Handy (unter 700 px) rückt die Figur auf diesen Seiten so weit nach oben,
+  // damit sie eine klebende Aktionsleiste (Baby-Tab) nicht verdeckt.
+  let lift = { baby: 76 };
+  if (c.lift && typeof c.lift === "object" && !Array.isArray(c.lift)) {
+    lift = {};
+    for (const k of Object.keys(c.lift)) { const v = Number(c.lift[k]); if (isFinite(v) && v > 0) lift[k] = Math.min(v, 400); }
+  }
+  return {
+    name: String(c.name || "").trim() || "Pip",
+    pipeline_id: String(c.pipeline_id || "").trim(),
+    speak: c.speak === "always" || c.speak === "never" ? c.speak : "auto",
+    suggestions: sug,
+    dashboard: String(c.dashboard || "").replace(/^\/+|\/+$/g, "").trim(),
+    lift,
+  };
+}
+// Zeitpunkt als "JJJJ-MM-TT HH:MM:SS" in der Zeitzone von Home Assistant.
+function localStr(iso, tz) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  try {
+    const f = new Intl.DateTimeFormat("en-GB", { timeZone: tz || undefined, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
+    const p = {};
+    for (const x of f.formatToParts(d)) p[x.type] = x.value;
+    return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+  } catch (e) {
+    const z = U.pad;
+    return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+  }
+}
+function errKey(err) {
+  if (typeof err === "number") return "conn";
+  if (err && typeof err.code === "number") return "conn";
+  if (err && err.code === "not_found") return "pipeline";
+  return "generic";
+}
+
+let dock = null;       // das eine Dock
+let lastCard = null;   // zuletzt aktive Karteninstanz (liefert hass)
+
+// hass immer frisch holen: von der Karte, solange sie am Bildschirm hängt, sonst direkt aus Home Assistant.
+function getHass() {
+  if (lastCard && lastCard.isConnected && lastCard._hass) return lastCard._hass;
+  const ha = document.querySelector("home-assistant");
+  if (ha && ha.hass) return ha.hass;
+  return lastCard && lastCard._hass ? lastCard._hass : null;
+}
+// Theme-Werte der Karte aufs Dock übertragen (falls die Karte sie anders sieht als <html>).
+function copyTheme(from) {
+  if (!dock || !from) return;
+  try {
+    const cs = getComputedStyle(from);
+    for (const v of THEME_VARS) {
+      const val = cs.getPropertyValue(v).trim();
+      if (val) dock.style.setProperty(v, val); else dock.style.removeProperty(v);
+    }
+  } catch (e) {}
+}
+function ensureDock() {
+  if (dock) return dock;
+  if (!document.body) return null;
+  dock = document.querySelector(TAG) || null;
+  if (!dock) {
+    dock = document.createElement(TAG);
+    dock.hidden = true;
+    document.body.appendChild(dock);
+  }
+  return dock;
+}
+// Passt das Dock zum aktuellen Pfad? Mit gespeicherter Konfiguration zeigen, sonst verstecken (nicht entfernen).
+function syncDock() {
+  const cfg = loadCfg(pathPart());
+  if (cfg) {
+    const d = ensureDock();
+    if (d && typeof d.configure === "function") { d.configure(normCfg(cfg)); d.setVisible(true); d.applyLift(); }
+  } else if (dock && typeof dock.setVisible === "function") dock.setVisible(false);
+}
+
+class FpAssistantCard extends HTMLElement {
+  setConfig(config) {
+    this._cfg = normCfg(config);
+    saveCfg(this._cfg.dashboard || pathPart(), this._cfg);
+    this._look();
+    syncDock();
+  }
+  connectedCallback() {
+    lastCard = this;
+    this._look();
+    syncDock();
+    if (this._hass) copyTheme(this);
+  }
+  set hass(h) {
+    this._hass = h;
+    lastCard = this;
+    // Theme gewechselt (hell/dunkel, anderes Theme)? Dann die Werte neu übertragen, sobald HA sie gesetzt hat.
+    const t = h && h.themes;
+    const sig = t ? String(t.theme) + "|" + String(t.darkMode) : "";
+    if (sig !== this._themeSig) {
+      this._themeSig = sig;
+      clearTimeout(this._tt);
+      this._tt = setTimeout(() => copyTheme(this), 150);
+    }
+    if (dock && typeof dock.hassUpdated === "function") dock.hassUpdated();
+  }
+  get hass() { return this._hass; }
+  _editing() {
+    try { return !!this.closest("hui-card-edit-mode, hui-card-options, hui-card-preview, hui-dialog-edit-card"); } catch (e) { return false; }
+  }
+  // Im Dashboard unsichtbar. Nur beim Bearbeiten bleibt ein kleiner Platzhalter, damit man die Karte findet.
+  _look() {
+    const p = this.parentElement, hc = p && p.localName === "hui-card" ? p : null;
+    if (this._editing()) {
+      this.style.display = "block";
+      this.innerHTML = `<div style="padding:12px 16px;border:1px dashed var(--divider-color);border-radius:var(--fp-radius-sm,12px);font-size:.9rem;color:var(--secondary-text-color);">${U.esc((this._cfg && this._cfg.name) || "Pip")}: Sprachassistent. Die Karte ist unsichtbar, sie zeigt eine schwebende Figur.</div>`;
+      if (hc) hc.style.removeProperty("display");
+    } else {
+      this.innerHTML = "";
+      this.style.display = "none";
+      if (hc) hc.style.display = "none";
+    }
+  }
+  getCardSize() { return 0; }
+  getGridOptions() { return { columns: "full", rows: "auto", min_rows: 0 }; }
+  static getStubConfig() { return { name: "Pip" }; }
+}
+
+const CSS = `
+:host{display:block;--a:var(--fp-accent,var(--primary-color));--afg:var(--fp-accent-fg,var(--text-primary-color,#fff));--s1:var(--fp-surface,var(--secondary-background-color));--s2:var(--fp-surface-2,var(--divider-color));--rad:var(--fp-radius,16px);--rsm:var(--fp-radius-sm,12px);--bg:var(--card-background-color,#fff);--tx:var(--primary-text-color,#000);--tx2:var(--secondary-text-color);--dv:var(--divider-color);font-family:var(--primary-font-family,inherit);color:var(--tx);-webkit-text-size-adjust:100%;}
+:host([hidden]){display:none !important;}
+*{box-sizing:border-box;}
+button{font:inherit;color:inherit;}
+
+/* Figur */
+.fig{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px) + var(--lift,0px));z-index:6;width:60px;height:60px;padding:0;margin:0;border:0;border-radius:50%;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:opacity .2s ease,transform .2s ease,bottom .25s ease;}
+.fig.gone{opacity:0;transform:scale(.6);pointer-events:none;visibility:hidden;transition:opacity .2s ease,transform .2s ease,visibility 0s linear .2s;}
+.fig:focus-visible{outline:3px solid var(--a);outline-offset:4px;}
+.pip{position:relative;display:block;width:100%;height:100%;--rs:1.9;}
+.pip.mini{width:44px;height:44px;flex:none;--rs:1.45;}
+.ball{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:17%;border-radius:50%;background:radial-gradient(circle at 34% 28%,color-mix(in srgb,var(--a) 30%,var(--bg)) 0,color-mix(in srgb,var(--a) 65%,var(--bg)) 48%,var(--a) 100%);box-shadow:0 6px 18px color-mix(in srgb,var(--a) 45%,transparent);}
+.ball::before{content:"";position:absolute;left:47%;bottom:90%;width:27%;height:34%;border-radius:100% 0 100% 0;background:linear-gradient(135deg,color-mix(in srgb,var(--a) 38%,var(--bg)),color-mix(in srgb,var(--a) 82%,var(--tx)));transform:rotate(-18deg);transform-origin:0 100%;}
+.eye{display:block;width:13%;height:20%;margin-top:6%;border-radius:50%;background:color-mix(in srgb,var(--a) 25%,var(--tx));}
+.ring{position:absolute;inset:0;border-radius:50%;border:2px solid color-mix(in srgb,var(--a) 70%,transparent);opacity:0;pointer-events:none;}
+.st-idle .ball{animation:pp-float 3.6s ease-in-out infinite;}
+.st-idle .eye{animation:pp-blink 5.2s infinite;}
+.st-listen .ring{animation:pp-ring 1.8s ease-out infinite;}
+.st-listen .r2{animation-delay:.9s;}
+.st-listen .eye{scale:1.3;}
+.st-think .ball{animation:pp-wobble 1.3s ease-in-out infinite;}
+.st-think .eye{animation:pp-look 1.5s ease-in-out infinite;}
+.st-speak .ball{animation:pp-pulse .8s ease-in-out infinite;}
+@keyframes pp-float{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}
+@keyframes pp-blink{0%,91%,100%{scale:1 1;}95%{scale:1 .1;}}
+@keyframes pp-ring{0%{transform:scale(1);opacity:.6;}100%{transform:scale(var(--rs));opacity:0;}}
+@keyframes pp-wobble{0%,100%{transform:rotate(-3deg);}50%{transform:rotate(3deg);}}
+@keyframes pp-look{0%,100%{translate:-45% 0;}50%{translate:45% 0;}}
+@keyframes pp-pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.09);}}
+@keyframes pp-dot{30%{opacity:1;transform:translateY(-3px);}}
+@keyframes pp-rec{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--a) 50%,transparent);}100%{box-shadow:0 0 0 12px transparent;}}
+
+/* Gesprächs-Panel */
+.panel{position:fixed;z-index:7;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--tx);border:1px solid var(--dv);box-shadow:0 18px 50px color-mix(in srgb,var(--tx) 24%,transparent);visibility:hidden;transition:transform .28s cubic-bezier(.2,.9,.3,1),visibility 0s linear .28s;}
+@media (min-width:700px){
+  .panel{top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(400px,calc(100vw - 24px));border-radius:22px;transform:translateX(calc(100% + 40px));}
+  .bar{padding-bottom:12px;}
+}
+@media (max-width:699.98px){
+  .panel{left:8px;right:8px;bottom:var(--kb,0px);height:min(82vh,calc(var(--vvh,100vh) - 12px));border-radius:22px 22px 0 0;transform:translateY(calc(100% + 40px));}
+}
+.panel.open{visibility:visible;transform:none;transition:transform .28s cubic-bezier(.2,.9,.3,1),visibility 0s;}
+.head{flex:none;display:flex;align-items:center;gap:10px;padding:18px 10px 10px 14px;border-bottom:1px solid var(--dv);}
+.who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}
+.nm{font-weight:800;font-size:1.05rem;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.stt{font-size:.8rem;color:var(--tx2);}
+.ib{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:50%;background:var(--s1);color:var(--tx);font-size:1.15rem;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+@media (hover:hover){.ib:hover{background:var(--s2);}}
+.ib:focus-visible,.chip:focus-visible,.go:focus-visible,.in:focus-visible,.ac button:focus-visible{outline:2px solid var(--a);outline-offset:2px;}
+
+/* Verlauf */
+.log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:14px 14px 6px;display:flex;flex-direction:column;gap:10px;}
+.hello{align-self:flex-start;max-width:92%;font-size:1rem;line-height:1.45;}
+.me{align-self:flex-end;max-width:85%;padding:9px 14px;border-radius:var(--rad) var(--rad) 6px var(--rad);background:var(--a);color:var(--afg);font-size:.95rem;line-height:1.4;overflow-wrap:anywhere;white-space:pre-wrap;}
+.ai{align-self:flex-start;max-width:94%;font-size:.98rem;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap;}
+.note{align-self:center;max-width:92%;padding:2px 6px;text-align:center;font-size:.82rem;line-height:1.4;color:var(--tx2);}
+.dots{align-self:flex-start;display:flex;gap:5px;padding:8px 2px;}
+.dots i{display:block;width:7px;height:7px;border-radius:50%;background:var(--tx2);opacity:.45;animation:pp-dot 1.2s infinite;}
+.dots i:nth-child(2){animation-delay:.2s;}
+.dots i:nth-child(3){animation-delay:.4s;}
+
+/* Aktionskarten */
+.ac{align-self:stretch;display:flex;flex-direction:column;gap:6px;padding:11px 13px;border-radius:var(--rsm);background:var(--s1);}
+.ac-t{font-size:.7rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--tx2);}
+.ac-r{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:.92rem;line-height:1.35;}
+.ac-r b{min-width:0;font-weight:700;overflow-wrap:anywhere;}
+.ac-r span{max-width:55%;text-align:right;color:var(--tx2);overflow-wrap:anywhere;}
+.ac-f{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:2px;}
+.ac-s{font-size:.82rem;font-weight:600;color:var(--tx2);}
+.ac button{min-height:40px;padding:8px 14px;border:0;border-radius:var(--rsm);font-size:.88rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.ac .pri{background:var(--a);color:var(--afg);}
+.ac .ghost{background:transparent;color:var(--tx);box-shadow:inset 0 0 0 1px var(--dv);}
+.ac button:disabled{opacity:.5;cursor:default;}
+
+/* Vorschläge und Eingabe */
+.chips{flex:none;display:flex;gap:8px;overflow-x:auto;padding:6px 14px 8px;scrollbar-width:thin;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;}
+.chips:empty{display:none;}
+@media (hover:none){.chips{scrollbar-width:none;}.chips::-webkit-scrollbar{display:none;}}
+.chip{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:38px;padding:8px 13px;border:1px solid var(--dv);border-radius:999px;background:var(--s1);color:var(--tx);font-size:.86rem;font-weight:600;white-space:nowrap;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+@media (hover:hover){.chip:not(:disabled):hover{background:var(--s2);}}
+.chip:disabled{opacity:.5;cursor:default;}
+.bar{flex:none;display:flex;align-items:center;gap:8px;padding:6px 12px calc(12px + env(safe-area-inset-bottom,0px));}
+.in{flex:1;min-width:0;height:46px;padding:0 16px;border:1px solid var(--dv);border-radius:999px;background:var(--s1);color:var(--tx);font:inherit;font-size:16px;}
+.in::placeholder{color:var(--tx2);opacity:.85;}
+.go{flex:none;display:flex;align-items:center;justify-content:center;width:46px;height:46px;padding:0;border:0;border-radius:50%;background:var(--a);color:var(--afg);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .1s;}
+.go svg{width:22px;height:22px;}
+.go:active:not(:disabled){transform:scale(.94);}
+.go:disabled{opacity:.45;cursor:default;}
+.go.rec{animation:pp-rec 1.2s ease-out infinite;}
+
+@media (prefers-reduced-motion:reduce){
+  .ball,.eye,.ring,.dots i,.go.rec{animation:none !important;}
+  .panel,.fig,.go{transition:none !important;}
+  .st-listen .r1{opacity:.55;transform:scale(1.25);}
+}
+`;
+
+class FpPipDock extends HTMLElement {
+  constructor() {
+    super();
+    this._cfg = normCfg({});
+    this._cfgSig = "";
+    this._items = [];
+    this._seq = 0;
+    this._cur = null;          // laufende Anfrage
+    this._st = "idle";
+    this._speaking = false;
+    this._auto = false;        // nach dem Vorlesen automatisch weiter zuhören
+    this._convId = null;
+    this._convAt = 0;
+    this._ansAt = 0;           // Ende der letzten Antwort (für fremde Karten-Ereignisse)
+    this._isOpen = false;
+    this._visible = false;
+    this._evConn = null;
+    this._evUnsub = null;
+    this._noteHttps = false;
+    this._unlocked = false;
+    this._a = null;
+    this._kd = e => { if (e.key === "Escape") this._close(); };
+    this._vv = () => this._onViewport();
+    this.attachShadow({ mode: "open" });
+    this._build();
+  }
+
+  // ---------- Aufbau ----------
+  _build() {
+    const r = this.shadowRoot;
+    r.innerHTML = `<style>${CSS}</style>
+<button class="fig" type="button" aria-label="Pip öffnen">${PIP}</button>
+<section class="panel" role="dialog" aria-label="Pip">
+  <header class="head">${PIP.replace('class="pip st-idle"', 'class="pip mini st-idle"')}
+    <div class="who"><b class="nm">Pip</b><span class="stt" role="status">Bereit</span></div>
+    <button class="ib" type="button" data-a="new" aria-label="Neues Gespräch" title="Neues Gespräch">↺</button>
+    <button class="ib" type="button" data-a="close" aria-label="Schließen" title="Schließen">✕</button>
+  </header>
+  <div class="log" role="log" aria-live="polite"></div>
+  <div class="chips"></div>
+  <div class="bar"><input class="in" type="text" autocomplete="off" enterkeyhint="send" aria-label="Nachricht"><button class="go" type="button" data-m=""></button></div>
+</section>`;
+    this._fig = r.querySelector(".fig");
+    this._panel = r.querySelector(".panel");
+    this._log = r.querySelector(".log");
+    this._chips = r.querySelector(".chips");
+    this._in = r.querySelector(".in");
+    this._go = r.querySelector(".go");
+    this._nm = r.querySelector(".nm");
+    this._stt = r.querySelector(".stt");
+    this._pips = Array.from(r.querySelectorAll(".pip"));
+    this._fig.addEventListener("click", () => this._openPanel());
+    r.querySelector(".head").addEventListener("click", e => {
+      const b = e.target.closest ? e.target.closest("[data-a]") : null;
+      if (!b) return;
+      if (b.dataset.a === "close") this._close(); else if (b.dataset.a === "new") this._reset();
+    });
+    this._log.addEventListener("click", e => this._onLogClick(e));
+    this._chips.addEventListener("click", e => {
+      const b = e.target.closest ? e.target.closest(".chip") : null;
+      if (!b || b.disabled) return;
+      const s = this._cfg.suggestions[+b.dataset.i];
+      if (s) this._send(s.text);
+    });
+    this._in.addEventListener("input", () => this._syncBtn());
+    this._in.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); this._sendInput(); }
+    });
+    this._go.addEventListener("click", () => this._onGo());
+    this._renderChips();
+    this._renderLog();
+    this._syncBtn();
+  }
+
+  configure(cfg) {
+    const sig = JSON.stringify(cfg);
+    if (sig === this._cfgSig) return;
+    const prev = this._cfg;
+    this._cfgSig = sig;
+    this._cfg = cfg;
+    if (prev && prev.pipeline_id !== cfg.pipeline_id) this._convId = null;
+    this._nm.textContent = cfg.name;
+    this._in.placeholder = `Frag ${cfg.name} …`;
+    this._fig.setAttribute("aria-label", `${cfg.name} öffnen`);
+    this._panel.setAttribute("aria-label", cfg.name);
+    this._renderChips();
+    this._applyBusy();
+  }
+
+  setVisible(v) {
+    v = !!v;
+    if (v === this._visible) return;
+    this._visible = v;
+    this.hidden = !v;
+    if (v) this._subs(); else this._teardown();
+  }
+  hassUpdated() { if (this._visible) this._subs(); }
+  // Figur über eine klebende Aktionsleiste heben (nur schmale Fenster, nur für Seiten aus `lift`).
+  applyLift() {
+    let px = 0;
+    try {
+      if (window.innerWidth < 700) {
+        const last = location.pathname.split("/").filter(Boolean).pop();
+        const L = this._cfg.lift;
+        if (last && L && Object.prototype.hasOwnProperty.call(L, last) && L[last] > 0) px = L[last];
+      }
+    } catch (e) {}
+    this._fig.style.setProperty("--lift", px + "px");
+  }
+
+  // Verstecken: Panel zu, Mikrofon und Ton aus, Karten-Abo beenden. Das Gespräch bleibt im Speicher.
+  _teardown() {
+    this._close();
+    this._unsubEvents();
+  }
+
+  _renderChips() {
+    this._chips.innerHTML = this._cfg.suggestions.map((s, i) =>
+      `<button class="chip" type="button" data-i="${i}">${s.icon ? `<span aria-hidden="true">${U.esc(s.icon)}</span>` : ""}<span>${U.esc(s.text)}</span></button>`).join("");
+  }
+
+  // ---------- Panel ----------
+  _micOk() {
+    return !!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+      && (window.AudioContext || window.webkitAudioContext));
+  }
+  _openPanel() {
+    if (this._isOpen) return;
+    this._isOpen = true;
+    this._unlockAudio();
+    if (lastCard && lastCard.isConnected) copyTheme(lastCard);
+    this._subs();
+    this._panel.classList.add("open");
+    this._fig.classList.add("gone");
+    document.addEventListener("keydown", this._kd);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", this._vv);
+      window.visualViewport.addEventListener("scroll", this._vv);
+      this._onViewport();
+    }
+    if (!this._micOk() && !this._noteHttps) {
+      this._noteHttps = true;
+      this._push({ k: "note", text: "Das Mikrofon geht nur über eine sichere Verbindung (https). Du kannst mir schreiben." });
+    }
+    this._renderLog(true);
+    this._syncBtn();
+    this._setState(this._st);
+    try {
+      if (window.matchMedia && window.matchMedia("(hover:hover) and (pointer:fine)").matches) this._in.focus({ preventScroll: true });
+    } catch (e) {}
+  }
+  _close() {
+    const wasOpen = this._isOpen;
+    this._isOpen = false;
+    this._abortMedia();
+    if (!wasOpen) return;
+    this._panel.classList.remove("open");
+    this._fig.classList.remove("gone");
+    document.removeEventListener("keydown", this._kd);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener("resize", this._vv);
+      window.visualViewport.removeEventListener("scroll", this._vv);
+    }
+    if (this.shadowRoot.activeElement && this._panel.contains(this.shadowRoot.activeElement)) {
+      try { this._fig.focus({ preventScroll: true }); } catch (e) {}
+    }
+  }
+  // Am Handy schiebt die Bildschirmtastatur das Blatt nach oben und kürzt es.
+  _onViewport() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const kb = Math.round(window.innerHeight - vv.height - vv.offsetTop);
+    this._panel.style.setProperty("--kb", (kb > 80 ? kb : 0) + "px");
+    this._panel.style.setProperty("--vvh", Math.round(vv.height) + "px");
+  }
+  _abortMedia() {
+    this._auto = false;
+    const run = this._cur;
+    if (run && run.voice) this._cancelRun(run);
+    this._stopAudio();
+  }
+  _setState(s) {
+    this._st = s;
+    for (const p of this._pips) {
+      p.classList.remove("st-idle", "st-listen", "st-think", "st-speak");
+      p.classList.add("st-" + s);
+    }
+    if (this._stt) this._stt.textContent = STATUS[s] || "";
+  }
+
+  // ---------- Verlauf ----------
+  _push(it) {
+    it.id = ++this._seq;
+    this._items.push(it);
+    while (this._items.length > 40) {
+      const o = this._items.shift();
+      if (o.timer) clearTimeout(o.timer);
+    }
+    return it;
+  }
+  _remove(it) {
+    if (!it) return;
+    const i = this._items.indexOf(it);
+    if (i >= 0) this._items.splice(i, 1);
+    if (it.timer) clearTimeout(it.timer);
+  }
+  _note(text) { this._push({ k: "note", text }); this._renderLog(true); }
+  _micFail() { this._note("Das Mikrofon ist hier nicht verfügbar. Du kannst mir schreiben."); }
+  _ensureAi(run) {
+    if (!run.ai) run.ai = this._push({ k: "ai", text: "", pending: true });
+    return run.ai;
+  }
+  _renderLog(stick) {
+    const log = this._log;
+    if (!log) return;
+    const near = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    log.innerHTML = this._logHTML();
+    if (stick || near) log.scrollTop = log.scrollHeight;
+  }
+  _logHTML() {
+    const esc = U.esc;
+    let h = "";
+    if (!this._items.some(i => i.k !== "note")) h += `<div class="hello">Hallo! Frag mich zu Terminen, Essen, Einkauf oder den Zwillingen.</div>`;
+    for (const it of this._items) {
+      if (it.k === "me") h += `<div class="me">${esc(it.text)}</div>`;
+      else if (it.k === "ai") {
+        if (it.text) h += `<div class="ai">${esc(it.text)}</div>`;
+        else if (it.pending) h += `<div class="dots" role="img" aria-label="${esc(this._cfg.name)} denkt nach"><i></i><i></i><i></i></div>`;
+      } else if (it.k === "note") h += `<div class="note">${esc(it.text)}</div>`;
+      else if (it.k === "card") h += this._cardHTML(it);
+    }
+    return h;
+  }
+  _cardHTML(it) {
+    const esc = U.esc;
+    let h = `<div class="ac">`;
+    if (it.titel) h += `<div class="ac-t">${esc(it.titel)}</div>`;
+    for (const z of it.zeilen) h += `<div class="ac-r"><b>${esc(z[0])}</b>${z[1] !== "" ? `<span>${esc(z[1])}</span>` : ""}</div>`;
+    const id = ` data-id="${it.id}"`;
+    let f = "";
+    if (it.st === "open") f = `<button class="ghost" type="button" data-act="undo"${id}>Rückgängig</button>`;
+    else if (it.st === "undoing") f = `<span class="ac-s">Wird rückgängig gemacht …</span>`;
+    else if (it.st === "done") f = `<span class="ac-s">✓ erledigt</span>`;
+    else if (it.st === "undone") f = `<span class="ac-s">Rückgängig gemacht</span>`;
+    else if (it.st === "undofail") f = `<span class="ac-s">Rückgängig hat nicht geklappt</span>`;
+    else if (it.st === "ask") {
+      const dis = this._cur ? " disabled" : "";
+      f = `<button class="pri" type="button" data-act="yes"${id}${dis}>Ja, mach das</button><button class="ghost" type="button" data-act="no"${id}${dis}>Abbrechen</button>`;
+    }
+    if (f) h += `<div class="ac-f">${f}</div>`;
+    return h + `</div>`;
+  }
+  _onLogClick(e) {
+    const b = e.target.closest ? e.target.closest("button[data-act]") : null;
+    if (!b || b.disabled) return;
+    const it = this._items.find(x => x.id === +b.dataset.id);
+    if (!it) return;
+    const act = b.dataset.act;
+    if (act === "undo" && it.st === "open") this._undo(it);
+    else if ((act === "yes" || act === "no") && it.st === "ask") {
+      if (this._cur) return;
+      it.st = "answered";
+      this._renderLog();
+      this._send(act === "yes" ? "Ja" : "Nein");
+    }
+  }
+
+  // ---------- Bedienelemente ----------
+  _applyBusy() {
+    const busy = !!this._cur;
+    for (const b of this._chips.querySelectorAll(".chip")) b.disabled = busy;
+    for (const b of this._log.querySelectorAll('button[data-act="yes"],button[data-act="no"]')) b.disabled = busy;
+    this._syncBtn();
+  }
+  _syncBtn() {
+    const run = this._cur;
+    const recording = !!(run && run.rec && !run.rec.stopped);
+    const has = !!this._in.value.trim();
+    const mode = recording ? "stop" : (!has && this._micOk()) ? "mic" : "send";
+    const dis = mode === "stop" ? false : (!!run || (mode === "send" && !has));
+    if (this._go.dataset.m !== mode) {
+      this._go.dataset.m = mode;
+      this._go.innerHTML = ICON[mode];
+      this._go.setAttribute("aria-label", GO_LABEL[mode]);
+      this._go.title = GO_LABEL[mode];
+    }
+    this._go.disabled = dis;
+    this._go.classList.toggle("rec", recording);
+  }
+  _onGo() {
+    const m = this._go.dataset.m;
+    if (m === "stop") this._stopRec(this._cur);
+    else if (m === "mic") this._listen(false);
+    else this._sendInput();
+  }
+  _sendInput() {
+    const t = this._in.value.trim();
+    if (!t || this._cur) return;
+    this._in.value = "";
+    this._syncBtn();
+    this._send(t);
+  }
+
+  // ---------- Ton ----------
+  _aud() {
+    if (this._a) return this._a;
+    const a = this._a = new Audio();
+    a.preload = "auto";
+    a.addEventListener("ended", () => this._audioDone(false));
+    a.addEventListener("error", () => this._audioDone(true));
+    return a;
+  }
+  // iOS: Das Audio-Element muss einmal per Tipp gestartet worden sein, sonst bleibt spätere Wiedergabe stumm.
+  _unlockAudio() {
+    if (this._unlocked || !SILENT) return;
+    this._unlocked = true;
+    try {
+      const a = this._aud();
+      a.src = SILENT;
+      const p = a.play();
+      if (p && p.then) p.then(() => { if (a.src === SILENT) a.pause(); }, () => { this._unlocked = false; });
+    } catch (e) { this._unlocked = false; }
+  }
+  _play(url) {
+    const hass = getHass();
+    let src = url;
+    try { if (hass && hass.hassUrl) src = hass.hassUrl(url); } catch (e) {}
+    const a = this._aud();
+    this._speaking = true;
+    a.src = src;
+    this._setState("speak");
+    try {
+      const p = a.play();
+      if (p && p.catch) p.catch(() => this._audioDone(true));
+    } catch (e) { this._audioDone(true); }
+  }
+  _audioDone(failed) {
+    if (!this._speaking) return;
+    this._speaking = false;
+    const go = !failed && this._auto && this._isOpen && this._visible && !this._cur;
+    this._auto = false;
+    this._setState(this._cur ? "think" : "idle");
+    if (go) this._listen(true);
+  }
+  _stopAudio() {
+    this._auto = false;
+    if (this._a) { try { this._a.pause(); } catch (e) {} }
+    if (this._speaking) {
+      this._speaking = false;
+      if (this._st === "speak") this._setState(this._cur ? "think" : "idle");
+    }
+  }
+
+  // ---------- Anfragen ----------
+  _newRun(voice) {
+    return { voice, ended: false, unsub: null, handlerId: null, rec: null, me: null, ai: null, cont: false, timer: null, endSent: false };
+  }
+  _expireConv() {
+    if (this._convId && Date.now() - this._convAt > 300000) this._convId = null;
+  }
+  _send(text) {
+    text = String(text || "").trim();
+    if (!text || this._cur) return;
+    this._stopAudio();
+    this._expireConv();
+    const run = this._newRun(false);
+    run.me = this._push({ k: "me", text });
+    this._ensureAi(run);
+    this._cur = run;
+    this._convAt = Date.now();
+    this._setState("think");
+    this._renderLog(true);
+    this._applyBusy();
+    this._runPipe({
+      type: "assist_pipeline/run",
+      start_stage: "intent",
+      end_stage: this._cfg.speak === "always" ? "tts" : "intent",
+      input: { text },
+    }, run);
+  }
+  _runPipe(msg, run) {
+    const hass = getHass();
+    if (!hass || !hass.connection || !hass.connection.subscribeMessage) { this._finishRun(run, "conn"); return; }
+    if (this._cfg.pipeline_id) msg.pipeline = this._cfg.pipeline_id;
+    if (this._convId) msg.conversation_id = this._convId;
+    run.timer = setTimeout(() => this._finishRun(run, "timeout"), 60000);
+    let p;
+    // Ohne erneutes Abonnieren nach einem Verbindungsabbruch: sonst liefe ein Befehl ein zweites Mal.
+    try { p = hass.connection.subscribeMessage(ev => { try { this._onEvent(ev, run); } catch (e) {} }, msg, { resubscribe: false }); }
+    catch (e) { p = Promise.reject(e); }
+    Promise.resolve(p).then(u => {
+      run.unsub = u;
+      if (run.ended) this._unsubRun(run);
+    }, err => this._finishRun(run, errKey(err)));
+  }
+  _unsubRun(run) {
+    const u = run.unsub;
+    run.unsub = null;
+    if (u) { try { const r = u(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
+  _onEvent(ev, run) {
+    if (!ev || run.ended) return;
+    const d = ev.data || {};
+    switch (ev.type) {
+      case "run-start": {
+        const id = d.runner_data && d.runner_data.stt_binary_handler_id;
+        if (run.voice && id != null) {
+          run.handlerId = id;
+          if (run.rec) {
+            this._flush(run);
+            if (run.rec.stopped && run.rec.endPending) this._sendEnd(run);
+          }
+        }
+        break;
+      }
+      case "stt-vad-end":
+        this._stopRec(run);
+        break;
+      case "stt-end": {
+        this._stopRec(run);
+        const t = d.stt_output && d.stt_output.text;
+        if (run.me && run.voice && typeof t === "string" && t.trim()) run.me.text = t.trim();
+        this._ensureAi(run);
+        this._setState("think");
+        this._renderLog(true);
+        break;
+      }
+      case "intent-start":
+        this._ensureAi(run);
+        this._setState("think");
+        this._renderLog();
+        break;
+      case "intent-progress": {
+        const c = d.chat_log_delta && d.chat_log_delta.content;
+        if (typeof c === "string" && c) { this._ensureAi(run).text += c; this._renderLog(); }
+        break;
+      }
+      case "intent-end": {
+        const out = d.intent_output || {};
+        const sp = out.response && out.response.speech && out.response.speech.plain && out.response.speech.plain.speech;
+        const ai = this._ensureAi(run);
+        if (typeof sp === "string" && sp.trim()) ai.text = sp.trim();
+        ai.pending = false;
+        if (out.conversation_id) this._convId = out.conversation_id;
+        run.cont = !!out.continue_conversation;
+        this._convAt = Date.now();
+        this._ansAt = Date.now();
+        this._auto = !!(run.voice && run.cont && this._cfg.speak !== "never");
+        this._renderLog(true);
+        break;
+      }
+      case "tts-end": {
+        const url = d.tts_output && d.tts_output.url;
+        if (url && this._isOpen && this._visible && this._cfg.speak !== "never") this._play(url);
+        break;
+      }
+      case "run-end":
+        this._finishRun(run);
+        break;
+      case "error":
+        this._finishRun(run, d.code || "generic");
+        break;
+    }
+  }
+  // Ende einer Anfrage, mit oder ohne Fehler. Fehler beim Vorlesen stören nicht, wenn die Antwort schon da ist.
+  _finishRun(run, err) {
+    if (run.ended) return;
+    run.ended = true;
+    clearTimeout(run.timer);
+    this._unsubRun(run);
+    if (run.rec) this._stopRec(run, false);
+    if (this._cur === run) this._cur = null;
+    const had = !!(run.ai && run.ai.text && run.ai.text.trim());
+    if (run.ai) { run.ai.pending = false; if (!had) this._remove(run.ai); }
+    if (err && !had) {
+      if (run.voice && run.me && run.me.text === "…") this._remove(run.me);
+      this._push({ k: "note", text: ERR[err] || ERR.generic });
+    } else if (!err && !had) {
+      this._push({ k: "note", text: "Dazu habe ich keine Antwort." });
+    }
+    this._ansAt = Date.now();
+    if (!this._speaking) { this._auto = false; this._setState("idle"); }
+    this._renderLog(true);
+    this._applyBusy();
+  }
+  // Abbrechen ohne Meldung: Mikrofon aus, Abo weg, Platzhalter entfernen.
+  _cancelRun(run) {
+    if (!run || run.ended) return;
+    run.ended = true;
+    clearTimeout(run.timer);
+    this._unsubRun(run);
+    if (run.rec) { run.rec.stopped = true; clearTimeout(run.rec.timer); this._closeRec(run.rec); }
+    if (this._cur === run) this._cur = null;
+    if (run.voice && run.me && run.me.text === "…") this._remove(run.me);
+    if (run.ai && !run.ai.text) this._remove(run.ai);
+    this._setState(this._speaking ? "speak" : "idle");
+    this._renderLog();
+    this._applyBusy();
+  }
+  _reset() {
+    if (this._cur) this._cancelRun(this._cur);
+    this._stopAudio();
+    for (const it of this._items) if (it.timer) clearTimeout(it.timer);
+    this._items = [];
+    this._convId = null;
+    this._convAt = 0;
+    this._ansAt = 0;
+    this._setState("idle");
+    this._renderLog(true);
+    this._applyBusy();
+  }
+
+  // ---------- Mikrofon ----------
+  async _listen(auto) {
+    if (this._cur || !this._isOpen || !this._visible) return;
+    if (!this._micOk()) { if (!auto) this._micFail(); return; }
+    this._unlockAudio();
+    this._stopAudio();
+    // Der AudioContext entsteht noch im Tipp, sonst bleibt er auf iOS stumm.
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const mk = fixed => { try { return fixed ? new AC({ sampleRate: 16000 }) : new AC(); } catch (e) { return null; } };
+    let ctx = mk(!/firefox/i.test(navigator.userAgent)) || mk(false);
+    if (!ctx) { if (!auto) this._micFail(); return; }
+    try { ctx.resume(); } catch (e) {}
+    this._expireConv();
+    const run = this._newRun(true);
+    run.me = this._push({ k: "me", text: "…" });
+    this._cur = run;
+    this._convAt = Date.now();
+    this._setState("listen");
+    this._renderLog(true);
+    this._applyBusy();
+    let stream = null, rec = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      for (let pass = 0; pass < 2 && !rec && ctx && !run.ended; pass++) {
+        try { rec = await this._openRec(ctx, stream, run); }
+        catch (e) { try { ctx.close(); } catch (e2) {} ctx = pass === 0 ? mk(false) : null; }
+      }
+    } catch (e) { rec = null; }
+    if (run.ended || !rec) {
+      // abgebrochen oder gescheitert: alles freigeben
+      try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      try { if (ctx) ctx.close(); } catch (e) {}
+      if (!run.ended) { this._cancelRun(run); if (!auto) this._micFail(); }
+      return;
+    }
+    rec.timer = setTimeout(() => this._stopRec(run), 15000);
+    this._runPipe({
+      type: "assist_pipeline/run",
+      start_stage: "stt",
+      end_stage: this._cfg.speak === "never" ? "intent" : "tts",
+      input: { sample_rate: 16000 },
+    }, run);
+    this._syncBtn();
+  }
+  async _openRec(ctx, stream, run) {
+    try { await Promise.race([Promise.resolve(ctx.resume()).catch(() => {}), delay(600)]); } catch (e) {}
+    if (ctx.state !== "running") throw new Error("ctx");
+    const rec = { ctx, stream, src: null, node: null, mute: null, ratio: ctx.sampleRate / 16000, acc: 0, cnt: 0, ph: 0, queue: [], qlen: 0, stopped: false, endPending: false, timer: null };
+    run.rec = rec;
+    try {
+      rec.src = ctx.createMediaStreamSource(stream);
+      // Ohne Weg zum Ausgang rechnen manche Browser nicht; die Stummschaltung verhindert Rückkopplung.
+      rec.mute = ctx.createGain();
+      rec.mute.gain.value = 0;
+      rec.mute.connect(ctx.destination);
+      const on = f => this._onFrames(run, f);
+      let ok = false;
+      if (ctx.audioWorklet && typeof AudioWorkletNode === "function") {
+        const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+        try {
+          await ctx.audioWorklet.addModule(url);
+          const node = new AudioWorkletNode(ctx, "fp-pip-rec", { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
+          node.port.onmessage = e => on(e.data);
+          rec.src.connect(node);
+          node.connect(rec.mute);
+          rec.node = node;
+          ok = true;
+        } catch (e) { ok = false; try { rec.src.disconnect(); } catch (e2) {} }
+        finally { URL.revokeObjectURL(url); }
+      }
+      if (!ok) {
+        const node = ctx.createScriptProcessor(4096, 1, 1);
+        node.onaudioprocess = e => on(new Float32Array(e.inputBuffer.getChannelData(0)));
+        rec.src.connect(node);
+        node.connect(rec.mute);
+        rec.node = node;
+      }
+    } catch (e) {
+      this._dropNodes(rec);
+      run.rec = null;
+      throw e;
+    }
+    return rec;
+  }
+  // Auf 16 kHz herunterrechnen (Mitteln), in 16-Bit-Zahlen wandeln und vormerken; ab ~100 ms senden.
+  _onFrames(run, f) {
+    const rec = run.rec;
+    if (!rec || rec.stopped || !f || !f.length) return;
+    const r = rec.ratio;
+    let out;
+    if (r <= 1.0001) {
+      out = new Int16Array(f.length);
+      for (let i = 0; i < f.length; i++) out[i] = toI16(f[i]);
+    } else {
+      const buf = new Int16Array(Math.ceil(f.length / r) + 2);
+      let n = 0, acc = rec.acc, cnt = rec.cnt, ph = rec.ph;
+      for (let i = 0; i < f.length; i++) {
+        acc += f[i]; cnt++; ph += 1;
+        if (ph >= r) { buf[n++] = toI16(acc / cnt); acc = 0; cnt = 0; ph -= r; }
+      }
+      rec.acc = acc; rec.cnt = cnt; rec.ph = ph;
+      out = buf.subarray(0, n);
+    }
+    rec.queue.push(out);
+    rec.qlen += out.length;
+    if (run.handlerId != null && rec.qlen >= 1600) this._flush(run);
+  }
+  _sock() {
+    const h = getHass(), c = h && h.connection;
+    return c && c.socket ? c.socket : null;
+  }
+  // Binärnachricht: erstes Byte = Kennung des Stroms, danach 16-Bit-PCM (Little Endian).
+  _flush(run) {
+    const rec = run.rec;
+    if (!rec || run.handlerId == null || !rec.qlen) return;
+    const all = new Int16Array(rec.qlen);
+    let o = 0;
+    for (const q of rec.queue) { all.set(q, o); o += q.length; }
+    rec.queue = [];
+    rec.qlen = 0;
+    const sock = this._sock();
+    if (!sock || sock.readyState !== 1) return;
+    const STEP = 1600;
+    for (let s = 0; s < all.length; s += STEP) {
+      const n = Math.min(STEP, all.length - s);
+      const bytes = new Uint8Array(1 + n * 2), dv = new DataView(bytes.buffer);
+      bytes[0] = run.handlerId;
+      for (let i = 0; i < n; i++) dv.setInt16(1 + i * 2, all[s + i], true);
+      try { sock.send(bytes); } catch (e) { return; }
+    }
+  }
+  _sendEnd(run) {
+    if (run.endSent || run.handlerId == null) return;
+    run.endSent = true;
+    const sock = this._sock();
+    if (sock && sock.readyState === 1) { try { sock.send(new Uint8Array([run.handlerId])); } catch (e) {} }
+  }
+  // Aufnahme beenden: Rest senden, Ende melden, Mikrofon und AudioContext freigeben.
+  _stopRec(run, sendEnd) {
+    const rec = run && run.rec;
+    if (!rec || rec.stopped) return;
+    rec.stopped = true;
+    clearTimeout(rec.timer);
+    this._flush(run);
+    if (sendEnd !== false && !run.ended) {
+      if (run.handlerId != null) this._sendEnd(run); else rec.endPending = true;
+    }
+    this._closeRec(rec);
+    if (!run.ended) this._ensureAi(run);
+    if (this._cur === run && this._st === "listen") this._setState("think");
+    if (!run.ended) this._renderLog(true);
+    this._syncBtn();
+  }
+  _dropNodes(rec) {
+    try { if (rec.node && rec.node.port) rec.node.port.onmessage = null; } catch (e) {}
+    try { if (rec.node) rec.node.onaudioprocess = null; } catch (e) {}
+    try { if (rec.node) rec.node.disconnect(); } catch (e) {}
+    try { if (rec.src) rec.src.disconnect(); } catch (e) {}
+    try { if (rec.mute) rec.mute.disconnect(); } catch (e) {}
+  }
+  _closeRec(rec) {
+    this._dropNodes(rec);
+    try { rec.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    try { const r = rec.ctx.close(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+  }
+
+  // ---------- Aktionskarten (Ereignis fp_pip_karte) ----------
+  _subs() {
+    const hass = getHass(), conn = hass && hass.connection;
+    if (!conn || !conn.subscribeEvents || this._evConn === conn) return;
+    this._unsubEvents();
+    this._evConn = conn;
+    let p;
+    try { p = conn.subscribeEvents(ev => { try { this._onCardEvent(ev); } catch (e) {} }, EVT); }
+    catch (e) { return; }
+    // Fehler (z. B. kein Admin) still ignorieren: dann gibt es eben keine Karten.
+    Promise.resolve(p).then(u => {
+      if (this._evConn === conn) this._evUnsub = u;
+      else { try { const r = u(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+    }, () => {});
+  }
+  _unsubEvents() {
+    const u = this._evUnsub;
+    this._evUnsub = null;
+    this._evConn = null;
+    if (u) { try { const r = u(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
+  _onCardEvent(ev) {
+    const d = ev && ev.data;
+    if (!d || typeof d !== "object") return;
+    // Nur während einer Frage oder kurz danach, sonst kämen Karten aus Gesprächen anderer Geräte.
+    if (!this._cur && Date.now() - this._ansAt > 20000) return;
+    const art = d.art;
+    if (art !== "neu" && art !== "bestaetigen" && art !== "info") return;
+    const zeilen = (Array.isArray(d.zeilen) ? d.zeilen : []).map(z => Array.isArray(z)
+      ? [z[0] == null ? "" : String(z[0]), z[1] == null ? "" : String(z[1])] : [z == null ? "" : String(z), ""]);
+    const it = { k: "card", art, titel: d.titel == null ? "" : String(d.titel), zeilen, rueck: d.rueckgaengig || null, code: d.code, st: art === "bestaetigen" ? "ask" : art === "neu" ? "open" : "info" };
+    if (art === "neu") {
+      if (!this._undoOk(it.rueck)) it.st = "done";
+      else it.timer = setTimeout(() => {
+        // Nach 10 s ist "Rückgängig" weg (rückgängig lässt sich dann in der Liste oder im Kalender selbst).
+        if (it.st === "open") { it.st = "done"; this._renderLog(); }
+      }, 10000);
+    }
+    this._push(it);
+    this._renderLog();
+  }
+  _undoOk(r) {
+    if (!r || typeof r !== "object") return false;
+    if (r.typ === "kalender") return !!(r.kalender && r.summary && r.start);
+    if (r.typ === "liste") return !!(r.liste && Array.isArray(r.eintraege) && r.eintraege.length);
+    return false;
+  }
+  async _undo(it) {
+    it.st = "undoing";
+    this._renderLog();
+    let ok = false;
+    try { await this._doUndo(it.rueck); ok = true; } catch (e) { ok = false; }
+    it.st = ok ? "undone" : "undofail";
+    this._renderLog();
+    if (!ok) this._toast("Rückgängig hat nicht geklappt");
+  }
+  async _doUndo(r) {
+    const hass = getHass();
+    if (!hass || !r) throw new Error("hass");
+    if (r.typ === "kalender") {
+      const m = String(r.start).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+      if (!m) throw new Error("start");
+      // Weites Fenster um den Tag; der Beginn wird unten in der Zeitzone von Home Assistant verglichen.
+      const day = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+      const von = new Date(day - 86400000).toISOString(), bis = new Date(day + 2 * 86400000).toISOString();
+      const evts = await hass.callApi("GET", `calendars/${r.kalender}?start=${encodeURIComponent(von)}&end=${encodeURIComponent(bis)}`);
+      const timed = m[4] !== undefined;
+      const want = timed ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : `${m[1]}-${m[2]}-${m[3]}`;
+      const tz = hass.config && hass.config.time_zone;
+      const sum = String(r.summary).trim();
+      const ev = (Array.isArray(evts) ? evts : []).find(x => {
+        if (!x || !x.uid || String(x.summary || "").trim() !== sum) return false;
+        const s = x.start || {};
+        if (timed) return !!s.dateTime && localStr(s.dateTime, tz).slice(0, 16) === want;
+        return !!s.date && String(s.date).slice(0, 10) === want;
+      });
+      if (!ev) throw new Error("nicht gefunden");
+      const msg = { type: "calendar/event/delete", entity_id: r.kalender, uid: ev.uid };
+      if (ev.recurrence_id) msg.recurrence_id = ev.recurrence_id;
+      await hass.callWS(msg);
+    } else if (r.typ === "liste") {
+      const items = (Array.isArray(r.eintraege) ? r.eintraege : []).map(String).filter(Boolean);
+      if (!r.liste || !items.length) throw new Error("liste");
+      for (const item of items) await hass.callService("todo", "remove_item", { entity_id: r.liste, item });
+    } else throw new Error("typ");
+  }
+  // Hinweis über ein Element im HA-Baum senden: das Dock hängt außerhalb davon.
+  _toast(msg) {
+    const t = lastCard && lastCard.isConnected ? lastCard : (document.querySelector("home-assistant") || this);
+    U.toast(t, msg);
+  }
+}
+
+if (!customElements.get("fp-pip-dock-beta")) customElements.define("fp-pip-dock-beta", FpPipDock);
+if (!customElements.get("fp-assistant-card-beta")) {
+  customElements.define("fp-assistant-card-beta", FpAssistantCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "fp-assistant-card-beta", name: "FP Assistant Card (Pip)", description: "Unsichtbare Karte: schaltet den schwebenden Sprachassistenten Pip in allen Tabs des Dashboards frei (Assist-Pipeline, Mikrofon, Vorlesen, Aktionskarten)", preview: false });
+}
+
+// Selbststart: Gibt es für den aktuellen Dashboard-Pfad eine gespeicherte Konfiguration, kommt die Figur von allein,
+// auch wenn direkt ein anderer Tab neu geladen wird. Beim Seitenwechsel wird neu entschieden.
+const nav = () => { try { syncDock(); } catch (e) {} };
+window.addEventListener("location-changed", nav);
+window.addEventListener("popstate", nav);
+window.addEventListener("resize", () => { try { if (dock && typeof dock.applyLift === "function") dock.applyLift(); } catch (e) {} });
+if (document.body) nav(); else document.addEventListener("DOMContentLoaded", nav, { once: true });
+})();
