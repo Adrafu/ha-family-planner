@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.3.2 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
+/* Family Planner custom cards v3.4.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10199,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v5 (Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v7 (lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10267,6 +10267,7 @@ const CHIME_MS = 170;       // Länge des Erkennungstons; erst danach geht Ton a
 const RING_AGE = 180;       // ein Klingel-Signal ist höchstens so viele Sekunden alt (danach nimmt Home Assistant es selbst zurück)
 const RING_GAP = 1500;      // Abstand der Glockenschläge
 const ANN_WAIT = 20000;     // so lange darf die Ansage (Assist-Pipeline) auf sich warten lassen
+const STRM_WAIT = 15000;    // so lange darf ein früh gestarteter Ton nach tts-end noch auf sich warten lassen, danach wird er verworfen
 const PILL_MAX = 3;         // so viele Pillen neben der Figur, der Rest als "+N"
 const RING_ICON = { timer: "⏱", wecker: "⏰", erinnerung: "🔔" };
 const PIP = '<span class="pip st-idle"><span class="ring r1"></span><span class="ring r2"></span><span class="ball"><span class="eye"></span><span class="eye"></span></span></span>';
@@ -10574,6 +10575,8 @@ function normCfg(c) {
       };
     }
   }
+  // learn: Skript, das nach jeder Bitte an den Gesprächsagenten (nicht lokal erledigt) aufgerufen wird; ohne gültige Angabe keine Funktion
+  const lr = String(c.learn || "").trim();
   return {
     name,
     pipeline_id: String(c.pipeline_id || "").trim(),
@@ -10584,6 +10587,7 @@ function normCfg(c) {
     position: c.position === "left" ? "left" : "right",
     wake_word: wake,
     alarms,
+    learn: /^script\.[a-z0-9_]+$/.test(lr) ? lr : "",
   };
 }
 // Zeitpunkt als "JJJJ-MM-TT HH:MM:SS" in der Zeitzone von Home Assistant.
@@ -10982,6 +10986,8 @@ class FpPipDock extends HTMLElement {
     this._rcOk = false;        // per Tipp freigeschaltet
     this._rcArmed = false;
     this._annc = null;         // Ansage des Klingelns, die gerade über das Audio-Element läuft
+    this._strm = null;         // früh gestartete Sprachausgabe (Home Assistant streamt): { run, ann, url, token, st: wait|play|end|fail|stop, tts }
+    this._playTok = 0;         // zählt die Wiedergaben: ein spätes Scheitern einer abgelösten Wiedergabe zählt nicht
     this._rcGest = () => this._unlockAudio();
     this._kd = e => { if (e.key === "Escape") this._close(); };
     this._vv = () => this._onViewport();
@@ -11360,12 +11366,13 @@ class FpPipDock extends HTMLElement {
     a.preload = "auto";
     a.addEventListener("ended", () => this._audioDone(false));
     a.addEventListener("error", () => this._audioDone(true));
+    a.addEventListener("playing", () => this._audioPlaying());
     return a;
   }
   // iOS: Das Audio-Element muss einmal per Tipp gestartet worden sein, sonst bleibt spätere Wiedergabe stumm.
   _unlockAudio() {
     this._rcUnlock();
-    if (this._unlocked || !SILENT) return;
+    if (this._unlocked || !SILENT || this._speaking) return;   // während einer Wiedergabe (auch einer wartenden) die Quelle nicht anfassen
     this._unlocked = true;
     try {
       const a = this._aud();
@@ -11375,34 +11382,64 @@ class FpPipDock extends HTMLElement {
     } catch (e) { this._unlocked = false; }
   }
   // ann: Ansage des Klingelns (kein Gespräch: danach wird nicht zugehört)
-  _play(url, ann) {
+  // str: früh gestarteter Stream (siehe _streamBegin): Die Anzeige "Spricht" folgt erst, wenn Ton da ist.
+  _play(url, ann, str) {
     const hass = getHass();
     let src = url;
     try { if (hass && hass.hassUrl) src = hass.hassUrl(url); } catch (e) {}
     const a = this._aud();
+    const tok = ++this._playTok;
     this._speaking = true;
     this._annc = ann || null;
+    this._strm = str || null;
     a.src = src;
-    this._setState("speak");
+    if (!str) this._setState("speak");
     try {
       const p = a.play();
-      if (p && p.catch) p.catch(() => this._audioDone(true));
+      if (p && p.catch) p.catch(() => { if (tok === this._playTok) this._audioDone(true); });
     } catch (e) { this._audioDone(true); }
   }
   _audioDone(failed) {
     if (!this._speaking) return;
     this._speaking = false;
+    const s = this._strm;
+    this._strm = null;
+    if (s) { s.st = failed ? "fail" : "end"; clearTimeout(s.timer); }
     const ann = this._annc;
     this._annc = null;
-    const go = !ann && !failed && this._auto && this._isOpen && this._visible && !this._cur;
+    const run = this._cur;
+    // Früh gestarteter Ton schon zu Ende, bevor run-end da ist: _finishRun entscheidet über das Weiterhören
+    if (s && s.run && s.run === run && !ann && !failed) run.lateGo = true;
+    const go = !ann && !failed && this._auto && this._isOpen && this._visible && !run;
     this._auto = false;
-    this._setState(this._cur ? "think" : "idle");
+    this._setState(run ? "think" : "idle");
     if (ann) this._annEnd(ann);
     if (go) this._listen(true);
   }
+  // Der früh gestartete Ton läuft: Anzeige "Spricht", bei der Ansage ist der Klingelton jetzt aus
+  _audioPlaying() {
+    const s = this._strm;
+    if (!s || !this._speaking || s.st !== "wait") return;
+    s.st = "play";
+    clearTimeout(s.timer);
+    this._streamUp(s);
+  }
+  _streamUp(s) {
+    if (this._strm !== s || !this._speaking) return;
+    this._setState("speak");
+    if (s.ann) { clearTimeout(s.ann.timer); this._toneOff(s.ann.ring); }
+  }
   _stopAudio() {
     this._auto = false;
-    if (this._a) { try { this._a.pause(); } catch (e) {} }
+    const s = this._strm;
+    this._strm = null;
+    if (s) { s.st = "stop"; clearTimeout(s.timer); }
+    this._playTok++;
+    if (this._a) {
+      try { this._a.pause(); } catch (e) {}
+      // Ein Stream hält die Anfrage an Home Assistant offen: Quelle wechseln, damit sie abbricht
+      if (s) { try { if (SILENT) this._a.src = SILENT; else this._a.removeAttribute("src"); } catch (e) {} }
+    }
     if (this._speaking) {
       this._speaking = false;
       if (this._st === "speak") this._setState(this._cur ? "think" : "idle");
@@ -11411,10 +11448,38 @@ class FpPipDock extends HTMLElement {
     this._annc = null;
     if (ann) this._annEnd(ann);
   }
+  // Home Assistant streamt die Sprachausgabe (run-start: tts_output.stream_response, ab 2025.6 bei Gesprächsagenten mit Streaming und
+  // TTS mit Streaming-Eingang): Die Adresse liefert den Ton schon, während der Text noch entsteht. Der Server hält die Anfrage, bis es
+  // etwas zu sagen gibt. Bei tts-end wird dieselbe Adresse nicht noch einmal gestartet (_streamSkip).
+  // Bei Sprachanfragen erst ab stt-end (die Aufnahme ist da zu Ende), bei Text sofort.
+  _streamBegin(run) {
+    const o = run.early;
+    if (!o || run.str || run.ended || this._cur !== run) return;
+    if (!(this._isOpen && this._visible && this._cfg.speak !== "never")) return;
+    const s = run.str = { run, ann: null, url: o.url, token: o.token || "", st: "wait", tts: false };
+    this._play(o.url, null, s);
+  }
+  // tts-end: Ist es dieselbe Adresse wie beim früh gestarteten Stream, bleibt es dabei (true = nichts weiter tun).
+  // Eine andere Adresse oder ein gescheiterter bzw. abgebrochener Stream: wie bisher normal abspielen (false).
+  _streamSkip(owner, o) {
+    const s = owner.str;
+    if (!s || !o) return false;
+    if (!((o.token && s.token && o.token === s.token) || (o.url && o.url === s.url))) {
+      if (this._strm === s) this._stopAudio();
+      return false;
+    }
+    if (s.st === "fail" || s.st === "stop") return false;
+    s.tts = true;
+    // Kommt nach tts-end gar kein Ton, nicht ewig "Spricht" anzeigen und Wecken verhindern
+    if (s.st === "wait" && this._strm === s && !s.timer) s.timer = setTimeout(() => { if (this._strm === s && s.st === "wait") this._stopAudio(); }, STRM_WAIT);
+    this._streamUp(s);
+    return true;
+  }
 
   // ---------- Anfragen ----------
   _newRun(voice) {
-    return { voice, ended: false, unsub: null, handlerId: null, rec: null, me: null, ai: null, cont: false, timer: null, endSent: false };
+    return { voice, ended: false, unsub: null, handlerId: null, rec: null, me: null, ai: null, cont: false, timer: null, endSent: false,
+      text: "", t0: Date.now(), tEnd: 0, ie: false, local: undefined, tools: [], logged: false };
   }
   _expireConv() {
     if (this._convId && Date.now() - this._convAt > 300000) this._convId = null;
@@ -11425,6 +11490,7 @@ class FpPipDock extends HTMLElement {
     this._stopAudio();
     this._expireConv();
     const run = this._newRun(false);
+    run.text = text;
     run.me = this._push({ k: "me", text });
     this._ensureAi(run);
     this._cur = run;
@@ -11472,6 +11538,11 @@ class FpPipDock extends HTMLElement {
             if (run.rec.stopped && run.rec.endPending) this._sendEnd(run);
           }
         }
+        const o = d.tts_output;
+        if (o && o.stream_response === true && typeof o.url === "string" && o.url) {
+          run.early = o;
+          if (!run.voice) this._streamBegin(run);
+        }
         break;
       }
       case "stt-vad-end":
@@ -11481,9 +11552,11 @@ class FpPipDock extends HTMLElement {
         this._stopRec(run);
         const t = d.stt_output && d.stt_output.text;
         if (run.me && run.voice && typeof t === "string" && t.trim()) run.me.text = t.trim();
+        if (run.voice) { run.text = typeof t === "string" ? t.trim() : ""; run.t0 = Date.now(); }   // Dauer zählt ab hier: ohne die Zeit, die gesprochen wurde
         this._ensureAi(run);
         this._setState("think");
         this._renderLog(true);
+        if (run.early) this._streamBegin(run);
         break;
       }
       case "intent-start":
@@ -11492,8 +11565,9 @@ class FpPipDock extends HTMLElement {
         this._renderLog();
         break;
       case "intent-progress": {
-        const c = d.chat_log_delta && d.chat_log_delta.content;
+        const dl = d.chat_log_delta, c = dl && dl.content;
         if (typeof c === "string" && c) { this._ensureAi(run).text += c; this._renderLog(); }
+        if (dl && Array.isArray(dl.tool_calls)) this._learnTools(run, dl.tool_calls);
         break;
       }
       case "intent-end": {
@@ -11504,6 +11578,9 @@ class FpPipDock extends HTMLElement {
         ai.pending = false;
         if (out.conversation_id) this._convId = out.conversation_id;
         run.cont = !!out.continue_conversation;
+        run.ie = true;
+        run.tEnd = Date.now();
+        run.local = d.processed_locally;
         this._convAt = Date.now();
         this._ansAt = Date.now();
         this._auto = !!(run.voice && run.cont && this._cfg.speak !== "never");
@@ -11512,6 +11589,7 @@ class FpPipDock extends HTMLElement {
       }
       case "tts-end": {
         const url = d.tts_output && d.tts_output.url;
+        if (this._streamSkip(run, d.tts_output)) break;
         if (url && this._isOpen && this._visible && this._cfg.speak !== "never") this._play(url);
         break;
       }
@@ -11531,6 +11609,10 @@ class FpPipDock extends HTMLElement {
     this._unsubRun(run);
     if (run.rec) this._stopRec(run, false);
     if (this._cur === run) this._cur = null;
+    // Früh gestarteter Ton: Bei einem Fehler oder ohne tts-end kommt kein (weiterer) Ton, die offene Anfrage würde hängen
+    if (this._strm && this._strm.run === run && (err || !this._strm.tts)) this._stopAudio();
+    this._learnLog(run);
+    const go = !err && run.lateGo && run.voice && run.cont && this._cfg.speak !== "never" && this._isOpen && this._visible && !this._cur;
     const had = !!(run.ai && run.ai.text && run.ai.text.trim());
     if (run.ai) { run.ai.pending = false; if (!had) this._remove(run.ai); }
     if (err && !had) {
@@ -11543,6 +11625,38 @@ class FpPipDock extends HTMLElement {
     if (!this._speaking) { this._auto = false; this._setState("idle"); }
     this._renderLog(true);
     this._applyBusy();
+    if (go) this._listen(true);
+  }
+  // Werkzeugaufrufe des Gesprächsagenten aus intent-progress (chat_log_delta.tool_calls: [{id, tool_name, tool_args, external}])
+  _learnTools(run, list) {
+    for (const tc of list) {
+      if (!tc || typeof tc !== "object" || typeof tc.tool_name !== "string" || !tc.tool_name || run.tools.length >= 20) continue;
+      if (tc.id != null && run.tools.some(x => x.id === tc.id)) continue;
+      run.tools.push({ id: tc.id, name: tc.tool_name, args: tc.tool_args && typeof tc.tool_args === "object" ? tc.tool_args : {} });
+    }
+  }
+  // Lernen (learn): Nach einem abgeschlossenen Lauf, der an den Gesprächsagenten ging (intent-end, processed_locally nicht true),
+  // ruft die Karte das Skript einmal auf. Nicht bei Abbruch (kommt hier nicht an), ohne intent-end (Fehlerlauf) oder ohne Text.
+  // Fehler beim Aufruf bleiben still.
+  _learnLog(run) {
+    const id = this._cfg.learn;
+    if (!id || run.logged || !run.ie || run.local === true) return;
+    const text = String(run.text || "").trim();
+    if (!text) return;
+    run.logged = true;
+    const hass = getHass();
+    if (!hass || typeof hass.callService !== "function") return;
+    let ans = run.ai && run.ai.text ? String(run.ai.text).trim() : "";
+    if (ans.length > 300) ans = ans.slice(0, 299).trimEnd() + "…";
+    const data = {
+      text,
+      antwort: ans,
+      werkzeuge: run.tools.map(x => ({ name: x.name, args: x.args })),
+      dauer_ms: Math.max(0, Math.round((run.tEnd || Date.now()) - run.t0)),
+      quelle: run.voice ? "stimme" : "text",
+    };
+    // notifyOnError = false (5. Parameter von hass.callService): sonst zeigt das HA-Frontend bei einem Fehler selbst einen Hinweis
+    try { const p = hass.callService("script", id.slice(7), data, undefined, false); if (p && p.catch) p.catch(() => {}); } catch (e) {}
   }
   // Abbrechen ohne Meldung: Mikrofon aus, Abo weg, Platzhalter entfernen.
   _cancelRun(run) {
@@ -11554,6 +11668,7 @@ class FpPipDock extends HTMLElement {
     if (this._cur === run) this._cur = null;
     if (run.voice && run.me && run.me.text === "…") this._remove(run.me);
     if (run.ai && !run.ai.text) this._remove(run.ai);
+    if (this._strm && this._strm.run === run) this._stopAudio();
     this._setState(this._speaking ? "speak" : "idle");
     this._renderLog();
     this._applyBusy();
@@ -12470,11 +12585,20 @@ class FpPipDock extends HTMLElement {
   }
   _annEvent(ann, ev) {
     if (!ev || ann.done) return;
-    if (ev.type === "tts-end") {
-      const url = ev.data && ev.data.tts_output && ev.data.tts_output.url;
-      if (url) { ann.got = true; this._annPlay(ann, url); }
+    if (ev.type === "run-start") this._annEarly(ann, ev.data);
+    else if (ev.type === "tts-end") {
+      const o = ev.data && ev.data.tts_output, url = o && o.url;
+      if (url) { ann.got = true; if (!this._streamSkip(ann, o)) this._annPlay(ann, url); }
     } else if (ev.type === "error") this._annEnd(ann);
     else if (ev.type === "run-end") { this._annUnsub(ann); if (!ann.got) this._annEnd(ann); }
+  }
+  // Liefert run-start schon einen Stream (stream_response), wird die Ansage dort gestartet; der Klingelton läuft, bis Ton da ist.
+  _annEarly(ann, d) {
+    const o = d && d.tts_output, r = ann.ring;
+    if (!o || o.stream_response !== true || typeof o.url !== "string" || !o.url) return;
+    if (this._ring !== r || r.over || r.mute || this._cur || (this._speaking && !this._annc)) return;
+    const s = ann.str = { run: null, ann, url: o.url, token: o.token || "", st: "wait", tts: false };
+    this._play(o.url, ann, s);
   }
   _annPlay(ann, url) {
     const r = ann.ring;
@@ -12489,6 +12613,7 @@ class FpPipDock extends HTMLElement {
     ann.done = true;
     clearTimeout(ann.timer);
     this._annUnsub(ann);
+    if (this._annc === ann) this._stopAudio();   // früh gestartete Ansage, die nicht mehr kommt
     const r = ann.ring;
     if (this._ring === r && !r.over && !r.mute && r.until > Date.now()) this._toneOn(r); else this._rcIdle();
   }
