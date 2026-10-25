@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.2.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
+/* Family Planner custom cards v3.3.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -59,6 +59,47 @@
     haZeit: d => {
       const p = n => String(n).padStart(2, "0"), o = Math.round(-d.getTimezoneOffset()), a = Math.abs(o);
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${o < 0 ? "-" : "+"}${p(Math.floor(a / 60))}:${p(a % 60)}`;
+    },
+    // Uhrzeit aus Eingabefeldern (Datum + "HH:MM") -> Date. Anders als new Date(y, mo, d, h, mi) eindeutig
+    // in der doppelten Stunde beim Ende der Sommerzeit (Wien: 02:00-02:59 gibt es zweimal): JavaScript nimmt
+    // dort immer das erste Vorkommen (Sommerzeit), ein Eintrag aus der winterlichen Stunde rutschte beim
+    // Speichern - auch ohne Aenderung - eine Stunde nach vorn. mo ist 0-basiert wie bei Date, d/h/mi duerfen
+    // ueberlaufen (d + 1 = Folgetag). s (Sekunden) ist optional und ist 0, wenn nichts gegeben ist.
+    // Gibt es zwei passende Zeitpunkte, entscheidet ref (Date oder ms) - aber nur, wenn er in der Naehe liegt
+    // (hoechstens 12 h), sonst gilt die Regel ohne ref:
+    //   - Normal (Ende eines neuen Eintrags, ref = Beginn): der erste, der nicht vor ref liegt, also ein Ende nach dem
+    //     Beginn - auch ueber die Umstellung hinweg (Beginn 02:50 Sommerzeit, Ende 02:05 -> Winterzeit). Liegen beide
+    //     vor ref, der spaetere. Ist ref selbst einer der beiden Zeitpunkte, bleibt es dieser.
+    //   - wieRef = true (Bearbeiten, ref = urspruenglicher Zeitpunkt des Eintrags): der mit demselben Offset wie ref.
+    //     Ein unveraendert gespeicherter Eintrag bleibt exakt gleich, und wer einen Eintrag aus der winterlichen
+    //     Stunde nur um die Minuten verschiebt, bleibt im Winter.
+    //   - Ohne ref: der spaetere der beiden, wenn er nicht in der Zukunft liegt, sonst der fruehere. Wer nachtraegt,
+    //     meint damit die Stunde, die gerade vorbei ist.
+    // Luecke beim Beginn der Sommerzeit (02:00-02:59 gibt es nicht): bleibt beim Verhalten von Date, also die Zeit
+    // eine Stunde spaeter (02:30 -> 03:30). Eindeutige Zeiten kommen wie von new Date unveraendert zurueck.
+    ortZeit: (y, mo, d, h, mi, ref, s, wieRef) => {
+      const t0 = new Date(y, mo, d, h, mi, s || 0, 0);
+      if (isNaN(t0)) return t0;
+      const wand = x => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate(), x.getHours(), x.getMinutes(), x.getSeconds());
+      const W = wand(t0), kand = new Set([+t0]);
+      // Offsets kurz davor und danach ausprobieren (getTimezoneOffset: Minuten westlich von UTC, also UTC = Wand + Offset).
+      for (const dt of [-86400000, 86400000]) {
+        const c = W + new Date(W + dt).getTimezoneOffset() * 60000;
+        if (wand(new Date(c)) === W) kand.add(c);
+      }
+      const k = [...kand].sort((p, q) => p - q);
+      if (k.length < 2) return new Date(k[0]);
+      const a = k[0], b = k[k.length - 1];
+      const r = ref && typeof ref.getTime === "function" ? ref.getTime() : typeof ref === "number" ? ref : NaN;
+      if (isFinite(r) && Math.min(Math.abs(a - r), Math.abs(b - r)) <= 12 * 3600000) {
+        if (wieRef) {
+          const o = new Date(r).getTimezoneOffset();
+          if (new Date(b).getTimezoneOffset() === o) return new Date(b);
+          if (new Date(a).getTimezoneOffset() === o) return new Date(a);
+        }
+        return new Date(a >= r ? a : b);
+      }
+      return new Date(b <= Date.now() ? b : a);
     },
   };
   // In dasselbe Objekt hineinschreiben, nicht ersetzen: Karten der anderen
@@ -1002,7 +1043,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v2.12 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
+/* ===== family-calendar-card v2.13 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1669,16 +1710,26 @@ class FamilyCalendarCard extends HTMLElement {
         const nd = new Date(d2 + "T00:00:00"); nd.setDate(nd.getDate() + 1);
         endDate = iso(nd);
       } else {
-        let v = box.querySelector(".fcc-von").value || "09:00";
-        let b = box.querySelector(".fcc-bis").value || v;
+        const v = box.querySelector(".fcc-von").value || "09:00";
+        const b = box.querySelector(".fcc-bis").value || v;
+        // Datum + "HH:MM" -> Date. In der doppelten Stunde beim Ende der Sommerzeit (02:00-02:59) gibt es zwei Zeitpunkte:
+        // beim Bearbeiten gilt der urspruengliche Zeitpunkt als Bezug (ein unveraendert gespeicherter Termin bleibt exakt gleich,
+        // auch einer, der ueber die Umstellung geht), beim Neuanlegen liegt das Ende nach dem Beginn. Ein ganztaegiger
+        // Termin hat keine Uhrzeit, die als Bezug taugt.
+        const zeit = (ds, hm, ref, wie) => {
+          const dp = String(ds).split("-").map(Number), tp = String(hm).split(":").map(Number);
+          return U.ortZeit(dp[0], dp[1] - 1, dp[2], tp[0], tp[1] || 0, ref, 0, wie);
+        };
+        const alt = edit && !it.allDay;
+        const sD = zeit(d, v, alt ? it.start : undefined, alt);
+        let eD = zeit(d2, b, alt ? it.end : sD, alt);
         // Nur innerhalb desselben Tages muss das Ende nach dem Beginn liegen;
         // ueber Mitternacht hinweg ist eine kleinere Uhrzeit voellig richtig.
-        if (d2 === d && b <= v) {
-          const bd = new Date(d + "T" + v + ":00"); const day0 = bd.getDate();
-          bd.setMinutes(bd.getMinutes() + 60);
-          b = bd.getDate() !== day0 ? "23:59" : pad(bd.getHours()) + ":" + pad(bd.getMinutes());
+        if (d2 === d && eD <= sD) {
+          const plus = new Date(+sD + 3600000);
+          eD = iso(plus) !== d ? zeit(d, "23:59", sD) : plus;
         }
-        startDT = U.haZeit(new Date(d + "T" + v + ":00")); endDT = U.haZeit(new Date(d2 + "T" + b + ":00"));
+        startDT = U.haZeit(sD); endDT = U.haZeit(eD);
       }
       close();
       const refresh = () => this._maybeFetch(true);
@@ -5243,7 +5294,7 @@ if (!customElements.get("dobby-clock-card")) {
   window.customCards.push({ type: "dobby-clock-card", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card v12 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card v13 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -5829,11 +5880,13 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
     mark();
     return () => Math.round(Number(inp.value) || 0);
   }
-  // Uhrzeit auf das Datum eines Bezugstags setzen
-  _at(basis, hhmm) {
+  // Uhrzeit auf das Datum eines Bezugstags setzen. o.tage verschiebt um ganze Kalendertage (1 = Folgetag),
+  // o.ref und o.wie entscheiden in der doppelten Stunde beim Ende der Sommerzeit, welche der beiden Zeiten gemeint ist
+  // (siehe U.ortZeit): beim Bearbeiten ref = ursprünglicher Zeitpunkt mit wie, beim Ende eines neuen Eintrags ref = Beginn.
+  _at(basis, hhmm, o) {
+    o = o || {};
     const [h, m] = String(hhmm || "").split(":").map(Number);
-    const d = new Date(basis); d.setHours(h || 0, m || 0, 0, 0);
-    return d;
+    return U.ortZeit(basis.getFullYear(), basis.getMonth(), basis.getDate() + (o.tage || 0), h || 0, m || 0, o.ref, 0, o.wie);
   }
 
   _openBottle() {
@@ -5849,9 +5902,10 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
     ov.querySelector(".ff-ok").addEventListener("click", async () => {
       const menge = ml();
       if (!menge) { U.toast(this, "Bitte eine Menge angeben"); return; }
-      let start = this._at(jetzt, ov.querySelector(".ff-zeit").value);
+      const zeit = ov.querySelector(".ff-zeit").value;
+      let start = this._at(jetzt, zeit);
       // Eine Uhrzeit nach „jetzt" meint gestern Abend — nachts trägt man nach.
-      if (start - jetzt > 5 * 60000) start.setDate(start.getDate() - 1);
+      if (start - jetzt > 5 * 60000) start = this._at(jetzt, zeit, { tage: -1 });
       const end = new Date(start.getTime() + 60000);
       this._closeOv();
       if (await this._create("flasche", start, end, "", menge)) this._load();
@@ -5886,10 +5940,11 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
     ov.querySelector(".ff-cancel").addEventListener("click", () => this._closeOv());
     ov.querySelector(".ff-ok").addEventListener("click", async () => {
       const basis = new Date(jetzt); if (tag === "gestern") basis.setDate(basis.getDate() - 1);
+      const bis = ov.querySelector(".ff-bis").value;
       const start = this._at(basis, ov.querySelector(".ff-von").value);
-      const end = this._at(basis, ov.querySelector(".ff-bis").value);
+      let end = this._at(basis, bis, { ref: start });   // ref = Beginn: das Ende liegt nach dem Beginn, auch über die Zeitumstellung
       // Über Mitternacht: ein Ende vor dem Beginn liegt am Folgetag.
-      if (end <= start) end.setDate(end.getDate() + 1);
+      if (end <= start) end = this._at(basis, bis, { ref: start, tage: 1 });
       if (start - jetzt > 5 * 60000) { U.toast(this, "Der Beginn liegt in der Zukunft – Tag prüfen"); return; }
       if (end - start > 3 * 3600000) { U.toast(this, "Länger als 3 Stunden – Zeiten prüfen"); return; }
       if (end - jetzt > 5 * 60000) end.setTime(Math.max(start.getTime() + 60000, jetzt.getTime()));
@@ -5937,13 +5992,15 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
       let start, end;
       if (flasche) {
         if (!ml()) { U.toast(this, "Bitte eine Menge angeben"); return; }
-        start = this._at(e.start, ov.querySelector(".ff-zeit").value);
+        start = this._at(e.start, ov.querySelector(".ff-zeit").value, { ref: e.start, wie: true });
         end = new Date(start.getTime() + 60000);
       } else {
-        start = this._at(e.start, ov.querySelector(".ff-von").value);
-        end = this._at(e.start, ov.querySelector(".ff-bis").value);
+        // ref = ursprünglicher Beginn/Ende: ein unverändert gespeicherter Eintrag bleibt exakt gleich, auch in der doppelten Stunde.
+        const bis = ov.querySelector(".ff-bis").value;
+        start = this._at(e.start, ov.querySelector(".ff-von").value, { ref: e.start, wie: true });
+        end = this._at(e.start, bis, { ref: e.end, wie: true });
         // Über Mitternacht: ein Ende vor dem Beginn liegt am Folgetag.
-        if (end <= start) end.setDate(end.getDate() + 1);
+        if (end <= start) end = this._at(e.start, bis, { ref: e.end, wie: true, tage: 1 });
       }
       this._closeOv();
       if (await this._update(e, e.typ, start, end, seite, flasche ? ml() : 0)) this._load();
@@ -6487,7 +6544,7 @@ if (!customElements.get("fp-weight-card")) {
 }
 })();
 
-/* ===== fp-diaper-card v5 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
+/* ===== fp-diaper-card v6 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
 // Ein Eintrag = ein kurzer Termin im eigenen Kalender: Titel "Windel nass",
 // Beschreibung {"typ":"windel","art":"nass|voll|beides"}. Nicht in den
 // Stillkalender schreiben: die 3-h-Erinnerung zählt dort jeden Eintrag als Mahlzeit.
@@ -6517,7 +6574,9 @@ class FpDiaperCard extends HTMLElement {
   _hmDauer(ms) { const m = Math.max(0, Math.floor(ms / 60000)); return `${Math.floor(m / 60)}:${this._p(m % 60)} h`; }
   _artText(a) { return a === "beides" ? "nass + voll" : a; }
   _artIcon(a) { return a === "beides" ? "💧💩" : a === "voll" ? "💩" : "💧"; }
-  _at(basis, hhmm) { const [h, m] = String(hhmm || "").split(":").map(Number); const d = new Date(basis); d.setHours(h || 0, m || 0, 0, 0); return d; }
+  // Uhrzeit auf das Datum eines Bezugstags setzen. ref = ursprünglicher Zeitpunkt des Eintrags: in der doppelten Stunde beim Ende der
+  // Sommerzeit bleibt dadurch Sommer- oder Winterzeit, wie sie war (siehe U.ortZeit, wieRef).
+  _at(basis, hhmm, ref) { const [h, m] = String(hhmm || "").split(":").map(Number); return U.ortZeit(basis.getFullYear(), basis.getMonth(), basis.getDate(), h || 0, m || 0, ref, 0, true); }
 
   _parse(ev) {
     const s = new Date((ev.start && (ev.start.dateTime || ev.start.date)) || ev.start);
@@ -6689,7 +6748,7 @@ class FpDiaperCard extends HTMLElement {
       if (await this._delete(e.uid)) this._load();
     });
     ov.querySelector(".fd-ok").addEventListener("click", async () => {
-      const start = this._at(e.start, ov.querySelector(".fd-in").value);
+      const start = this._at(e.start, ov.querySelector(".fd-in").value, e.start);
       this._closeOv();
       if (await this._update(e, start, art)) this._load();
     });
@@ -7758,7 +7817,7 @@ if (!customElements.get("fp-milestone-card")) {
 })();
 
 
-/* ===== fp-baby-overview-card v25 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card v26 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card), Windeln
 // (fp-diaper-card), Gewicht (fp-weight-card) und Meilensteine (fp-milestone-card), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -9292,9 +9351,9 @@ class FpBabyOverviewCard extends HTMLElement {
     mark();
     ov.querySelector(".fo-ok").addEventListener("click", () => {
       if (!(ml > 0 && ml <= 400)) { U.toast(this, "Bitte eine Menge angeben"); return; }
-      const [h, m] = String(ov.querySelector(".fo-zeit").value || "").split(":").map(Number);
-      const start = new Date(); start.setHours(h || 0, m || 0, 0, 0);
-      if (start - Date.now() > 5 * MIN) start.setDate(start.getDate() - 1);   // eine Uhrzeit nach „jetzt“ meint gestern Abend
+      const zeit = ov.querySelector(".fo-zeit").value;
+      let start = this._at(new Date(), zeit);
+      if (start - Date.now() > 5 * MIN) start = this._at(new Date(), zeit, { tage: -1 });   // eine Uhrzeit nach „jetzt“ meint gestern Abend
       this._closeSheet();
       this._eintrag(kid.feeding_calendar, `Fläschchen ${ml} ml`, { typ: "flasche", ml }, start, `${kid.name}: Fläschchen ${ml} ml eingetragen ✓`);
     });
@@ -9317,7 +9376,14 @@ class FpBabyOverviewCard extends HTMLElement {
       <div class="fo-big3 fo-big2">${opt.map(t => `<button type="button" data-nt-typ="${t}" style="--q:${T[t][2]}"><span>${T[t][0]}</span>${T[t][1]}</button>`).join("")}</div>`);
     ov.querySelectorAll("[data-nt-typ]").forEach(b => b.addEventListener("click", () => los(b.dataset.ntTyp)));
   }
-  _at(basis, hhmm) { const [h, m] = String(hhmm || "").split(":").map(Number), d = new Date(basis); d.setHours(h || 0, m || 0, 0, 0); return d; }
+  // Uhrzeit auf das Datum eines Bezugstags setzen. o.tage verschiebt um ganze Kalendertage (1 = Folgetag), o.ref und o.wie entscheiden
+  // in der doppelten Stunde beim Ende der Sommerzeit, welche der beiden Zeiten gemeint ist (siehe U.ortZeit): beim Ändern ref = ursprünglicher
+  // Zeitpunkt mit wie, beim Ende eines neuen Eintrags ref = Beginn.
+  _at(basis, hhmm, o) {
+    o = o || {};
+    const [h, m] = String(hhmm || "").split(":").map(Number);
+    return U.ortZeit(basis.getFullYear(), basis.getMonth(), basis.getDate() + (o.tage || 0), h || 0, m || 0, o.ref, 0, o.wie);
+  }
   _artText(a) { return a === "beides" ? "nass + voll" : a; }
   // Stillen, Fläschchen oder Windel ändern und löschen (e gesetzt) oder nachtragen (e leer, mit Tag Heute/Gestern).
   // Das Datum eines vorhandenen Eintrags bleibt; ein Ende vor dem Beginn heißt über Mitternacht.
@@ -9367,8 +9433,12 @@ class FpBabyOverviewCard extends HTMLElement {
       if (typ === "stillen") {
         const vz = ov.querySelector(".fo-von").value, bz = ov.querySelector(".fo-bis").value;
         if (!vz || !bz) { U.toast(this, "Bitte Beginn und Ende angeben"); return; }
-        a = this._at(basis, vz); b = this._at(basis, bz);
-        if (b <= a) b.setDate(b.getDate() + 1);   // über Mitternacht
+        // Ändern: ref = ursprünglicher Beginn/Ende, ein unverändert gespeicherter Eintrag bleibt exakt gleich (auch in der doppelten Stunde
+        // beim Ende der Sommerzeit). Neu: das Ende liegt nach dem Beginn.
+        a = this._at(basis, vz, neu ? undefined : { ref: e.start, wie: true });
+        const ob = neu ? { ref: a } : { ref: e.end, wie: true };
+        b = this._at(basis, bz, ob);
+        if (b <= a) b = this._at(basis, bz, Object.assign({ tage: 1 }, ob));   // über Mitternacht
         if (a - Date.now() > 5 * MIN) { U.toast(this, "Der Beginn liegt in der Zukunft – Tag prüfen"); return; }
         if (b - a > 3 * STD) { U.toast(this, "Länger als 3 Stunden – Zeiten prüfen"); return; }
         if (neu && b - Date.now() > 5 * MIN) b = new Date(Math.max(+a + MIN, Date.now()));
@@ -9377,7 +9447,7 @@ class FpBabyOverviewCard extends HTMLElement {
         const zt = ov.querySelector(".fo-zeit").value;
         if (!zt) { U.toast(this, "Bitte die Uhrzeit angeben"); return; }
         if (typ === "flasche" && !(ml > 0 && ml <= 400)) { U.toast(this, "Bitte eine Menge angeben"); return; }
-        a = this._at(basis, zt);
+        a = this._at(basis, zt, neu ? undefined : { ref: e.start, wie: true });
         if (a - Date.now() > 5 * MIN) { U.toast(this, "Die Uhrzeit liegt in der Zukunft – Tag prüfen"); return; }
         b = new Date(+a + MIN);   // Fläschchen und Windel sind Punkte: eine Minute ab der Uhrzeit
         p = typ === "flasche" ? { ml } : { art };
@@ -9533,10 +9603,12 @@ class FpBabyOverviewCard extends HTMLElement {
     ov.querySelector(".fo-ok").addEventListener("click", async () => {
       const ds = ov.querySelector(".fo-vd").value, vz = ov.querySelector(".fo-vz").value, bz = ov.querySelector(".fo-bz").value;
       if (!ds || !vz || !bz) { U.toast(this, "Bitte Datum und beide Uhrzeiten angeben"); return; }
-      const a = this._day(ds), [vh, vmi] = vz.split(":").map(Number), [bh, bm] = bz.split(":").map(Number);
-      a.setHours(vh, vmi || 0, 0, 0);
-      const b = new Date(a); b.setHours(bh, bm || 0, 0, 0);
-      if (b <= a) b.setDate(b.getDate() + 1);   // über Mitternacht
+      // Ändern: ref = ursprünglicher Beginn/Ende (in der doppelten Stunde beim Ende der Sommerzeit bleibt alles, wie es war); neu: Ende nach Beginn.
+      const dag = this._day(ds);
+      const a = this._at(dag, vz, e ? { ref: e.start, wie: true } : undefined);
+      const ob = e ? { ref: e.end, wie: true } : { ref: a };
+      let b = this._at(dag, bz, ob);
+      if (b <= a) b = this._at(dag, bz, Object.assign({ tage: 1 }, ob));   // über Mitternacht
       if (b - Date.now() > 5 * MIN) { U.toast(this, "Das Aufwachen liegt in der Zukunft"); return; }
       if (b - a > 16 * STD) { U.toast(this, "Länger als 16 Stunden – bitte die Zeiten prüfen"); return; }
       const ziel = e ? [kid] : key === "*" ? kids : [this._kid(key)];
@@ -10127,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card")) {
 }
 })();
 
-/* ===== fp-assistant-card v1 (Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card v2 (position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10138,6 +10210,8 @@ const U = window.__fpUtils;
 // Speicher-Schlüssel tragen deshalb den Namen "fp-pip-dock" (in der Beta mit Endung), mehr teilen sich beide nicht.
 const TAG = "fp-pip-dock";
 const STORE = "fp-pip-dock:";
+// Schalter "Aktivierungswort" je Gerät (Beta: fp-pip-wake-beta:), Vorgabe aus.
+const WAKE_STORE = TAG.replace("-dock", "-wake") + ":";
 const EVT = "fp_pip_karte";
 const SUGG = [
   { icon: "📅", text: "Was steht heute an?" },
@@ -10168,6 +10242,17 @@ const ICON = {
   stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor"/></svg>',
 };
 const GO_LABEL = { mic: "Sprechen", send: "Senden", stop: "Aufnahme beenden" };
+// Hinweise am Schalter "Aktivierungswort" bei einem Fehler
+const WAKE_ERR = {
+  model: "Das Modell für das Aktivierungswort konnte nicht geladen werden.",
+  ort: "Die Erkennung konnte nicht geladen werden (Internet?).",
+  perm: "Das Mikrofon ist nicht erlaubt.",
+  mic: "Das Mikrofon ist nicht verfügbar.",
+  run: "Die Erkennung ist ausgefallen.",
+};
+const WAKE_QUIET = 1200;    // so lange nach Antwort und Vorlesen noch taub (Nachhall)
+const WAKE_IDLE = 30000;    // per Weckwort geöffnetes Fenster schließt sich so lange nach der Antwort von selbst
+const CHIME_MS = 170;       // Länge des Erkennungstons; erst danach geht Ton an Home Assistant
 const PIP = '<span class="pip st-idle"><span class="ring r1"></span><span class="ring r2"></span><span class="ball"><span class="eye"></span><span class="eye"></span></span></span>';
 // AudioWorklet für die Aufnahme: sammelt je 2048 Werte und reicht sie an die Seite weiter.
 const WORKLET = 'class P extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(2048);this.n=0;}'
@@ -10190,7 +10275,218 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 const pathPart = () => { try { return location.pathname.split("/").filter(Boolean)[0] || ""; } catch (e) { return ""; } };
 const loadCfg = p => { try { const s = localStorage.getItem(STORE + p); return s ? JSON.parse(s) : null; } catch (e) { return null; } };
 const saveCfg = (p, c) => { try { const s = JSON.stringify(c); if (localStorage.getItem(STORE + p) !== s) localStorage.setItem(STORE + p, s); } catch (e) {} };
+
+// wake-engine:start (Audio und Aktivierungswort-Erkennung ohne Bezug zur Oberfläche; der Test zieht genau diesen Block heraus)
 const toI16 = x => { const s = x > 1 ? 1 : x < -1 ? -1 : x; return s < 0 ? Math.round(s * 32768) : Math.round(s * 32767); };
+// Auf 16 kHz herunterrechnen (Mitteln) und in 16-Bit-Zahlen wandeln. st = { ratio, acc, cnt, ph } wird fortgeschrieben.
+function downsample(st, f) {
+  const r = st.ratio;
+  if (r <= 1.0001) {
+    const out = new Int16Array(f.length);
+    for (let i = 0; i < f.length; i++) out[i] = toI16(f[i]);
+    return out;
+  }
+  const buf = new Int16Array(Math.ceil(f.length / r) + 2);
+  let n = 0, acc = st.acc, cnt = st.cnt, ph = st.ph;
+  for (let i = 0; i < f.length; i++) {
+    acc += f[i]; cnt++; ph += 1;
+    if (ph >= r) { buf[n++] = toI16(acc / cnt); acc = 0; cnt = 0; ph -= r; }
+  }
+  st.acc = acc; st.cnt = cnt; st.ph = ph;
+  return buf.subarray(0, n);
+}
+
+// Aktivierungswort: openWakeWord im Browser. Dieselbe Kette wie openwakeword/utils.py (AudioFeatures, streaming) und model.py:
+// Audio in Blöcken zu 1280 Werten (80 ms, 16 kHz, Int16-Maßstab) -> melspectrogram.onnx (letzte 1280 + 480 Werte, danach x/10+2)
+// -> embedding_model.onnx (die letzten 76 Mel-Frames ergeben je Block ein 96er-Embedding) -> Weckwort-Modell (die letzten
+// 16 Embeddings, [1,16,96]) -> Wahrscheinlichkeit. onnxruntime-web kommt aus einem festen Ordner von jsDelivr, einmal pro Seite.
+const ORT_VER = "1.20.1";
+const ORT_DIR = "https://cdn.jsdelivr.net/npm/onnxruntime-web@" + ORT_VER + "/dist/";
+const WK_CHUNK = 1280;
+const WAKE_SKIP = 5;   // die ersten Blöcke nach dem Start zählen nicht (wie im Original)
+const wkErr = (e, k) => { e = e instanceof Error ? e : new Error(String(e)); e.wk = k; return e; };
+function loadOrt() {
+  if (window.ort && window.ort.InferenceSession) return Promise.resolve(window.ort);
+  if (!window.__fpOrtLoad) {
+    const p = window.__fpOrtLoad = new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = ORT_DIR + "ort.min.js";
+      s.onload = () => (window.ort && window.ort.InferenceSession ? res(window.ort) : rej(new Error("ort")));
+      s.onerror = () => { s.remove(); rej(new Error("ort laden")); };
+      document.head.appendChild(s);
+    }).then(ort => {
+      // ohne crossOriginIsolated (iOS) gibt es nur einen Thread; die WASM-Dateien liegen im selben Ordner
+      try { ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false; ort.env.wasm.wasmPaths = ORT_DIR; ort.env.logLevel = "error"; } catch (e) {}
+      return ort;
+    });
+    p.catch(() => { if (window.__fpOrtLoad === p) window.__fpOrtLoad = null; });
+  }
+  return window.__fpOrtLoad.catch(e => { throw wkErr(e, "ort"); });
+}
+const wkSess = {};
+function loadModel(url) {
+  if (!wkSess[url]) {
+    const p = wkSess[url] = (async () => {
+      const ort = await loadOrt();
+      try {
+        const r = await fetch(url, { credentials: "same-origin" });
+        if (!r.ok) throw new Error("HTTP " + r.status + " " + url);
+        return await ort.InferenceSession.create(new Uint8Array(await r.arrayBuffer()), { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
+      } catch (e) { throw wkErr(e, "model"); }
+    })();
+    p.catch(() => { if (wkSess[url] === p) delete wkSess[url]; });
+  }
+  return wkSess[url];
+}
+// Wie viele Embeddings das Weckwort-Modell erwartet ([1, n, 96]): aus den Metadaten (neuere ORT), sonst durch Probieren.
+async function wakeFrames(ort, s) {
+  try {
+    const m = s.inputMetadata, d = m && (Array.isArray(m) ? m[0] : m[s.inputNames[0]]);
+    if (d && d.shape && d.shape[1] > 0) return d.shape[1];
+  } catch (e) {}
+  let n = 16;
+  for (let t = 0; t < 2; t++) {
+    try { await s.run({ [s.inputNames[0]]: new ort.Tensor("float32", new Float32Array(n * 96), [1, n, 96]) }); return n; }
+    catch (e) {
+      const m = /Expected:?\s*(\d+)/i.exec(String((e && e.message) || e));
+      if (!m || +m[1] === n) throw wkErr(e, "model");
+      n = +m[1];
+    }
+  }
+  throw wkErr(new Error("Eingabeform"), "model");
+}
+// Wie im Original startet der Embedding-Puffer mit Embeddings aus Rauschen (4 s dort, hier 3 s); einmal berechnet, bei jedem Zurücksetzen benutzt.
+const wkNoise = {};
+function noiseFeats(ort, mel, emb, key) {
+  if (!wkNoise[key]) {
+    const p = wkNoise[key] = (async () => {
+      const n = 48000, x = new Float32Array(n);
+      for (let i = 0; i < n; i++) x[i] = Math.floor(Math.random() * 2000 - 1000);
+      const mo = (await mel.run({ [mel.inputNames[0]]: new ort.Tensor("float32", x, [1, n]) }))[mel.outputNames[0]];
+      const T = mo.dims[2], spec = new Float32Array(T * 32);
+      for (let i = 0; i < spec.length; i++) spec[i] = mo.data[i] / 10 + 2;
+      const starts = [];
+      for (let s = 0; s + 76 <= T; s += 8) starts.push(s);
+      const b = new Float32Array(starts.length * 76 * 32);
+      starts.forEach((s, i) => b.set(spec.subarray(s * 32, (s + 76) * 32), i * 76 * 32));
+      const eo = (await emb.run({ [emb.inputNames[0]]: new ort.Tensor("float32", b, [starts.length, 76, 32, 1]) }))[emb.outputNames[0]];
+      return starts.map((s, i) => eo.data.slice(i * 96, (i + 1) * 96));
+    })();
+    p.catch(() => { if (wkNoise[key] === p) delete wkNoise[key]; });
+  }
+  return wkNoise[key];
+}
+// w = { model, base, threshold, patience }. push() nimmt 16-kHz-Int16-Audio in beliebiger Länge; onwake(score) kommt, wenn
+// mindestens `patience` Blöcke in Folge die Schwelle erreichen. Nach reset() (oder dispose()) werden Rechenreste verworfen.
+class WakeEngine {
+  constructor(w) {
+    this.w = w;
+    this.onwake = null;
+    this.onscore = null;
+    this.onerror = null;
+    this.ort = this.mel = this.emb = this.mdl = this.noise = null;
+    this.nf = 16;
+    this.gen = 0;
+    this.busy = false;
+    this._p = null;
+    this._clear();
+  }
+  load() {
+    if (!this._p) {
+      const p = this._p = (async () => {
+        const w = this.w, ort = await loadOrt();
+        const [mel, emb, mdl] = await Promise.all([loadModel(w.base + "melspectrogram.onnx"), loadModel(w.base + "embedding_model.onnx"), loadModel(w.model)]);
+        this.nf = await wakeFrames(ort, mdl);
+        this.noise = await noiseFeats(ort, mel, emb, w.base);
+        this.ort = ort; this.mel = mel; this.emb = emb; this.mdl = mdl;
+        this.reset();
+      })();
+      p.catch(() => { if (this._p === p) this._p = null; });
+    }
+    return this._p;
+  }
+  _clear() {
+    this.q = [];
+    this.acc = new Int16Array(WK_CHUNK);
+    this.an = 0;
+    this.raw = new Float32Array(0);
+    this.mb = [];
+    for (let i = 0; i < 76; i++) this.mb.push(new Float32Array(32).fill(1));
+    this.fb = this.noise ? this.noise.slice() : [];
+    this.frames = 0;
+    this.run = 0;
+    this.pk = 0;
+  }
+  reset() { this.gen++; this._clear(); }
+  dispose() { this.gen++; this._clear(); this.onwake = this.onscore = this.onerror = null; this.mdl = null; }
+  push(i16) {
+    if (!this.mdl || !i16 || !i16.length) return;
+    for (let i = 0; i < i16.length; i++) {
+      this.acc[this.an++] = i16[i];
+      if (this.an === WK_CHUNK) { this.q.push(this.acc.slice(0)); this.an = 0; }
+    }
+    // Rechnet das Gerät hinterher (über 2 s), die ältesten Blöcke fallen lassen statt immer weiter zu stauen.
+    if (this.q.length > 25) this.q.splice(0, this.q.length - 3);
+    if (!this.busy) this._pump();
+  }
+  async _pump() {
+    this.busy = true;
+    try {
+      while (this.q.length && this.mdl) await this._step(this.q.shift(), this.gen);
+    } catch (e) {
+      this.q = [];
+      if (this.onerror) this.onerror(e);
+    } finally { this.busy = false; }
+  }
+  async _step(c, g) {
+    const ort = this.ort, mk = (d, sh) => new ort.Tensor("float32", d, sh);
+    // Mel-Spektrogramm über die letzten 1280 + 480 Werte (480 = Überlappung wie im Original)
+    const all = new Float32Array(this.raw.length + c.length);
+    all.set(this.raw);
+    all.set(c, this.raw.length);
+    this.raw = all.length > WK_CHUNK + 480 ? all.slice(all.length - WK_CHUNK - 480) : all;
+    const mo = (await this.mel.run({ [this.mel.inputNames[0]]: mk(this.raw, [1, this.raw.length]) }))[this.mel.outputNames[0]];
+    if (g !== this.gen) return;
+    const n = mo.dims[2], d = mo.data;
+    for (let t = 0; t < n; t++) {
+      const r = new Float32Array(32);
+      for (let k = 0; k < 32; k++) r[k] = d[t * 32 + k] / 10 + 2;
+      this.mb.push(r);
+    }
+    if (this.mb.length > 152) this.mb.splice(0, this.mb.length - 152);
+    // die letzten 76 Mel-Frames ergeben ein 96er-Embedding
+    const win = new Float32Array(76 * 32);
+    for (let i = 0; i < 76; i++) win.set(this.mb[this.mb.length - 76 + i], i * 32);
+    const eo = (await this.emb.run({ [this.emb.inputNames[0]]: mk(win, [1, 76, 32, 1]) }))[this.emb.outputNames[0]];
+    if (g !== this.gen) return;
+    this.fb.push(eo.data.slice(0, 96));
+    if (this.fb.length > 64) this.fb.splice(0, this.fb.length - 64);
+    this.frames++;
+    if (this.fb.length < this.nf) return;
+    const f = new Float32Array(this.nf * 96);
+    for (let i = 0; i < this.nf; i++) f.set(this.fb[this.fb.length - this.nf + i], i * 96);
+    const so = (await this.mdl.run({ [this.mdl.inputNames[0]]: mk(f, [1, this.nf, 96]) }))[this.mdl.outputNames[0]];
+    if (g !== this.gen) return;
+    this._score(this.frames <= WAKE_SKIP ? 0 : so.data[0]);
+  }
+  _score(s) {
+    if (this.onscore) this.onscore(s);
+    const w = this.w;
+    if (s >= w.threshold) { this.run++; if (s > this.pk) this.pk = s; } else { this.run = 0; this.pk = 0; }
+    if (this.run >= w.patience) {
+      const pk = this.pk;
+      this.run = 0; this.pk = 0;
+      if (this.onwake) this.onwake(pk);
+    }
+  }
+}
+// wake-engine:end
+const MIC = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
+// AudioContext: wenn möglich fest mit 16 kHz (dann entfällt das Herunterrechnen), sonst mit der Rate des Geräts.
+const mkCtx = fixed => {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  try { return fixed ? new AC({ sampleRate: 16000 }) : new AC(); } catch (e) { return null; }
+};
 
 function normCfg(c) {
   c = c || {};
@@ -10204,13 +10500,33 @@ function normCfg(c) {
     lift = {};
     for (const k of Object.keys(c.lift)) { const v = Number(c.lift[k]); if (isFinite(v) && v > 0) lift[k] = Math.min(v, 400); }
   }
+  const name = String(c.name || "").trim() || "Pip";
+  // wake_word: Aktivierungswort im Browser. Ohne model gibt es die Funktion nicht; base = Ordner mit
+  // melspectrogram.onnx und embedding_model.onnx (Vorgabe: der Ordner von model).
+  let wake = null;
+  const w = c.wake_word;
+  if (w && typeof w === "object" && String(w.model || "").trim()) {
+    const model = String(w.model).trim();
+    let base = String(w.base || "").trim() || model.replace(/[^/]*$/, "");
+    if (base && !base.endsWith("/")) base += "/";
+    const th = Number(w.threshold), pa = Math.round(Number(w.patience));
+    wake = {
+      name: String(w.name || "").trim() || "Hey " + name,
+      model,
+      base,
+      threshold: isFinite(th) && th > 0 && th < 1 ? th : 0.5,
+      patience: isFinite(pa) && pa >= 1 ? Math.min(pa, 10) : 2,
+    };
+  }
   return {
-    name: String(c.name || "").trim() || "Pip",
+    name,
     pipeline_id: String(c.pipeline_id || "").trim(),
     speak: c.speak === "always" || c.speak === "never" ? c.speak : "auto",
     suggestions: sug,
     dashboard: String(c.dashboard || "").replace(/^\/+|\/+$/g, "").trim(),
     lift,
+    position: c.position === "left" ? "left" : "right",
+    wake_word: wake,
   };
 }
 // Zeitpunkt als "JJJJ-MM-TT HH:MM:SS" in der Zeitzone von Home Assistant.
@@ -10255,6 +10571,24 @@ function copyTheme(from) {
     }
   } catch (e) {}
 }
+// Linker Rand des Inhaltsbereichs, also rechts neben der HA-Seitenleiste (ausgeklappt ca. 256 px, eingeklappt ca. 56 px,
+// im Kiosk-Modus und am Handy 0). Gemessen am Panel, sonst am rechten Rand der Seitenleiste; el = Element zum Beobachten.
+function contentEdge() {
+  let x = 0, el = null;
+  try {
+    const ha = document.querySelector("home-assistant");
+    const main = ha && ha.shadowRoot && ha.shadowRoot.querySelector("home-assistant-main");
+    const mr = main && main.shadowRoot;
+    if (mr) {
+      const panel = mr.querySelector("partial-panel-resolver") || mr.querySelector("ha-panel-lovelace");
+      const side = mr.querySelector("ha-sidebar");
+      if (panel) { el = panel; x = panel.getBoundingClientRect().left; }
+      else if (side) { el = side; const r = side.getBoundingClientRect(); x = r.width > 0 ? r.right : 0; }
+    }
+  } catch (e) { x = 0; }
+  x = Math.round(x);
+  return { x: x > 0 && x < window.innerWidth * 0.5 ? x : 0, el };
+}
 function ensureDock() {
   if (dock) return dock;
   if (!document.body) return null;
@@ -10271,7 +10605,7 @@ function syncDock() {
   const cfg = loadCfg(pathPart());
   if (cfg) {
     const d = ensureDock();
-    if (d && typeof d.configure === "function") { d.configure(normCfg(cfg)); d.setVisible(true); d.applyLift(); }
+    if (d && typeof d.configure === "function") { d.configure(normCfg(cfg)); d.setVisible(true); d.applyLift(); d.applyPos(); }
   } else if (dock && typeof dock.setVisible === "function") dock.setVisible(false);
 }
 
@@ -10330,9 +10664,14 @@ const CSS = `
 button{font:inherit;color:inherit;}
 
 /* Figur */
-.fig{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px) + var(--lift,0px));z-index:6;width:60px;height:60px;padding:0;margin:0;border:0;border-radius:50%;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:opacity .2s ease,transform .2s ease,bottom .25s ease;}
+/* --gx = linker Rand des Inhaltsbereichs (rechts neben der HA-Seitenleiste), nur bei position: left gesetzt */
+.fig{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px) + var(--lift,0px));z-index:6;width:60px;height:60px;padding:0;margin:0;border:0;border-radius:50%;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:opacity .2s ease,transform .2s ease,bottom .25s ease,left .2s ease;}
+.fig.left{right:auto;left:calc(16px + var(--gx,0px) + env(safe-area-inset-left,0px));}
 .fig.gone{opacity:0;transform:scale(.6);pointer-events:none;visibility:hidden;transition:opacity .2s ease,transform .2s ease,visibility 0s linear .2s;}
 .fig:focus-visible{outline:3px solid var(--a);outline-offset:4px;}
+.ear{position:absolute;right:3px;bottom:3px;width:13px;height:13px;border-radius:50%;background:var(--a);border:2px solid var(--bg);opacity:0;transform:scale(.5);transition:opacity .25s ease,transform .25s ease;pointer-events:none;}
+.fig.wk-on .ear{opacity:1;transform:none;animation:pp-ear 3.4s ease-in-out infinite;}
+.fig.wk-wait .ear{opacity:1;transform:none;background:var(--bg);border-color:var(--a);}
 .pip{position:relative;display:block;width:100%;height:100%;--rs:1.9;}
 .pip.mini{width:44px;height:44px;flex:none;--rs:1.45;}
 .ball{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:17%;border-radius:50%;background:radial-gradient(circle at 34% 28%,color-mix(in srgb,var(--a) 30%,var(--bg)) 0,color-mix(in srgb,var(--a) 65%,var(--bg)) 48%,var(--a) 100%);box-shadow:0 6px 18px color-mix(in srgb,var(--a) 45%,transparent);}
@@ -10354,12 +10693,14 @@ button{font:inherit;color:inherit;}
 @keyframes pp-look{0%,100%{translate:-45% 0;}50%{translate:45% 0;}}
 @keyframes pp-pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.09);}}
 @keyframes pp-dot{30%{opacity:1;transform:translateY(-3px);}}
+@keyframes pp-ear{0%,100%{opacity:1;}50%{opacity:.4;}}
 @keyframes pp-rec{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--a) 50%,transparent);}100%{box-shadow:0 0 0 12px transparent;}}
 
 /* Gesprächs-Panel */
 .panel{position:fixed;z-index:7;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--tx);border:1px solid var(--dv);box-shadow:0 18px 50px color-mix(in srgb,var(--tx) 24%,transparent);visibility:hidden;transition:transform .28s cubic-bezier(.2,.9,.3,1),visibility 0s linear .28s;}
 @media (min-width:700px){
-  .panel{top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(400px,calc(100vw - 24px));border-radius:22px;transform:translateX(calc(100% + 40px));}
+  .panel{top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(400px,calc(100vw - 24px - var(--gx,0px)));border-radius:22px;transform:translateX(calc(100% + 40px));}
+  .panel.left{right:auto;left:calc(12px + var(--gx,0px) + env(safe-area-inset-left,0px));transform:translateX(calc(-100% - var(--gx,0px) - 40px));}
   .bar{padding-bottom:12px;}
 }
 @media (max-width:699.98px){
@@ -10373,6 +10714,22 @@ button{font:inherit;color:inherit;}
 .ib{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:50%;background:var(--s1);color:var(--tx);font-size:1.15rem;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 @media (hover:hover){.ib:hover{background:var(--s2);}}
 .ib:focus-visible,.chip:focus-visible,.go:focus-visible,.in:focus-visible,.ac button:focus-visible{outline:2px solid var(--a);outline-offset:2px;}
+
+/* Schalter "Aktivierungswort" */
+.wk{flex:none;display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--dv);}
+.wk[hidden]{display:none;}
+.wk-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;}
+.wk-l{font-size:.9rem;font-weight:700;line-height:1.25;}
+.wk-h{font-size:.78rem;line-height:1.3;color:var(--tx2);}
+.wk-h:empty{display:none;}
+.wk.err .wk-h{color:var(--error-color,var(--tx));font-weight:600;}
+.sw{flex:none;position:relative;width:48px;height:28px;padding:0;border:0;border-radius:999px;background:var(--s2);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .2s ease;}
+.sw::after{content:"";position:absolute;inset:-9px -4px;}
+.sw .kn{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--bg);box-shadow:0 1px 3px color-mix(in srgb,var(--tx) 30%,transparent);transition:transform .2s ease;}
+.sw[aria-checked="true"]{background:var(--a);}
+.sw[aria-checked="true"] .kn{transform:translateX(20px);}
+.sw:disabled{opacity:.45;cursor:default;}
+.sw:focus-visible{outline:2px solid var(--a);outline-offset:2px;}
 
 /* Verlauf */
 .log{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:14px 14px 6px;display:flex;flex-direction:column;gap:10px;}
@@ -10415,8 +10772,8 @@ button{font:inherit;color:inherit;}
 .go.rec{animation:pp-rec 1.2s ease-out infinite;}
 
 @media (prefers-reduced-motion:reduce){
-  .ball,.eye,.ring,.dots i,.go.rec{animation:none !important;}
-  .panel,.fig,.go{transition:none !important;}
+  .ball,.eye,.ring,.dots i,.go.rec,.fig .ear{animation:none !important;}
+  .panel,.fig,.go,.sw,.sw .kn,.ear{transition:none !important;}
   .st-listen .r1{opacity:.55;transform:scale(1.25);}
 }
 `;
@@ -10442,23 +10799,48 @@ class FpPipDock extends HTMLElement {
     this._noteHttps = false;
     this._unlocked = false;
     this._a = null;
+    // Seite: linker Rand des Inhaltsbereichs beobachten (nur bei position: left)
+    this._edgeEl = null;
+    this._edgeRO = null;
+    this._edgeRaf = 0;
+    this._edgeT = null;
+    this._edgeTry = 0;
+    this._dockedSig = "";
+    // Aktivierungswort
+    this._wakeOn = false;      // Schalter an diesem Gerät
+    this._wk = { st: "off", why: "" };   // off | load | wait (Tipp nötig) | on | err
+    this._eng = null;          // Erkennung (WakeEngine)
+    this._wm = null;           // offenes Mikrofon fürs Weckwort: { ctx, stream, W, run, live }
+    this._wkTok = 0;
+    this._wkLoading = false;
+    this._wkHold = false;      // zwischen Erkennung und Start der Aufnahme
+    this._wkWas = false;
+    this._wkQuiet = 0;
+    this._wkArmed = false;
+    this._wkTry = 0;
+    this._wkRetry = null;
+    this._wkIdleT = null;
+    this._wakeOpened = false;  // Fenster wurde vom Weckwort geöffnet
     this._kd = e => { if (e.key === "Escape") this._close(); };
     this._vv = () => this._onViewport();
+    this._wkGest = () => this._wakeKick();
     this.attachShadow({ mode: "open" });
     this._build();
+    document.addEventListener("visibilitychange", () => this._wakeSync());
   }
 
   // ---------- Aufbau ----------
   _build() {
     const r = this.shadowRoot;
     r.innerHTML = `<style>${CSS}</style>
-<button class="fig" type="button" aria-label="Pip öffnen">${PIP}</button>
+<button class="fig" type="button" aria-label="Pip öffnen">${PIP}<span class="ear" aria-hidden="true"></span></button>
 <section class="panel" role="dialog" aria-label="Pip">
   <header class="head">${PIP.replace('class="pip st-idle"', 'class="pip mini st-idle"')}
     <div class="who"><b class="nm">Pip</b><span class="stt" role="status">Bereit</span></div>
     <button class="ib" type="button" data-a="new" aria-label="Neues Gespräch" title="Neues Gespräch">↺</button>
     <button class="ib" type="button" data-a="close" aria-label="Schließen" title="Schließen">✕</button>
   </header>
+  <div class="wk" hidden><div class="wk-t"><span class="wk-l"></span><span class="wk-h" role="status"></span></div><button class="sw" type="button" role="switch" aria-checked="false"><span class="kn"></span></button></div>
   <div class="log" role="log" aria-live="polite"></div>
   <div class="chips"></div>
   <div class="bar"><input class="in" type="text" autocomplete="off" enterkeyhint="send" aria-label="Nachricht"><button class="go" type="button" data-m=""></button></div>
@@ -10471,6 +10853,10 @@ class FpPipDock extends HTMLElement {
     this._go = r.querySelector(".go");
     this._nm = r.querySelector(".nm");
     this._stt = r.querySelector(".stt");
+    this._wkRow = r.querySelector(".wk");
+    this._wkLbl = r.querySelector(".wk-l");
+    this._wkHint = r.querySelector(".wk-h");
+    this._wkSw = r.querySelector(".sw");
     this._pips = Array.from(r.querySelectorAll(".pip"));
     this._fig.addEventListener("click", () => this._openPanel());
     r.querySelector(".head").addEventListener("click", e => {
@@ -10490,6 +10876,10 @@ class FpPipDock extends HTMLElement {
       if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); this._sendInput(); }
     });
     this._go.addEventListener("click", () => this._onGo());
+    this._wkSw.addEventListener("click", () => this._wakeToggle());
+    // Wer das Fenster anfasst, will es behalten: dann schließt es sich nach einer Weckwort-Frage nicht von selbst.
+    this._panel.addEventListener("pointerdown", () => this._wakeTouched());
+    this._in.addEventListener("input", () => this._wakeTouched());
     this._renderChips();
     this._renderLog();
     this._syncBtn();
@@ -10508,6 +10898,15 @@ class FpPipDock extends HTMLElement {
     this._panel.setAttribute("aria-label", cfg.name);
     this._renderChips();
     this._applyBusy();
+    // Aktivierungswort: neue Einstellung -> alte Erkennung weg, Schalter dieses Geräts neu lesen
+    if (!prev || JSON.stringify(prev.wake_word) !== JSON.stringify(cfg.wake_word)) {
+      this._wakeOff();
+      if (this._eng) { this._eng.dispose(); this._eng = null; }
+      this._wakeSet("off");
+    }
+    this._wakeOn = !!cfg.wake_word && this._wakeLoad();
+    this._wakeRender();
+    this._wakeSync();
   }
 
   setVisible(v) {
@@ -10515,9 +10914,21 @@ class FpPipDock extends HTMLElement {
     if (v === this._visible) return;
     this._visible = v;
     this.hidden = !v;
-    if (v) this._subs(); else this._teardown();
+    if (v) { this._subs(); this._wakeSync(); } else this._teardown();
   }
-  hassUpdated() { if (this._visible) this._subs(); }
+  hassUpdated() {
+    if (!this._visible) return;
+    this._subs();
+    if (this._cfg.position === "left") {
+      // Seitenleiste ein- oder ausgeklappt? Dann nach der Animation neu messen.
+      const h = getHass(), ds = String(h && h.dockedSidebar);
+      if (ds !== this._dockedSig) {
+        this._dockedSig = ds;
+        setTimeout(() => this.applyPos(), 80);
+        setTimeout(() => this.applyPos(), 500);
+      }
+    }
+  }
   // Figur über eine klebende Aktionsleiste heben (nur schmale Fenster, nur für Seiten aus `lift`).
   applyLift() {
     let px = 0;
@@ -10530,11 +10941,38 @@ class FpPipDock extends HTMLElement {
     } catch (e) {}
     this._fig.style.setProperty("--lift", px + "px");
   }
+  // Figur und Fenster auf die gewählte Seite setzen. Links sitzen sie am Rand des Inhaltsbereichs, nicht über der HA-Seitenleiste.
+  applyPos() {
+    const left = this._cfg.position === "left";
+    this._fig.classList.toggle("left", left);
+    this._panel.classList.toggle("left", left);
+    clearTimeout(this._edgeT);
+    if (!left) { this._edgeWatch(null); this._edgeTry = 0; this.style.removeProperty("--gx"); return; }
+    const e = contentEdge();
+    this.style.setProperty("--gx", e.x + "px");
+    this._edgeWatch(e.el);
+    // Home Assistant noch nicht aufgebaut (Seite direkt neu geladen)? Dann eine Weile später noch einmal messen.
+    if (e.el) this._edgeTry = 0;
+    else if (this._edgeTry++ < 24) this._edgeT = setTimeout(() => this.applyPos(), 500);
+  }
+  _edgeWatch(el) {
+    if (el === this._edgeEl) return;
+    if (this._edgeRO) { try { this._edgeRO.disconnect(); } catch (e) {} this._edgeRO = null; }
+    this._edgeEl = el;
+    if (!el || typeof ResizeObserver !== "function") return;
+    // Die Seitenleiste ändert die Breite des Panels: daran merkt man das Ein- und Ausklappen.
+    this._edgeRO = new ResizeObserver(() => {
+      if (this._edgeRaf) return;
+      this._edgeRaf = requestAnimationFrame(() => { this._edgeRaf = 0; this.applyPos(); });
+    });
+    this._edgeRO.observe(el);
+  }
 
   // Verstecken: Panel zu, Mikrofon und Ton aus, Karten-Abo beenden. Das Gespräch bleibt im Speicher.
   _teardown() {
     this._close();
     this._unsubEvents();
+    this._wakeOff();
   }
 
   _renderChips() {
@@ -10576,6 +11014,7 @@ class FpPipDock extends HTMLElement {
     const wasOpen = this._isOpen;
     this._isOpen = false;
     this._abortMedia();
+    this._wakeTouched();
     if (!wasOpen) return;
     this._panel.classList.remove("open");
     this._fig.classList.remove("gone");
@@ -10939,27 +11378,27 @@ class FpPipDock extends HTMLElement {
     if (!this._micOk()) { if (!auto) this._micFail(); return; }
     this._unlockAudio();
     this._stopAudio();
+    // Hört das Aktivierungswort schon mit, ist das Mikrofon offen: denselben Strom nehmen, kein zweites getUserMedia.
+    const wm = this._wm;
+    if (wm && wm.live) {
+      try { if (wm.ctx.state !== "running") wm.ctx.resume(); } catch (e) {}
+      const run = this._beginVoice();
+      run.rec = { ctx: wm.ctx, stream: wm.stream, shared: wm, queue: [], qlen: 0, stopped: false, endPending: false, timer: null };
+      wm.run = run;
+      this._voicePipe(run);
+      return;
+    }
     // Der AudioContext entsteht noch im Tipp, sonst bleibt er auf iOS stumm.
-    const AC = window.AudioContext || window.webkitAudioContext;
-    const mk = fixed => { try { return fixed ? new AC({ sampleRate: 16000 }) : new AC(); } catch (e) { return null; } };
-    let ctx = mk(!/firefox/i.test(navigator.userAgent)) || mk(false);
+    let ctx = mkCtx(!/firefox/i.test(navigator.userAgent)) || mkCtx(false);
     if (!ctx) { if (!auto) this._micFail(); return; }
     try { ctx.resume(); } catch (e) {}
-    this._expireConv();
-    const run = this._newRun(true);
-    run.me = this._push({ k: "me", text: "…" });
-    this._cur = run;
-    this._convAt = Date.now();
-    this._setState("listen");
-    this._renderLog(true);
-    this._applyBusy();
+    const run = this._beginVoice();
     let stream = null, rec = null;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-      for (let pass = 0; pass < 2 && !rec && ctx && !run.ended; pass++) {
-        try { rec = await this._openRec(ctx, stream, run); }
-        catch (e) { try { ctx.close(); } catch (e2) {} ctx = pass === 0 ? mk(false) : null; }
-      }
+      stream = await navigator.mediaDevices.getUserMedia(MIC);
+      const o = await this._openChain(ctx, stream, run);
+      rec = o.rec;
+      ctx = o.ctx;
     } catch (e) { rec = null; }
     if (run.ended || !rec) {
       // abgebrochen oder gescheitert: alles freigeben
@@ -10968,7 +11407,23 @@ class FpPipDock extends HTMLElement {
       if (!run.ended) { this._cancelRun(run); if (!auto) this._micFail(); }
       return;
     }
-    rec.timer = setTimeout(() => this._stopRec(run), 15000);
+    this._voicePipe(run);
+  }
+  // Neue Sprachanfrage im Verlauf anlegen (Platzhalter "…" für das, was gesagt wird).
+  _beginVoice() {
+    this._expireConv();
+    const run = this._newRun(true);
+    run.me = this._push({ k: "me", text: "…" });
+    this._cur = run;
+    this._convAt = Date.now();
+    this._setState("listen");
+    this._renderLog(true);
+    this._applyBusy();
+    return run;
+  }
+  // Pipeline ab Spracherkennung starten; der Ton folgt, sobald Home Assistant die Kennung des Stroms meldet.
+  _voicePipe(run) {
+    run.rec.timer = setTimeout(() => this._stopRec(run), 15000);
     this._runPipe({
       type: "assist_pipeline/run",
       start_stage: "stt",
@@ -10977,9 +11432,19 @@ class FpPipDock extends HTMLElement {
     }, run);
     this._syncBtn();
   }
+  // Aufnahmekette öffnen; scheitert sie mit festem 16-kHz-Kontext, einmal mit dem Kontext des Geräts versuchen.
+  async _openChain(ctx, stream, run) {
+    let rec = null;
+    for (let pass = 0; pass < 2 && !rec && ctx && !run.ended; pass++) {
+      try { rec = await this._openRec(ctx, stream, run); }
+      catch (e) { try { ctx.close(); } catch (e2) {} ctx = pass === 0 ? mkCtx(false) : null; }
+    }
+    return { rec, ctx };
+  }
   async _openRec(ctx, stream, run) {
     try { await Promise.race([Promise.resolve(ctx.resume()).catch(() => {}), delay(600)]); } catch (e) {}
-    if (ctx.state !== "running") throw new Error("ctx");
+    // Fürs Weckwort darf der Kontext noch schlafen (iOS: bis zum ersten Tipp); für ein Gespräch nicht.
+    if (ctx.state !== "running" && !run.wake) throw new Error("ctx");
     const rec = { ctx, stream, src: null, node: null, mute: null, ratio: ctx.sampleRate / 16000, acc: 0, cnt: 0, ph: 0, queue: [], qlen: 0, stopped: false, endPending: false, timer: null };
     run.rec = rec;
     try {
@@ -11017,25 +11482,18 @@ class FpPipDock extends HTMLElement {
     }
     return rec;
   }
-  // Auf 16 kHz herunterrechnen (Mitteln), in 16-Bit-Zahlen wandeln und vormerken; ab ~100 ms senden.
+  // Auf 16 kHz herunterrechnen (Mitteln) und in 16-Bit-Zahlen wandeln. Der Ton des Weckwort-Mikrofons geht an die Erkennung
+  // oder, während eines Gesprächs, in dessen Warteschlange.
   _onFrames(run, f) {
     const rec = run.rec;
     if (!rec || rec.stopped || !f || !f.length) return;
-    const r = rec.ratio;
-    let out;
-    if (r <= 1.0001) {
-      out = new Int16Array(f.length);
-      for (let i = 0; i < f.length; i++) out[i] = toI16(f[i]);
-    } else {
-      const buf = new Int16Array(Math.ceil(f.length / r) + 2);
-      let n = 0, acc = rec.acc, cnt = rec.cnt, ph = rec.ph;
-      for (let i = 0; i < f.length; i++) {
-        acc += f[i]; cnt++; ph += 1;
-        if (ph >= r) { buf[n++] = toI16(acc / cnt); acc = 0; cnt = 0; ph -= r; }
-      }
-      rec.acc = acc; rec.cnt = cnt; rec.ph = ph;
-      out = buf.subarray(0, n);
-    }
+    const out = downsample(rec, f);
+    if (run.wake) this._wakeFrames(out); else this._queue(run, out);
+  }
+  // Vormerken und ab ~100 ms senden.
+  _queue(run, out) {
+    const rec = run.rec;
+    if (!rec || rec.stopped) return;
     rec.queue.push(out);
     rec.qlen += out.length;
     if (run.handlerId != null && rec.qlen >= 1600) this._flush(run);
@@ -11094,9 +11552,247 @@ class FpPipDock extends HTMLElement {
     try { if (rec.mute) rec.mute.disconnect(); } catch (e) {}
   }
   _closeRec(rec) {
+    // Das Weckwort-Mikrofon bleibt offen: ein Gespräch löst sich nur davon.
+    if (rec.shared) { if (rec.shared.run && rec.shared.run.rec === rec) rec.shared.run = null; return; }
     this._dropNodes(rec);
     try { rec.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
     try { const r = rec.ctx.close(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+  }
+
+  // ---------- Aktivierungswort ----------
+  // Pro Gerät ein Schalter. Ist er an, bleibt das Mikrofon offen und die Erkennung läuft im Browser; Ton geht erst an
+  // Home Assistant, wenn das Wort erkannt ist (dann wie beim Mikrofon-Knopf, aus demselben Strom). Solange ein Gespräch läuft
+  // oder die Antwort vorgelesen wird, ist die Erkennung taub, damit Pip sich nicht selbst weckt.
+  _wakeKey() { return WAKE_STORE + (this._cfg.dashboard || pathPart()); }
+  _wakeLoad() { try { return localStorage.getItem(this._wakeKey()) === "1"; } catch (e) { return false; } }
+  _wakeSave(on) { try { if (on) localStorage.setItem(this._wakeKey(), "1"); else localStorage.removeItem(this._wakeKey()); } catch (e) {} }
+  _wakeWant() { return !!(this._visible && this._cfg.wake_word && this._wakeOn && this._micOk() && !document.hidden); }
+  _wakeBusy() { return this._wkHold || !!this._cur || this._speaking; }
+  _wakeSet(st, why) {
+    this._wk = { st, why: why || "" };
+    this._wakeRender();
+  }
+  _wakeRender() {
+    const w = this._cfg.wake_word, k = this._wk, ok = this._micOk();
+    this._wkRow.hidden = !w;
+    const on = !!(w && this._wakeOn && ok);
+    let hint = "", err = false;
+    if (w) {
+      this._wkLbl.textContent = `Auf „${w.name}“ hören`;
+      this._wkSw.setAttribute("aria-label", `Auf „${w.name}“ hören`);
+      if (!ok) hint = "Das geht nur über eine sichere Verbindung (https).";
+      else if (on && k.st === "load") hint = "Lädt die Erkennung …";
+      else if (on && k.st === "wait") hint = `Einmal tippen, dann hört ${this._cfg.name} zu.`;
+      else if (on && k.st === "on") hint = `Hört zu. Sag „${w.name}“.`;
+      else if (on && k.st === "err") { hint = WAKE_ERR[k.why] || WAKE_ERR.run; err = true; }
+    }
+    this._wkHint.textContent = hint;
+    this._wkRow.classList.toggle("err", err);
+    this._wkSw.setAttribute("aria-checked", on ? "true" : "false");
+    this._wkSw.disabled = !ok;
+    this._fig.classList.toggle("wk-on", on && k.st === "on");
+    this._fig.classList.toggle("wk-wait", on && k.st === "wait");
+  }
+  _wakeToggle() {
+    if (!this._cfg.wake_word || !this._micOk()) return;
+    this._wakeOn = !this._wakeOn;
+    this._wakeSave(this._wakeOn);
+    this._wkTry = 0;
+    this._wakeOff();
+    this._wakeSet("off");
+    // Der Tipp aufs Schalter-Feld zählt: AudioContext und Vorlesen lassen sich jetzt freischalten.
+    if (this._wakeOn) { this._unlockAudio(); this._wakeSync(); }
+  }
+  // Soll die Erkennung laufen? Dann öffnen, sonst alles schließen (aus, Dock versteckt, Tab im Hintergrund).
+  _wakeSync() {
+    if (!this._wakeWant()) {
+      if (this._wm || this._wkLoading || this._wkArmed) this._wakeOff();
+      if (this._wk.st !== "off" && this._wk.st !== "err") this._wakeSet("off");
+      return;
+    }
+    if (!this._wm && !this._wkLoading) this._wakeOpen();
+  }
+  _wakeOff() {
+    this._wkTok++;
+    this._wkLoading = false;
+    clearTimeout(this._wkRetry);
+    clearTimeout(this._wkIdleT);
+    this._wkWas = false;
+    this._wakeDisarm();
+    this._wmClose();
+  }
+  async _wakeOpen() {
+    const w = this._cfg.wake_word, tok = ++this._wkTok, stale = () => tok !== this._wkTok;
+    this._wkLoading = true;
+    this._wakeSet("load");
+    // Der AudioContext entsteht gleich hier (meist im Tipp), sonst bleibt er auf iOS stumm.
+    let ctx = mkCtx(!/firefox/i.test(navigator.userAgent)) || mkCtx(false), stream = null, ok = false;
+    try { if (ctx) ctx.resume(); } catch (e) {}
+    try {
+      if (!ctx) throw wkErr(new Error("ctx"), "mic");
+      if (typeof WebAssembly !== "object") throw wkErr(new Error("wasm"), "ort");
+      if (!this._eng) {
+        this._eng = new WakeEngine(w);
+        this._eng.onwake = sc => this._onWake(sc);
+        this._eng.onerror = () => { if (this._wm) this._wakeFail("run"); };
+      }
+      const eng = this._eng;
+      await eng.load();
+      if (stale()) return;
+      try { stream = await navigator.mediaDevices.getUserMedia(MIC); }
+      catch (e) { throw wkErr(e, e && (e.name === "NotAllowedError" || e.name === "SecurityError") ? "perm" : "mic"); }
+      if (stale()) return;
+      const W = { wake: true, rec: null, ended: false };
+      const o = await this._openChain(ctx, stream, W);
+      ctx = o.ctx;
+      if (stale()) return;
+      if (!o.rec) throw wkErr(new Error("rec"), "mic");
+      const m = this._wm = { ctx, stream, W, run: null, live: true };
+      stream.getAudioTracks().forEach(t => t.addEventListener("ended", () => this._wakeLost(m)));
+      ctx.onstatechange = () => this._wakeCtxState();
+      ok = true;
+      this._wkTry = 0;
+      this._wkLoading = false;
+      eng.reset();
+      this._wakeCtxState();
+    } catch (e) {
+      if (!stale()) {
+        this._wkLoading = false;
+        const why = (e && e.wk) || "mic";
+        this._wakeSet("err", why);
+        // Mikrofon verweigert oder getrennt: ein späterer Tipp versucht es noch einmal
+        if (why === "perm" || why === "mic") this._wakeArm();
+      }
+    } finally {
+      if (!ok) {
+        try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        try { if (ctx) ctx.close(); } catch (e) {}
+      }
+    }
+  }
+  // Der Kontext läuft (Erkennung aktiv) oder schläft (iOS: bis zum nächsten Tipp).
+  _wakeCtxState() {
+    const m = this._wm;
+    if (!m) return;
+    if (m.ctx.state === "running") {
+      this._wakeDisarm();
+      if (this._wk.st !== "on") { if (this._eng) this._eng.reset(); this._wakeSet("on"); }
+    } else {
+      this._wakeSet("wait");
+      this._wakeArm();
+      try { m.ctx.resume(); } catch (e) {}
+    }
+  }
+  _wakeFail(why) {
+    this._wmClose();
+    this._wakeSet("err", why);
+  }
+  // Das Mikrofon wurde uns genommen (Gerät getrennt, andere App): ein paar Mal neu versuchen, dann auf den nächsten Tipp warten.
+  _wakeLost(m) {
+    if (this._wm !== m) return;
+    this._wmClose();
+    this._wakeSet("wait");
+    this._wakeArm();
+    clearTimeout(this._wkRetry);
+    if (this._wkTry++ < 3) this._wkRetry = setTimeout(() => this._wakeSync(), 2500);
+  }
+  _wmClose() {
+    const m = this._wm;
+    if (!m) return;
+    this._wm = null;
+    m.live = false;
+    try { m.ctx.onstatechange = null; } catch (e) {}
+    const run = m.run;
+    m.run = null;
+    if (run && !run.ended) this._cancelRun(run);
+    if (m.W.rec) { m.W.rec.stopped = true; this._closeRec(m.W.rec); }
+    else {
+      try { m.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      try { m.ctx.close(); } catch (e) {}
+    }
+  }
+  // Erster Tipp irgendwo auf der Seite: AudioContext fortsetzen (iOS), Vorlesen freischalten, notfalls neu öffnen.
+  _wakeArm() {
+    if (this._wkArmed) return;
+    this._wkArmed = true;
+    for (const t of ["pointerdown", "touchend", "click", "keydown"]) document.addEventListener(t, this._wkGest, true);
+  }
+  _wakeDisarm() {
+    if (!this._wkArmed) return;
+    this._wkArmed = false;
+    for (const t of ["pointerdown", "touchend", "click", "keydown"]) document.removeEventListener(t, this._wkGest, true);
+  }
+  _wakeKick() {
+    this._unlockAudio();
+    const m = this._wm;
+    if (m) { try { if (m.ctx.state !== "running") m.ctx.resume(); } catch (e) {} return; }
+    const k = this._wk;
+    if (this._wkLoading || (k.st === "err" && k.why !== "perm" && k.why !== "mic")) return;
+    this._wakeSync();
+  }
+  // Ton des offenen Mikrofons (16 kHz, Int16): gehört dem Gespräch, solange eines am Mikrofon hängt, sonst der Erkennung.
+  _wakeFrames(out) {
+    const m = this._wm, eng = this._eng;
+    if (!m || !eng) return;
+    const run = m.run;
+    if (run && !run.ended && run.rec && !run.rec.stopped) { this._queue(run, out); return; }
+    if (this._wakeBusy()) { this._wkWas = true; return; }
+    const now = Date.now();
+    if (this._wkWas) {
+      // Antwort und Vorlesen sind vorbei: kurz taub bleiben (Nachhall), Puffer leeren
+      this._wkWas = false;
+      this._wkQuiet = now + WAKE_QUIET;
+      eng.reset();
+      this._wakeIdleArm();
+    }
+    if (now < this._wkQuiet) return;
+    eng.push(out);
+  }
+  _onWake(score) {
+    const m = this._wm;
+    if (!m || !this._visible || this._wakeBusy()) return;
+    this._wkHold = true;
+    if (this._eng) this._eng.reset();
+    this._chime(m.ctx);
+    if (!this._isOpen) { this._wakeOpened = true; this._openPanel(); }
+    this._setState("listen");
+    // Erst nach dem Ton aufnehmen, sonst hört Home Assistant den Ton mit.
+    setTimeout(() => {
+      if (this._wm === m && this._isOpen && !this._cur) this._listen(true);
+      this._wkHold = false;
+      if (!this._cur) this._setState(this._speaking ? "speak" : "idle");
+    }, CHIME_MS);
+  }
+  // Zwei kurze, aufsteigende Töne aus Oszillatoren (keine Datei).
+  _chime(ctx) {
+    try {
+      const t = ctx.currentTime, g = ctx.createGain();
+      g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.16, t + 0.015);
+      g.gain.setValueAtTime(0.16, t + 0.07);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + CHIME_MS / 1000 - 0.01);
+      [[659.25, 0], [880, 0.075]].forEach(([f, d]) => {
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = f;
+        o.connect(g);
+        o.start(t + d);
+        o.stop(t + d + 0.09);
+      });
+    } catch (e) {}
+  }
+  // Ein per Weckwort geöffnetes Fenster schließt sich nach einer Weile von selbst, wenn niemand etwas anfasst.
+  _wakeIdleArm() {
+    clearTimeout(this._wkIdleT);
+    if (!this._wakeOpened) return;
+    this._wkIdleT = setTimeout(() => {
+      if (this._wakeOpened && this._isOpen && !this._wakeBusy()) this._close();
+    }, WAKE_IDLE);
+  }
+  _wakeTouched() {
+    this._wakeOpened = false;
+    clearTimeout(this._wkIdleT);
   }
 
   // ---------- Aktionskarten (Ereignis fp_pip_karte) ----------
@@ -11196,7 +11892,7 @@ if (!customElements.get("fp-pip-dock")) customElements.define("fp-pip-dock", FpP
 if (!customElements.get("fp-assistant-card")) {
   customElements.define("fp-assistant-card", FpAssistantCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "fp-assistant-card", name: "FP Assistant Card (Pip)", description: "Unsichtbare Karte: schaltet den schwebenden Sprachassistenten Pip in allen Tabs des Dashboards frei (Assist-Pipeline, Mikrofon, Vorlesen, Aktionskarten)", preview: false });
+  window.customCards.push({ type: "fp-assistant-card", name: "FP Assistant Card (Pip)", description: "Unsichtbare Karte: schaltet den schwebenden Sprachassistenten Pip in allen Tabs des Dashboards frei (Assist-Pipeline, Mikrofon, Vorlesen, Aktionskarten, Seite links oder rechts, optional Aktivierungswort im Browser)", preview: false });
 }
 
 // Selbststart: Gibt es für den aktuellen Dashboard-Pfad eine gespeicherte Konfiguration, kommt die Figur von allein,
@@ -11204,6 +11900,6 @@ if (!customElements.get("fp-assistant-card")) {
 const nav = () => { try { syncDock(); } catch (e) {} };
 window.addEventListener("location-changed", nav);
 window.addEventListener("popstate", nav);
-window.addEventListener("resize", () => { try { if (dock && typeof dock.applyLift === "function") dock.applyLift(); } catch (e) {} });
+window.addEventListener("resize", () => { try { if (dock && typeof dock.applyLift === "function") { dock.applyLift(); dock.applyPos(); } } catch (e) {} });
 if (document.body) nav(); else document.addEventListener("DOMContentLoaded", nav, { once: true });
 })();
