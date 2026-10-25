@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.3.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
+/* Family Planner custom cards v3.3.1 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10199,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v3 (Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v4 (kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10285,7 +10285,11 @@ const saveCfg = (p, c) => { try { const s = JSON.stringify(c); if (localStorage.
 
 // wake-engine:start (Audio und Aktivierungswort-Erkennung ohne Bezug zur Oberfläche; der Test zieht genau diesen Block heraus)
 const toI16 = x => { const s = x > 1 ? 1 : x < -1 ? -1 : x; return s < 0 ? Math.round(s * 32768) : Math.round(s * 32767); };
-// Auf 16 kHz herunterrechnen (Mitteln) und in 16-Bit-Zahlen wandeln. st = { ratio, acc, cnt, ph } wird fortgeschrieben.
+// Auf 16 kHz herunterrechnen (Mitteln) und in 16-Bit-Zahlen wandeln. st = { ratio, acc, need } wird fortgeschrieben.
+// Flächenmittel: Jeder Ausgangswert ist der Mittelwert über genau ratio Eingangswerte, Randwerte anteilig. Bei 48 kHz sind das
+// exakt 3 Werte; bei 44,1 kHz (Verhältnis 2,756) bleiben die Abstände gleichmäßig, statt abwechselnd 2 und 3 Werte zu mitteln
+// (gemessen gegen einen idealen Resampler: Mel-Abweichung bei sauberem Signal auf etwa ein Drittel). Eine längere
+// Tiefpass-Vorfilterung änderte die Trefferquote nicht messbar, kostet am iPad aber Rechenzeit.
 function downsample(st, f) {
   const r = st.ratio;
   if (r <= 1.0001) {
@@ -10294,12 +10298,17 @@ function downsample(st, f) {
     return out;
   }
   const buf = new Int16Array(Math.ceil(f.length / r) + 2);
-  let n = 0, acc = st.acc, cnt = st.cnt, ph = st.ph;
+  let n = 0, acc = st.acc || 0, need = st.need > 0 ? st.need : r;
   for (let i = 0; i < f.length; i++) {
-    acc += f[i]; cnt++; ph += 1;
-    if (ph >= r) { buf[n++] = toI16(acc / cnt); acc = 0; cnt = 0; ph -= r; }
+    const x = f[i];
+    let w = 1;
+    while (w > 1e-9) {
+      const t = w < need ? w : need;
+      acc += x * t; need -= t; w -= t;
+      if (need <= 1e-9) { buf[n++] = toI16(acc / r); acc = 0; need += r; }
+    }
   }
-  st.acc = acc; st.cnt = cnt; st.ph = ph;
+  st.acc = acc; st.need = need;
   return buf.subarray(0, n);
 }
 
@@ -10495,11 +10504,17 @@ class WakeEngine {
 }
 // wake-engine:end
 const MIC = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
-// AudioContext: wenn möglich fest mit 16 kHz (dann entfällt das Herunterrechnen), sonst mit der Rate des Geräts.
-const mkCtx = fixed => {
+// AudioContext immer mit der Rate des Geräts: Eine fremde Rate (z. B. 16 kHz) zwingt iOS, die Hardware umzuschalten bzw. schlecht
+// zu resampeln, das knackt und rauscht im Lautsprecher, solange der Kontext läuft (beim Aktivierungswort also dauernd).
+// Auf 16 kHz herunter rechnet downsample().
+const mkCtx = () => {
   const AC = window.AudioContext || window.webkitAudioContext;
-  try { return fixed ? new AC({ sampleRate: 16000 }) : new AC(); } catch (e) { return null; }
+  try { return new AC(); } catch (e) { return null; }
 };
+// Hängt der Worklet am MediaStream-Ausgang nicht, rechnet der Browser ihn nicht: dann (und nur dann) wieder der stumme Gain am
+// Lautsprecher-Ausgang. Wird pro Seite einmal festgestellt.
+let SINK_BAD = false;
+const SINK_WAIT = 500;   // so lange darf nach dem Start des Kontexts das erste Audio-Paket auf sich warten lassen
 
 function normCfg(c) {
   c = c || {};
@@ -11402,7 +11417,7 @@ class FpPipDock extends HTMLElement {
       return;
     }
     // Der AudioContext entsteht noch im Tipp, sonst bleibt er auf iOS stumm.
-    let ctx = mkCtx(!/firefox/i.test(navigator.userAgent)) || mkCtx(false);
+    let ctx = mkCtx();
     if (!ctx) { if (!auto) this._micFail(); return; }
     try { ctx.resume(); } catch (e) {}
     const run = this._beginVoice();
@@ -11445,12 +11460,12 @@ class FpPipDock extends HTMLElement {
     }, run);
     this._syncBtn();
   }
-  // Aufnahmekette öffnen; scheitert sie mit festem 16-kHz-Kontext, einmal mit dem Kontext des Geräts versuchen.
+  // Aufnahmekette öffnen; scheitert sie, einmal mit einem frischen Kontext versuchen.
   async _openChain(ctx, stream, run) {
     let rec = null;
     for (let pass = 0; pass < 2 && !rec && ctx && !run.ended; pass++) {
       try { rec = await this._openRec(ctx, stream, run); }
-      catch (e) { try { ctx.close(); } catch (e2) {} ctx = pass === 0 ? mkCtx(false) : null; }
+      catch (e) { try { ctx.close(); } catch (e2) {} ctx = pass === 0 ? mkCtx() : null; }
     }
     return { rec, ctx };
   }
@@ -11458,15 +11473,11 @@ class FpPipDock extends HTMLElement {
     try { await Promise.race([Promise.resolve(ctx.resume()).catch(() => {}), delay(600)]); } catch (e) {}
     // Fürs Weckwort darf der Kontext noch schlafen (iOS: bis zum ersten Tipp); für ein Gespräch nicht.
     if (ctx.state !== "running" && !run.wake) throw new Error("ctx");
-    const rec = { ctx, stream, src: null, node: null, mute: null, ratio: ctx.sampleRate / 16000, acc: 0, cnt: 0, ph: 0, queue: [], qlen: 0, stopped: false, endPending: false, timer: null };
+    const rec = { ctx, stream, src: null, node: null, sink: null, mute: null, got: false, wd: null, wdChk: null, ratio: ctx.sampleRate / 16000, acc: 0, need: 0, queue: [], qlen: 0, stopped: false, endPending: false, timer: null };
     run.rec = rec;
     try {
       rec.src = ctx.createMediaStreamSource(stream);
-      // Ohne Weg zum Ausgang rechnen manche Browser nicht; die Stummschaltung verhindert Rückkopplung.
-      rec.mute = ctx.createGain();
-      rec.mute.gain.value = 0;
-      rec.mute.connect(ctx.destination);
-      const on = f => this._onFrames(run, f);
+      const on = f => { rec.got = true; this._onFrames(run, f); };
       let ok = false;
       if (ctx.audioWorklet && typeof AudioWorkletNode === "function") {
         const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
@@ -11475,25 +11486,74 @@ class FpPipDock extends HTMLElement {
           const node = new AudioWorkletNode(ctx, "fp-pip-rec", { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
           node.port.onmessage = e => on(e.data);
           rec.src.connect(node);
-          node.connect(rec.mute);
+          this._recOut(rec, node);
           rec.node = node;
           ok = true;
-        } catch (e) { ok = false; try { rec.src.disconnect(); } catch (e2) {} }
+        } catch (e) { ok = false; this._recUnhook(rec); try { rec.src.disconnect(); } catch (e2) {} }
         finally { URL.revokeObjectURL(url); }
       }
       if (!ok) {
         const node = ctx.createScriptProcessor(4096, 1, 1);
         node.onaudioprocess = e => on(new Float32Array(e.inputBuffer.getChannelData(0)));
         rec.src.connect(node);
-        node.connect(rec.mute);
+        this._recOut(rec, node);
         rec.node = node;
       }
+      if (rec.sink) this._recWatch(rec);
     } catch (e) {
       this._dropNodes(rec);
       run.rec = null;
       throw e;
     }
     return rec;
+  }
+  // Ausgang der Aufnahmekette. Normalfall: ein MediaStream-Ziel. Browser rechnen den Worklet dafür von selbst (automatic pull), und
+  // der Lautsprecher-Ausgang bleibt unbenutzt (am iPad knackte der Lautsprecher, solange das Mikrofon offen war).
+  // Rückfall: stummer Gain am Ausgang, siehe _recWatch.
+  _recOut(rec, node) {
+    const ctx = rec.ctx;
+    if (!SINK_BAD && typeof ctx.createMediaStreamDestination === "function") {
+      try {
+        rec.sink = ctx.createMediaStreamDestination();
+        node.connect(rec.sink);
+        return;
+      } catch (e) { try { if (rec.sink) node.disconnect(rec.sink); } catch (e2) {} rec.sink = null; SINK_BAD = true; }
+    }
+    rec.mute = ctx.createGain();
+    rec.mute.gain.value = 0;   // stumm gegen Rückkopplung
+    rec.mute.connect(ctx.destination);
+    node.connect(rec.mute);
+  }
+  // Kommt nach dem Start des Kontexts innerhalb von SINK_WAIT kein Audio-Paket, rechnet dieser Browser den Worklet am
+  // MediaStream-Ausgang nicht: auf den stummen Gain am Ausgang umhängen (und das für die Seite merken). Schläft der Kontext
+  // noch (iOS: bis zum ersten Tipp), wird erst gewartet, bis er läuft.
+  _recWatch(rec) {
+    const chk = () => {
+      clearTimeout(rec.wd);
+      if (rec.got || rec.stopped || !rec.sink || rec.ctx.state !== "running") return;
+      rec.wd = setTimeout(() => {
+        if (rec.got || rec.stopped || !rec.sink || rec.ctx.state !== "running") return;
+        SINK_BAD = true;
+        try { rec.node.disconnect(rec.sink); } catch (e) {}
+        rec.sink = null;
+        rec.mute = rec.ctx.createGain();
+        rec.mute.gain.value = 0;
+        rec.mute.connect(rec.ctx.destination);
+        rec.node.connect(rec.mute);
+      }, SINK_WAIT);
+    };
+    rec.wdChk = chk;
+    try { rec.ctx.addEventListener("statechange", chk); } catch (e) {}
+    chk();
+  }
+  _recUnhook(rec) {
+    clearTimeout(rec.wd);
+    try { if (rec.wdChk) rec.ctx.removeEventListener("statechange", rec.wdChk); } catch (e) {}
+    rec.wdChk = null;
+    try { if (rec.sink) rec.sink.disconnect(); } catch (e) {}
+    try { if (rec.mute) rec.mute.disconnect(); } catch (e) {}
+    rec.sink = null;
+    rec.mute = null;
   }
   // Auf 16 kHz herunterrechnen (Mitteln) und in 16-Bit-Zahlen wandeln. Der Ton des Weckwort-Mikrofons geht an die Erkennung
   // oder, während eines Gesprächs, in dessen Warteschlange.
@@ -11562,7 +11622,7 @@ class FpPipDock extends HTMLElement {
     try { if (rec.node) rec.node.onaudioprocess = null; } catch (e) {}
     try { if (rec.node) rec.node.disconnect(); } catch (e) {}
     try { if (rec.src) rec.src.disconnect(); } catch (e) {}
-    try { if (rec.mute) rec.mute.disconnect(); } catch (e) {}
+    this._recUnhook(rec);
   }
   _closeRec(rec) {
     // Das Weckwort-Mikrofon bleibt offen: ein Gespräch löst sich nur davon.
@@ -11640,7 +11700,7 @@ class FpPipDock extends HTMLElement {
     this._wkLoading = true;
     this._wakeSet("load");
     // Der AudioContext entsteht gleich hier (meist im Tipp), sonst bleibt er auf iOS stumm.
-    let ctx = mkCtx(!/firefox/i.test(navigator.userAgent)) || mkCtx(false), stream = null, ok = false;
+    let ctx = mkCtx(), stream = null, ok = false;
     try { if (ctx) ctx.resume(); } catch (e) {}
     try {
       if (!ctx) throw wkErr(new Error("ctx"), "mic");
@@ -11777,10 +11837,19 @@ class FpPipDock extends HTMLElement {
       if (!this._cur) this._setState(this._speaking ? "speak" : "idle");
     }, CHIME_MS);
   }
-  // Zwei kurze, aufsteigende Töne aus Oszillatoren (keine Datei).
+  // Zwei kurze, aufsteigende Töne aus Oszillatoren (keine Datei). Nur für diesen Ton hängt etwas am Lautsprecher-Ausgang:
+  // danach werden Oszillatoren und Gain getrennt (auch wenn der Kontext schläft und "ended" nie kommt).
   _chime(ctx) {
+    const nodes = [];
+    let done = false, open = 0;
+    const off = () => {
+      if (done) return;
+      done = true;
+      nodes.forEach(n => { try { n.disconnect(); } catch (e) {} });
+    };
     try {
       const t = ctx.currentTime, g = ctx.createGain();
+      nodes.push(g);
       g.connect(ctx.destination);
       g.gain.setValueAtTime(0.0001, t);
       g.gain.exponentialRampToValueAtTime(0.16, t + 0.015);
@@ -11788,13 +11857,17 @@ class FpPipDock extends HTMLElement {
       g.gain.exponentialRampToValueAtTime(0.0001, t + CHIME_MS / 1000 - 0.01);
       [[659.25, 0], [880, 0.075]].forEach(([f, d]) => {
         const o = ctx.createOscillator();
+        nodes.push(o);
         o.type = "sine";
         o.frequency.value = f;
         o.connect(g);
+        open++;
+        o.onended = () => { if (--open <= 0) off(); };
         o.start(t + d);
         o.stop(t + d + 0.09);
       });
-    } catch (e) {}
+      setTimeout(off, CHIME_MS + 250);
+    } catch (e) { off(); }
   }
   // Ein per Weckwort geöffnetes Fenster schließt sich nach einer Weile von selbst, wenn niemand etwas anfasst.
   _wakeIdleArm() {
