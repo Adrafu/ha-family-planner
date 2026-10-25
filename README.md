@@ -1,10 +1,10 @@
 # Family Planner Cards
 
-Vierzehn eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
+Fünfzehn eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 
 - **`meal-grid-card`** — Essensplan (Frühstück/Mittag/Abend), gespeist aus einem Kalender, mit Inline-Bearbeitung, Food-Emojis und KI-Vorschlag (`ai_task`; entschärft mit Küchen-/Grundform-Rotation, Saison- und Wetterbezug, liest getippten Wunsch aus). **Kochbuch-Kopplung:** „★ Ins Kochbuch" pro Eintrag und „Woche füllen" hybrid (erst gewichtet aus dem Kochbuch, dann KI). Drei Darstellungen über `layout`: **`list`** (Vorgabe) ist die **Liste nach Tagen**: je Tag eine Zeile, links Wochentag und Datum, rechts die Mahlzeiten untereinander mit farbigem Punkt, Linien statt Kästen, heute mit Akzentstrich am Rand; sie funktioniert in jeder Breite, auf breiten Karten (ab 640 px, bei mehr als drei Mahlzeiten entsprechend breiter, etwa am Tablet) wird daraus eine **ruhige Tabelle**: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt und Name nur im Kopf, in den Zellen nur das Gericht oder ein leises ＋, heute leicht getönt mit Strich am Rand. **`today`** ist „Heute groß, Woche kurz" für die Startseite: die Mahlzeiten von heute nebeneinander in einem Kasten, darunter die nächsten `days_ahead` Tage mit allem, was je Tag geplant ist (jede eingetragene Mahlzeit mit ihrem Punkt, leere fallen weg). **`grid`** ist die bisherige Tabelle; auf schmalen Karten (Handy, unter 560 px) dreht sie sich: Tage als Zeilen, Mahlzeiten als Spalten. Der Kopf ist schlicht: Titel links, rechts eine Pille ‹ Woche ›, „✨ Woche füllen" und „Leeren" als kleine Pillen. Die Farbe der Mahlzeiten steht nur im Punkt (`--fp-meal0` bis `--fp-meal2`). `mode: compact` (Heute/Morgen) bleibt wie bisher. `background` akzeptiert wahlweise ein Bild (URL → dunkles Overlay + weißer Text) **oder** einen CSS-Farbwert/Verlauf (heller Hintergrund, dunkler Text).
 - **`family-calendar-card`** — Familienkalender mit **Tagesansicht** (eine Spalte je Person, große Terminkacheln, am Handy eine Zeitliste mit Jetzt-Linie), **Wochenansicht** mit großen Terminkacheln (am Tablet eine Spalte je Tag, am Handy die Tage untereinander; das klassische Stunden-Raster gibt es weiter mit `week_grid: true`) und Monatsansicht. Schlichter Kopf mit Titel, den Ansichten Tag/Woche/Monat als Schalter und dem Datum als Pille (‹ 12.–18. Okt ›), Knopf „+ Termin“ rechts, Personenfilter als kleine Chips mit Farbpunkt, Wischen wechselt Tag bzw. Woche. Mehrere Personen lassen sich per Präfix aus einem Kalender aufteilen. Termine direkt anlegen, bearbeiten und löschen. Im Stunden-Raster Jetzt-Linie (Outlook-Stil), Heute-Highlight und ausgegraute vergangene Tage. Dazu eine **kompakte Mehrtagesansicht** (`initial_view: agenda`): eine Spalte je Tag, Termine als Kacheln mit farbiger Kante — gedacht als Ersatz fuer eine fremde Kalenderkarte in der Uebersicht.
-- **`kids-routine-card`** — Buddy-artige Routinen für Kinder: Aufgaben mit Emoji nach Tageszeit, antippen zum Abhaken (Sterne via ChoreOps), mit Belohnungs-Animation.
+- **`kids-routine-card`** — **Routinen für Kinder, Schritt für Schritt** (z. B. Morgen und Abend): immer nur der aktuelle Schritt groß mit Symbol und einem Knopf „Fertig“, darüber Punkte für den ganzen Ablauf. Die passende Routine steht nach Tageszeit vorne (`from`), ein Umschalter wechselt von Hand. Ist alles erledigt, gibt es Konfetti und „Geschafft!“ statt Punkten; Sterne (z. B. über ChoreOps) nur, wenn `points_entity` gesetzt ist. Zurückgesetzt wird über eine eigene Automation, etwa nachts.
 - **`shopping-fav-card`** — Schnell-Buttons für Lieblings-Artikel/-Aufgaben (ein Tipp legt das Item auf die To-do-Liste) als **gleich breite Chips** in `columns` Spalten (auf schmalen Karten weniger), Emoji über dem Namen. Favoriten, die **schon offen auf der Liste** stehen, sind mit ✓ markiert und werden bei einem Tipp nicht doppelt angelegt (die Karte liest die Liste live, nur ohne `assign`). Bearbeiten (Hinzufügen/Entfernen/Sortieren) über ✏️ im Kopf; Favoriten in einem `input_text`, Emojis automatisch abgeleitet. Optional als „Hinzufügen"-Button mit kombiniertem Dialog (Freitext + Favoriten + Zuweisung + Fälligkeit, alles konfigurierbar). Mit `embedded: true` sitzt sie ohne eigenen Rahmen in der `fp-todo-card` (Option `favorites` dort).
 - **`nav-card`** — Hüllt eine beliebige Karte ein und macht sie als Ganzes anklickbar: Tipps auf nicht-interaktive Bereiche navigieren zu einem Tab, interaktive Elemente (Checkboxen, Eingabefelder, anklickbare Zellen) bleiben aktiv.
 - **`fp-todo-card`** — Zeichnet ihre **eigene To-do-Liste** (nicht mehr die native `todo-list`-Karte) im Stil der Baby-Übersicht, live aus der To-do-Entität: Kopf mit Namens-Pille oder Titel und der Zahl der offenen Aufgaben, darunter die Aufgaben als Kacheln mit großem Kreis zum **Abhaken (mit „Rückgängig")** und einem Fälligkeits-Chip („gestern", „heute 14:00", „Fr"). Mit `display_order: duedate_asc` stehen sie in Gruppen **Überfällig / Heute / Demnächst / Ohne Datum**. `pill: { label, color }` gibt jeder Person **eine Farbe** (passt zu hellem und dunklem Theme), `empty_text` ist der Hinweis bei leerer Liste, `due_date_period` filtert nach Fälligkeit. Eine Eingabezeile legt Aufgaben an (`hide_create: true` blendet sie aus); neue Einträge erscheinen **sofort**, auch über das `fp-todo-add`-Event der `shopping-fav-card`, noch bevor Cloud-Listen wie Todoist/Bring nachziehen. Optional ein **eigener Änderungsdialog** (`edit_dialog`): Aufgabe umbenennen, in eine andere Liste verschieben, Fälligkeit per Schnellauswahl setzen und eine Wiederholung vergeben. Für den Einkauf lässt sich alles in **einer** Karte bündeln: eigener Eingabetext, Eingabe oben, Pille im Kopf, die einen Dienst ruft (z. B. ein Skript), und die Favoriten darunter.
@@ -16,6 +16,7 @@ Vierzehn eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - **`fp-diaper-card`** — **Windelprotokoll** je Kind: nass, voll oder beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, heute und gestern mit Summen, Rückblick über 7 Tage.
 - **`fp-milestone-card`** — **Meilensteine** je Kind zum Abhaken: **Erste Male** als Sticker-Album (erstes Lachen, erster Zahn, erste Schritte, erster Schnee …), **Entwicklung** nach Alter mit den Punkten, die gerade dran sind, und **Bewegung** mit den Zeitfenstern der WHO. Abhaken ist ein kleines Fest: Konfetti, ein Jubel-Dialog, Datum und Notiz, auch nachträglich und für Geschwister auf einmal. Eigene Momente lassen sich dazulegen, und zu jedem Meilenstein passt **ein Foto**. Frühgeborene nach korrigiertem Alter.
 - **`fp-baby-overview-card`** — **Übersicht** je Kind im Stil der App Buma, gespeist aus den Kalendern von Still-, Windel-, Gewichts- und Meilensteinkarte und einem eigenen Schlafkalender. **Heute:** am Tablet Schlafknöpfe („Beide schlafen“ und je Kind), farbige Schnellknöpfe für Stillen, Windel und Fläschchen, die Karte **„Nächste Mahlzeit“** mit Zeitfenster, **„Jetzt“** als Liste mit farbigen Symbolen (Zeit seit dem letzten Mal, Ausblick auf den nächsten Schlaf, „Fällig“), **„Tag“** mit Streifen und den Zahlen als Textzeile, Chips für Wachstum und Momente und die Einträge, mit ‹ › durch die letzten Wochen blättern. Am Handy steht unten eine Aktionsleiste mit Schlaf, Beide, Stillen, Windel und Fläschchen, und der Kopf mit der Kinderwahl klebt beim Scrollen kompakt oben. **Protokoll:** Still- und Windelkarte je Kind direkt in der Übersicht, mit Bearbeiten, Rückblick und Bericht. **Muster:** Zusammenfassung, Filter, Tagesschnitt und eine Zeile je Tag. **Wachstum:** aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern, Messungen, Wiegen direkt in der Karte. **Momente:** die Meilensteinkarte direkt in der Übersicht, ohne eigenen Tab. ✦ öffnet **„Frag nach“**: eine KI (`ai_task`) beantwortet Fragen zu allen Einträgen und sucht Muster. Folgt dem hellen oder dunklen Modus des Geräts, Farben aus dem Theme; Zwillinge am Tablet nebeneinander, am Handy per Schalter im Kopf oder Wischen zum Umschalten. Mit `layout: bar` wird daraus eine schmale **Baby-Leiste** für die Startseite (letzte und nächste Mahlzeit je Kind, ein Tipp öffnet den Baby-Tab bei diesem Kind).
+- **`fp-assistant-card`** — **Sprachassistent „Pip“**: eine unsichtbare Karte, die eine kleine schwebende Figur (ein Spross mit Augen) unten rechts einblendet, in allen Tabs des Dashboards. Ein Tipp öffnet das Gespräch (am Tablet und PC als Seitenleiste, am Handy als Blatt von unten): Fragen per Text, Vorschlags-Chips oder **Mikrofon**, Antworten der Assist-Pipeline im Verlauf und auf Wunsch **vorgelesen**, Weiterreden, wenn der Gesprächsagent nachfragt. Über das Ereignis `fp_pip_karte` zeigt Pip kleine **Aktionskarten**, etwa „Termin angelegt“ mit **Rückgängig** oder eine Nachfrage mit **Ja/Abbrechen**. Farben und Ecken aus dem Theme.
 
 ## Installation (HACS)
 
@@ -40,6 +41,7 @@ Vierzehn eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - `custom:fp-diaper-card`
 - `custom:fp-milestone-card`
 - `custom:fp-baby-overview-card`
+- `custom:fp-assistant-card`
 
 ### Beispiel: meal-grid-card
 
@@ -103,6 +105,34 @@ Tag und Woche passen sich der Kartenbreite an: unter 560 px die Handy-Liste, dar
 Mit `fill_height: true` reicht die Karte mindestens bis zum unteren Bildschirmrand (sichtbare Höhe abzüglich Kopfzeile, Safe-Area und 8 px Rand; den Rand stellt `--fcc-fill-offset` im Theme ein). Die Spalten wachsen nach unten mit, die freie Fläche einer Spalte legt wie gewohnt einen Termin an. Gedacht für eine Panel-View; in der Mehrtagesansicht (`initial_view: agenda`) bleibt die Karte so hoch wie ihr Inhalt.
 
 Der Kopf ist schlicht: links der Titel, daneben die Ansichten als Schalter und das Datum als Pille (‹ 12.–18. Okt ›, in der Tagesansicht „Mi, 14. Okt“). „Heute“ erscheint nur, wenn nicht der aktuelle Tag, die aktuelle Woche oder der aktuelle Monat gezeigt wird. „+ Termin“ steht rechts; auf schmalen Karten stehen Titel und „+ Termin“ oben, darunter Datum und Ansichten. Die Personenfilter sind kleine Chips mit Punkt in der Personenfarbe: In Tag und Woche sind „Alle“ bzw. die gewählten Personen gefüllt, in Monat, Agenda und Stunden-Raster blendet ein Tipp die Person aus (der Chip wird blass). Farben und Flächen kommen aus dem Theme (`fp-accent`, `fp-surface` …); die Terminkacheln behalten die Personenfarbe.
+
+### Beispiel: kids-routine-card
+
+```yaml
+type: custom:kids-routine-card
+name: Kind A                 # Kopf und „Geschafft, Kind A!“ (title überschreibt den Kopf)
+color: "#4A7A3A"             # optional: Farbpunkt des Kindes im Kopf
+routines:
+  - label: Morgen
+    icon: "🌅"
+    from: 5                  # ab 5 Uhr steht diese Routine vorne (Zahl oder "HH:MM")
+    tasks:
+      - { label: Anziehen, emoji: "👕", entity: input_boolean.kind_a_morgen_anziehen }
+      - { label: Zähne putzen, emoji: "🪥", entity: input_boolean.kind_a_morgen_zaehne }
+      - { label: Frühstück, emoji: "🥣", entity: input_boolean.kind_a_morgen_fruehstueck }
+  - label: Abend
+    icon: "🌙"
+    from: "16:00"            # gilt bis zur nächsten Routine, auch über Mitternacht
+    tasks:
+      - { label: Zähne putzen, emoji: "🪥", entity: input_boolean.kind_a_abend_zaehne }
+      - { label: Schlafanzug, emoji: "🛌", entity: input_boolean.kind_a_abend_schlafanzug }
+# optional, nur wenn Punkte gewünscht sind:
+# points_entity: sensor.kind_a_sterne     # zeigt „⭐ N“ im Kopf
+# reward_button: button.kind_a_plus_1     # wird bei „Fertig“ gedrückt
+# penalty_button: button.kind_a_minus_1   # wird bei „Zurück“ gedrückt
+```
+
+Ohne `from` gilt die erste Routine ab 0 Uhr und die zweite ab 12 Uhr. „Fertig“ schaltet den aktuellen Schritt ein, „Zurück“ den zuletzt erledigten wieder aus; ein Doppeltipp zählt nur einmal. Zum täglichen Zurücksetzen eine Automation anlegen, die die Schalter z. B. um 4 Uhr ausschaltet.
 
 ### Beispiel: shopping-fav-card
 
@@ -447,7 +477,7 @@ Für den Schlaf je Kind ein `input_boolean` (an = schläft), ein `input_datetime
 
 Jeder Eintrag in „Einträge“ lässt sich antippen, ändern und löschen (im Format der Still- und Windelkarte); nach den Schnelleinträgen (Windel, Fläschchen, Start von Stillen und Schlaf) bietet Home Assistant 8 Sekunden lang „Rückgängig“ an. „＋ Nachtragen“ im Kopf der Einträge trägt Stillen, Fläschchen, Windel oder Schlaf für Heute oder Gestern nach. ⚙ im Kopf (nur sichtbar, wenn `reminder_entity`, `reminder_night_entity` oder `meal_pause_entity` gesetzt ist) stellt Erinnerung und Pause direkt am Helfer ein.
 
-Weitere Optionen: `chat: false` blendet ✦ aus, `days` (Vorgabe 14) legt fest, wie viele Tage die KI bekommt, `bottle_presets` (Vorgabe 40/60/90/120) sind die Mengen im Fläschchen-Blatt, `reminder_hours`, `meal_pause_minutes` und `bottle_minutes` wirken wie bei der Stillkarte (`reminder_hours` auch je Kind), `night_start` und `night_end` (Vorgabe 22 und 6) legen die Nacht für `reminder_night_entity` fest.
+Weitere Optionen: `chat: false` blendet ✦ aus, `action_bar: false` blendet die Aktionsleiste am Handy aus (Vorgabe `true`; die Ansichtsleiste mit Heute, Protokoll, Muster, Wachstum und Momente bleibt), `days` (Vorgabe 14) legt fest, wie viele Tage die KI bekommt, `bottle_presets` (Vorgabe 40/60/90/120) sind die Mengen im Fläschchen-Blatt, `reminder_hours`, `meal_pause_minutes` und `bottle_minutes` wirken wie bei der Stillkarte (`reminder_hours` auch je Kind), `night_start` und `night_end` (Vorgabe 22 und 6) legen die Nacht für `reminder_night_entity` fest.
 
 Die Karte folgt dem hellen bzw. dunklen Modus des Geräts und nimmt ihre Farben, Ecken und den Kopfverlauf aus den Theme-Variablen `--fp-*` (Flächen, Farben je Tätigkeit, „Fällig“, Radien, Kopfverlauf); ohne diese Zeilen im Theme gelten Rückfallwerte.
 
@@ -491,6 +521,43 @@ kids:
 ```
 
 Die `kids`-Angaben lassen sich aus dem Baby-Tab kopieren; die Leiste braucht davon `key`, `name`, `color`, `picture` bzw. `entity`, `feeding_calendar`, `switch` und `start`. Sie lädt nur die Stillkalender der letzten vier Tage und liest sonst die Schalter aus Home Assistant: Windeln, Schlaf, Gewicht, Meilensteine und `growth_data` bleiben außen vor, `reminder_entity` und `reminder_night_entity` braucht sie nicht. Ein Tipp auf ein Kind merkt sich dieses Kind im Browser (dieselbe Merkung wie der Kindschalter im Baby-Tab) und öffnet `nav_path`; der Baby-Tab springt beim Wiederöffnen zu diesem Kind. Das klappt nur, wenn Leiste und Tab dieselben `key` in derselben Reihenfolge haben. Am besten als eigene Karte ganz oben in einem Abschnitt der Startseite.
+
+### Beispiel: fp-assistant-card
+
+```yaml
+type: custom:fp-assistant-card
+name: Pip                     # Name der Figur (Vorgabe „Pip“)
+pipeline_id: 01abc...                 # Assist-Pipeline (ID aus Einstellungen → Sprachassistenten); ohne = bevorzugte Pipeline
+speak: auto                   # auto = vorlesen nur, wenn per Mikrofon gefragt; always; never
+suggestions:                  # Chips; Vorgaben siehe unten
+  - { icon: "📅", text: "Was steht heute an?" }
+dashboard: familien-planer    # optional, sonst aus der URL
+lift: { baby: 76 }            # optional: am Handy (unter 700 px) auf Seiten, deren letzter Pfadteil hier steht, um so viele px nach oben rücken (Vorgabe baby: 76)
+```
+
+Die Karte ist **unsichtbar** (nur beim Bearbeiten steht ein kleiner Platzhalter da). Sie merkt sich ihre Einstellungen im Browser und holt eine einzige schwebende Figur an die Seite. Die Figur erscheint danach in **allen Tabs** des Dashboards, auch wenn direkt ein anderer Tab neu geladen wird. Die Karte muss dafür in einem Tab liegen und auf jedem Gerät einmal geladen worden sein. Pip braucht eine **Assist-Pipeline mit Gesprächsagent**; ohne `pipeline_id` gilt die bevorzugte Pipeline. `lift` hebt die Figur am Handy über eine klebende Aktionsleiste, etwa im Baby-Tab: Steht der letzte Teil der Adresse (`/familien-planer/baby` → `baby`) in `lift`, rückt sie um den Wert in Pixel nach oben; mit `lift: {}` bleibt sie immer unten. Das **Mikrofon** gibt es nur über eine sichere Verbindung (https), sonst bleibt es beim Schreiben. Die Vorgabe-Vorschläge sind „Was steht heute an?“, „Was gibt's heute zum Abendessen?“, „Wann haben die Zwillinge zuletzt getrunken?“, „Was steht auf der Einkaufsliste?“, „Brauchen wir morgen einen Schirm?“ und „Ist die Wohnungstür zugesperrt?“.
+
+**Aktionskarten:** Eine Automation oder ein Skript schickt das Ereignis `fp_pip_karte`; Pip zeigt es nur, solange eine Frage läuft oder die Antwort höchstens 20 Sekunden her ist (und nur für Konten, die Ereignisse abonnieren dürfen, also Administratoren).
+
+```yaml
+- event: fp_pip_karte
+  event_data:
+    art: neu                     # neu | bestaetigen | info
+    titel: Termin angelegt
+    zeilen:                      # je Zeile [links, rechts]
+      - ["Zahnarzt", "Di 27.10. 10:30"]
+    rueckgaengig:                # nur bei art: neu, 10 Sekunden lang als Knopf „Rückgängig“
+      typ: kalender              # kalender (kalender, summary, start) oder liste (liste, eintraege)
+      kalender: calendar.familie
+      summary: Zahnarzt
+      start: "2026-10-27 10:30:00"   # lokal, JJJJ-MM-TT HH:MM:SS oder JJJJ-MM-TT
+```
+
+- `neu`: Karte mit dem Knopf „Rückgängig“. Bei `typ: kalender` sucht Pip den Termin mit gleicher `summary` und gleichem Beginn am `start`-Tag und löscht ihn; bei `typ: liste` entfernt es jeden Eintrag aus `eintraege` per `todo.remove_item` von der To-do-Liste `liste`. Nach 10 Sekunden steht dort „✓ erledigt“.
+- `bestaetigen`: Karte mit „Ja, mach das“ und „Abbrechen“; ein Tipp schickt „Ja“ bzw. „Nein“ als normale Nachricht in dasselbe Gespräch. Das Feld `code` ist für die eigene Automation gedacht und wird nicht angezeigt.
+- `info`: nur Titel und Zeilen.
+
+Der Verlauf liegt nur im Speicher (die letzten 40 Einträge), ↺ im Kopf beginnt ein neues Gespräch. Nach fünf Minuten ohne Nachricht beginnt für Home Assistant ein neuer Gesprächsfaden, der Verlauf bleibt sichtbar. Die Einstellungen liegen im Browser unter `fp-pip-dock:<dashboard>`; wird die Karte entfernt, verschwindet die Figur erst, wenn dieser Eintrag gelöscht ist.
 
 ## Design-Variablen (Theme)
 
