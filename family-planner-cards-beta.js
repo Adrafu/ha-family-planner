@@ -60,6 +60,47 @@
       const p = n => String(n).padStart(2, "0"), o = Math.round(-d.getTimezoneOffset()), a = Math.abs(o);
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${o < 0 ? "-" : "+"}${p(Math.floor(a / 60))}:${p(a % 60)}`;
     },
+    // Uhrzeit aus Eingabefeldern (Datum + "HH:MM") -> Date. Anders als new Date(y, mo, d, h, mi) eindeutig
+    // in der doppelten Stunde beim Ende der Sommerzeit (Wien: 02:00-02:59 gibt es zweimal): JavaScript nimmt
+    // dort immer das erste Vorkommen (Sommerzeit), ein Eintrag aus der winterlichen Stunde rutschte beim
+    // Speichern - auch ohne Aenderung - eine Stunde nach vorn. mo ist 0-basiert wie bei Date, d/h/mi duerfen
+    // ueberlaufen (d + 1 = Folgetag). s (Sekunden) ist optional und ist 0, wenn nichts gegeben ist.
+    // Gibt es zwei passende Zeitpunkte, entscheidet ref (Date oder ms) - aber nur, wenn er in der Naehe liegt
+    // (hoechstens 12 h), sonst gilt die Regel ohne ref:
+    //   - Normal (Ende eines neuen Eintrags, ref = Beginn): der erste, der nicht vor ref liegt, also ein Ende nach dem
+    //     Beginn - auch ueber die Umstellung hinweg (Beginn 02:50 Sommerzeit, Ende 02:05 -> Winterzeit). Liegen beide
+    //     vor ref, der spaetere. Ist ref selbst einer der beiden Zeitpunkte, bleibt es dieser.
+    //   - wieRef = true (Bearbeiten, ref = urspruenglicher Zeitpunkt des Eintrags): der mit demselben Offset wie ref.
+    //     Ein unveraendert gespeicherter Eintrag bleibt exakt gleich, und wer einen Eintrag aus der winterlichen
+    //     Stunde nur um die Minuten verschiebt, bleibt im Winter.
+    //   - Ohne ref: der spaetere der beiden, wenn er nicht in der Zukunft liegt, sonst der fruehere. Wer nachtraegt,
+    //     meint damit die Stunde, die gerade vorbei ist.
+    // Luecke beim Beginn der Sommerzeit (02:00-02:59 gibt es nicht): bleibt beim Verhalten von Date, also die Zeit
+    // eine Stunde spaeter (02:30 -> 03:30). Eindeutige Zeiten kommen wie von new Date unveraendert zurueck.
+    ortZeit: (y, mo, d, h, mi, ref, s, wieRef) => {
+      const t0 = new Date(y, mo, d, h, mi, s || 0, 0);
+      if (isNaN(t0)) return t0;
+      const wand = x => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate(), x.getHours(), x.getMinutes(), x.getSeconds());
+      const W = wand(t0), kand = new Set([+t0]);
+      // Offsets kurz davor und danach ausprobieren (getTimezoneOffset: Minuten westlich von UTC, also UTC = Wand + Offset).
+      for (const dt of [-86400000, 86400000]) {
+        const c = W + new Date(W + dt).getTimezoneOffset() * 60000;
+        if (wand(new Date(c)) === W) kand.add(c);
+      }
+      const k = [...kand].sort((p, q) => p - q);
+      if (k.length < 2) return new Date(k[0]);
+      const a = k[0], b = k[k.length - 1];
+      const r = ref && typeof ref.getTime === "function" ? ref.getTime() : typeof ref === "number" ? ref : NaN;
+      if (isFinite(r) && Math.min(Math.abs(a - r), Math.abs(b - r)) <= 12 * 3600000) {
+        if (wieRef) {
+          const o = new Date(r).getTimezoneOffset();
+          if (new Date(b).getTimezoneOffset() === o) return new Date(b);
+          if (new Date(a).getTimezoneOffset() === o) return new Date(a);
+        }
+        return new Date(a >= r ? a : b);
+      }
+      return new Date(b <= Date.now() ? b : a);
+    },
   };
   // In dasselbe Objekt hineinschreiben, nicht ersetzen: Karten der anderen
   // Datei halten bereits eine Referenz darauf.
@@ -1002,7 +1043,7 @@ if (!customElements.get("meal-grid-card-beta")) {
 }
 })();
 
-/* ===== family-calendar-card-beta v2.12 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
+/* ===== family-calendar-card-beta v2.13 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1669,16 +1710,26 @@ class FamilyCalendarCard extends HTMLElement {
         const nd = new Date(d2 + "T00:00:00"); nd.setDate(nd.getDate() + 1);
         endDate = iso(nd);
       } else {
-        let v = box.querySelector(".fcc-von").value || "09:00";
-        let b = box.querySelector(".fcc-bis").value || v;
+        const v = box.querySelector(".fcc-von").value || "09:00";
+        const b = box.querySelector(".fcc-bis").value || v;
+        // Datum + "HH:MM" -> Date. In der doppelten Stunde beim Ende der Sommerzeit (02:00-02:59) gibt es zwei Zeitpunkte:
+        // beim Bearbeiten gilt der urspruengliche Zeitpunkt als Bezug (ein unveraendert gespeicherter Termin bleibt exakt gleich,
+        // auch einer, der ueber die Umstellung geht), beim Neuanlegen liegt das Ende nach dem Beginn. Ein ganztaegiger
+        // Termin hat keine Uhrzeit, die als Bezug taugt.
+        const zeit = (ds, hm, ref, wie) => {
+          const dp = String(ds).split("-").map(Number), tp = String(hm).split(":").map(Number);
+          return U.ortZeit(dp[0], dp[1] - 1, dp[2], tp[0], tp[1] || 0, ref, 0, wie);
+        };
+        const alt = edit && !it.allDay;
+        const sD = zeit(d, v, alt ? it.start : undefined, alt);
+        let eD = zeit(d2, b, alt ? it.end : sD, alt);
         // Nur innerhalb desselben Tages muss das Ende nach dem Beginn liegen;
         // ueber Mitternacht hinweg ist eine kleinere Uhrzeit voellig richtig.
-        if (d2 === d && b <= v) {
-          const bd = new Date(d + "T" + v + ":00"); const day0 = bd.getDate();
-          bd.setMinutes(bd.getMinutes() + 60);
-          b = bd.getDate() !== day0 ? "23:59" : pad(bd.getHours()) + ":" + pad(bd.getMinutes());
+        if (d2 === d && eD <= sD) {
+          const plus = new Date(+sD + 3600000);
+          eD = iso(plus) !== d ? zeit(d, "23:59", sD) : plus;
         }
-        startDT = U.haZeit(new Date(d + "T" + v + ":00")); endDT = U.haZeit(new Date(d2 + "T" + b + ":00"));
+        startDT = U.haZeit(sD); endDT = U.haZeit(eD);
       }
       close();
       const refresh = () => this._maybeFetch(true);
@@ -5243,7 +5294,7 @@ if (!customElements.get("dobby-clock-card-beta")) {
   window.customCards.push({ type: "dobby-clock-card-beta", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card-beta v12 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card-beta v13 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -5829,11 +5880,13 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
     mark();
     return () => Math.round(Number(inp.value) || 0);
   }
-  // Uhrzeit auf das Datum eines Bezugstags setzen
-  _at(basis, hhmm) {
+  // Uhrzeit auf das Datum eines Bezugstags setzen. o.tage verschiebt um ganze Kalendertage (1 = Folgetag),
+  // o.ref und o.wie entscheiden in der doppelten Stunde beim Ende der Sommerzeit, welche der beiden Zeiten gemeint ist
+  // (siehe U.ortZeit): beim Bearbeiten ref = ursprünglicher Zeitpunkt mit wie, beim Ende eines neuen Eintrags ref = Beginn.
+  _at(basis, hhmm, o) {
+    o = o || {};
     const [h, m] = String(hhmm || "").split(":").map(Number);
-    const d = new Date(basis); d.setHours(h || 0, m || 0, 0, 0);
-    return d;
+    return U.ortZeit(basis.getFullYear(), basis.getMonth(), basis.getDate() + (o.tage || 0), h || 0, m || 0, o.ref, 0, o.wie);
   }
 
   _openBottle() {
@@ -5849,9 +5902,10 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
     ov.querySelector(".ff-ok").addEventListener("click", async () => {
       const menge = ml();
       if (!menge) { U.toast(this, "Bitte eine Menge angeben"); return; }
-      let start = this._at(jetzt, ov.querySelector(".ff-zeit").value);
+      const zeit = ov.querySelector(".ff-zeit").value;
+      let start = this._at(jetzt, zeit);
       // Eine Uhrzeit nach „jetzt" meint gestern Abend — nachts trägt man nach.
-      if (start - jetzt > 5 * 60000) start.setDate(start.getDate() - 1);
+      if (start - jetzt > 5 * 60000) start = this._at(jetzt, zeit, { tage: -1 });
       const end = new Date(start.getTime() + 60000);
       this._closeOv();
       if (await this._create("flasche", start, end, "", menge)) this._load();
@@ -5886,10 +5940,11 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
     ov.querySelector(".ff-cancel").addEventListener("click", () => this._closeOv());
     ov.querySelector(".ff-ok").addEventListener("click", async () => {
       const basis = new Date(jetzt); if (tag === "gestern") basis.setDate(basis.getDate() - 1);
+      const bis = ov.querySelector(".ff-bis").value;
       const start = this._at(basis, ov.querySelector(".ff-von").value);
-      const end = this._at(basis, ov.querySelector(".ff-bis").value);
+      let end = this._at(basis, bis, { ref: start });   // ref = Beginn: das Ende liegt nach dem Beginn, auch über die Zeitumstellung
       // Über Mitternacht: ein Ende vor dem Beginn liegt am Folgetag.
-      if (end <= start) end.setDate(end.getDate() + 1);
+      if (end <= start) end = this._at(basis, bis, { ref: start, tage: 1 });
       if (start - jetzt > 5 * 60000) { U.toast(this, "Der Beginn liegt in der Zukunft – Tag prüfen"); return; }
       if (end - start > 3 * 3600000) { U.toast(this, "Länger als 3 Stunden – Zeiten prüfen"); return; }
       if (end - jetzt > 5 * 60000) end.setTime(Math.max(start.getTime() + 60000, jetzt.getTime()));
@@ -5937,13 +5992,15 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
       let start, end;
       if (flasche) {
         if (!ml()) { U.toast(this, "Bitte eine Menge angeben"); return; }
-        start = this._at(e.start, ov.querySelector(".ff-zeit").value);
+        start = this._at(e.start, ov.querySelector(".ff-zeit").value, { ref: e.start, wie: true });
         end = new Date(start.getTime() + 60000);
       } else {
-        start = this._at(e.start, ov.querySelector(".ff-von").value);
-        end = this._at(e.start, ov.querySelector(".ff-bis").value);
+        // ref = ursprünglicher Beginn/Ende: ein unverändert gespeicherter Eintrag bleibt exakt gleich, auch in der doppelten Stunde.
+        const bis = ov.querySelector(".ff-bis").value;
+        start = this._at(e.start, ov.querySelector(".ff-von").value, { ref: e.start, wie: true });
+        end = this._at(e.start, bis, { ref: e.end, wie: true });
         // Über Mitternacht: ein Ende vor dem Beginn liegt am Folgetag.
-        if (end <= start) end.setDate(end.getDate() + 1);
+        if (end <= start) end = this._at(e.start, bis, { ref: e.end, wie: true, tage: 1 });
       }
       this._closeOv();
       if (await this._update(e, e.typ, start, end, seite, flasche ? ml() : 0)) this._load();
@@ -6487,7 +6544,7 @@ if (!customElements.get("fp-weight-card-beta")) {
 }
 })();
 
-/* ===== fp-diaper-card-beta v5 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
+/* ===== fp-diaper-card-beta v6 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
 // Ein Eintrag = ein kurzer Termin im eigenen Kalender: Titel "Windel nass",
 // Beschreibung {"typ":"windel","art":"nass|voll|beides"}. Nicht in den
 // Stillkalender schreiben: die 3-h-Erinnerung zählt dort jeden Eintrag als Mahlzeit.
@@ -6517,7 +6574,9 @@ class FpDiaperCard extends HTMLElement {
   _hmDauer(ms) { const m = Math.max(0, Math.floor(ms / 60000)); return `${Math.floor(m / 60)}:${this._p(m % 60)} h`; }
   _artText(a) { return a === "beides" ? "nass + voll" : a; }
   _artIcon(a) { return a === "beides" ? "💧💩" : a === "voll" ? "💩" : "💧"; }
-  _at(basis, hhmm) { const [h, m] = String(hhmm || "").split(":").map(Number); const d = new Date(basis); d.setHours(h || 0, m || 0, 0, 0); return d; }
+  // Uhrzeit auf das Datum eines Bezugstags setzen. ref = ursprünglicher Zeitpunkt des Eintrags: in der doppelten Stunde beim Ende der
+  // Sommerzeit bleibt dadurch Sommer- oder Winterzeit, wie sie war (siehe U.ortZeit, wieRef).
+  _at(basis, hhmm, ref) { const [h, m] = String(hhmm || "").split(":").map(Number); return U.ortZeit(basis.getFullYear(), basis.getMonth(), basis.getDate(), h || 0, m || 0, ref, 0, true); }
 
   _parse(ev) {
     const s = new Date((ev.start && (ev.start.dateTime || ev.start.date)) || ev.start);
@@ -6689,7 +6748,7 @@ class FpDiaperCard extends HTMLElement {
       if (await this._delete(e.uid)) this._load();
     });
     ov.querySelector(".fd-ok").addEventListener("click", async () => {
-      const start = this._at(e.start, ov.querySelector(".fd-in").value);
+      const start = this._at(e.start, ov.querySelector(".fd-in").value, e.start);
       this._closeOv();
       if (await this._update(e, start, art)) this._load();
     });
@@ -7758,7 +7817,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v25 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v26 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -9292,9 +9351,9 @@ class FpBabyOverviewCard extends HTMLElement {
     mark();
     ov.querySelector(".fo-ok").addEventListener("click", () => {
       if (!(ml > 0 && ml <= 400)) { U.toast(this, "Bitte eine Menge angeben"); return; }
-      const [h, m] = String(ov.querySelector(".fo-zeit").value || "").split(":").map(Number);
-      const start = new Date(); start.setHours(h || 0, m || 0, 0, 0);
-      if (start - Date.now() > 5 * MIN) start.setDate(start.getDate() - 1);   // eine Uhrzeit nach „jetzt“ meint gestern Abend
+      const zeit = ov.querySelector(".fo-zeit").value;
+      let start = this._at(new Date(), zeit);
+      if (start - Date.now() > 5 * MIN) start = this._at(new Date(), zeit, { tage: -1 });   // eine Uhrzeit nach „jetzt“ meint gestern Abend
       this._closeSheet();
       this._eintrag(kid.feeding_calendar, `Fläschchen ${ml} ml`, { typ: "flasche", ml }, start, `${kid.name}: Fläschchen ${ml} ml eingetragen ✓`);
     });
@@ -9317,7 +9376,14 @@ class FpBabyOverviewCard extends HTMLElement {
       <div class="fo-big3 fo-big2">${opt.map(t => `<button type="button" data-nt-typ="${t}" style="--q:${T[t][2]}"><span>${T[t][0]}</span>${T[t][1]}</button>`).join("")}</div>`);
     ov.querySelectorAll("[data-nt-typ]").forEach(b => b.addEventListener("click", () => los(b.dataset.ntTyp)));
   }
-  _at(basis, hhmm) { const [h, m] = String(hhmm || "").split(":").map(Number), d = new Date(basis); d.setHours(h || 0, m || 0, 0, 0); return d; }
+  // Uhrzeit auf das Datum eines Bezugstags setzen. o.tage verschiebt um ganze Kalendertage (1 = Folgetag), o.ref und o.wie entscheiden
+  // in der doppelten Stunde beim Ende der Sommerzeit, welche der beiden Zeiten gemeint ist (siehe U.ortZeit): beim Ändern ref = ursprünglicher
+  // Zeitpunkt mit wie, beim Ende eines neuen Eintrags ref = Beginn.
+  _at(basis, hhmm, o) {
+    o = o || {};
+    const [h, m] = String(hhmm || "").split(":").map(Number);
+    return U.ortZeit(basis.getFullYear(), basis.getMonth(), basis.getDate() + (o.tage || 0), h || 0, m || 0, o.ref, 0, o.wie);
+  }
   _artText(a) { return a === "beides" ? "nass + voll" : a; }
   // Stillen, Fläschchen oder Windel ändern und löschen (e gesetzt) oder nachtragen (e leer, mit Tag Heute/Gestern).
   // Das Datum eines vorhandenen Eintrags bleibt; ein Ende vor dem Beginn heißt über Mitternacht.
@@ -9367,8 +9433,12 @@ class FpBabyOverviewCard extends HTMLElement {
       if (typ === "stillen") {
         const vz = ov.querySelector(".fo-von").value, bz = ov.querySelector(".fo-bis").value;
         if (!vz || !bz) { U.toast(this, "Bitte Beginn und Ende angeben"); return; }
-        a = this._at(basis, vz); b = this._at(basis, bz);
-        if (b <= a) b.setDate(b.getDate() + 1);   // über Mitternacht
+        // Ändern: ref = ursprünglicher Beginn/Ende, ein unverändert gespeicherter Eintrag bleibt exakt gleich (auch in der doppelten Stunde
+        // beim Ende der Sommerzeit). Neu: das Ende liegt nach dem Beginn.
+        a = this._at(basis, vz, neu ? undefined : { ref: e.start, wie: true });
+        const ob = neu ? { ref: a } : { ref: e.end, wie: true };
+        b = this._at(basis, bz, ob);
+        if (b <= a) b = this._at(basis, bz, Object.assign({ tage: 1 }, ob));   // über Mitternacht
         if (a - Date.now() > 5 * MIN) { U.toast(this, "Der Beginn liegt in der Zukunft – Tag prüfen"); return; }
         if (b - a > 3 * STD) { U.toast(this, "Länger als 3 Stunden – Zeiten prüfen"); return; }
         if (neu && b - Date.now() > 5 * MIN) b = new Date(Math.max(+a + MIN, Date.now()));
@@ -9377,7 +9447,7 @@ class FpBabyOverviewCard extends HTMLElement {
         const zt = ov.querySelector(".fo-zeit").value;
         if (!zt) { U.toast(this, "Bitte die Uhrzeit angeben"); return; }
         if (typ === "flasche" && !(ml > 0 && ml <= 400)) { U.toast(this, "Bitte eine Menge angeben"); return; }
-        a = this._at(basis, zt);
+        a = this._at(basis, zt, neu ? undefined : { ref: e.start, wie: true });
         if (a - Date.now() > 5 * MIN) { U.toast(this, "Die Uhrzeit liegt in der Zukunft – Tag prüfen"); return; }
         b = new Date(+a + MIN);   // Fläschchen und Windel sind Punkte: eine Minute ab der Uhrzeit
         p = typ === "flasche" ? { ml } : { art };
@@ -9533,10 +9603,12 @@ class FpBabyOverviewCard extends HTMLElement {
     ov.querySelector(".fo-ok").addEventListener("click", async () => {
       const ds = ov.querySelector(".fo-vd").value, vz = ov.querySelector(".fo-vz").value, bz = ov.querySelector(".fo-bz").value;
       if (!ds || !vz || !bz) { U.toast(this, "Bitte Datum und beide Uhrzeiten angeben"); return; }
-      const a = this._day(ds), [vh, vmi] = vz.split(":").map(Number), [bh, bm] = bz.split(":").map(Number);
-      a.setHours(vh, vmi || 0, 0, 0);
-      const b = new Date(a); b.setHours(bh, bm || 0, 0, 0);
-      if (b <= a) b.setDate(b.getDate() + 1);   // über Mitternacht
+      // Ändern: ref = ursprünglicher Beginn/Ende (in der doppelten Stunde beim Ende der Sommerzeit bleibt alles, wie es war); neu: Ende nach Beginn.
+      const dag = this._day(ds);
+      const a = this._at(dag, vz, e ? { ref: e.start, wie: true } : undefined);
+      const ob = e ? { ref: e.end, wie: true } : { ref: a };
+      let b = this._at(dag, bz, ob);
+      if (b <= a) b = this._at(dag, bz, Object.assign({ tage: 1 }, ob));   // über Mitternacht
       if (b - Date.now() > 5 * MIN) { U.toast(this, "Das Aufwachen liegt in der Zukunft"); return; }
       if (b - a > 16 * STD) { U.toast(this, "Länger als 16 Stunden – bitte die Zeiten prüfen"); return; }
       const ziel = e ? [kid] : key === "*" ? kids : [this._kid(key)];
