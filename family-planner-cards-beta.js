@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.2.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
+/* Family Planner custom cards v3.3.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10199,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v2 (position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v3 (Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10249,6 +10249,13 @@ const WAKE_ERR = {
   perm: "Das Mikrofon ist nicht erlaubt.",
   mic: "Das Mikrofon ist nicht verfügbar.",
   run: "Die Erkennung ist ausgefallen.",
+};
+// Eigentliche Ursache zum Fehler ("CompileError: WebAssembly.Module doesn't parse …"), auf etwa 90 Zeichen gekürzt; ein schlichtes "Error: " entfällt
+const wkDetail = e => {
+  if (!e) return "";
+  const m = e.message != null ? String(e.message) : String(e), n = e.name && e.name !== "Error" ? e.name + ": " : "";
+  const t = (n + m).replace(/\s+/g, " ").trim();
+  return t.length > 90 ? t.slice(0, 89).trimEnd() + "…" : t;
 };
 const WAKE_QUIET = 1200;    // so lange nach Antwort und Vorlesen noch taub (Nachhall)
 const WAKE_IDLE = 30000;    // per Weckwort geöffnetes Fenster schließt sich so lange nach der Antwort von selbst
@@ -10300,7 +10307,12 @@ function downsample(st, f) {
 // Audio in Blöcken zu 1280 Werten (80 ms, 16 kHz, Int16-Maßstab) -> melspectrogram.onnx (letzte 1280 + 480 Werte, danach x/10+2)
 // -> embedding_model.onnx (die letzten 76 Mel-Frames ergeben je Block ein 96er-Embedding) -> Weckwort-Modell (die letzten
 // 16 Embeddings, [1,16,96]) -> Wahrscheinlichkeit. onnxruntime-web kommt aus einem festen Ordner von jsDelivr, einmal pro Seite.
-const ORT_VER = "1.20.1";
+// Bewusst 1.18.0 und nur das WASM-Backend (ort.wasm.min.js): Ab 1.19 gibt es nur noch den Build ort-wasm-simd-threaded.wasm, der
+// geteilten WebAssembly-Speicher (SharedArrayBuffer) importiert. Der braucht Cross-Origin-Isolation, die Home Assistant nicht setzt;
+// unter iOS 17 (HA-App, Safari) schlägt das Laden dann fehl. 1.18 hat noch ort-wasm-simd.wasm ohne Threads und ohne geteilten Speicher.
+// Ist bereits ein anderes window.ort geladen (z. B. 1.20 aus einer älteren Datei, Prod und Beta teilen sich window.ort und
+// window.__fpOrtLoad), wird es in loadOrt() unverändert genutzt: keine zweite Version in dieselbe globale Variable laden.
+const ORT_VER = "1.18.0";
 const ORT_DIR = "https://cdn.jsdelivr.net/npm/onnxruntime-web@" + ORT_VER + "/dist/";
 const WK_CHUNK = 1280;
 const WAKE_SKIP = 5;   // die ersten Blöcke nach dem Start zählen nicht (wie im Original)
@@ -10310,12 +10322,13 @@ function loadOrt() {
   if (!window.__fpOrtLoad) {
     const p = window.__fpOrtLoad = new Promise((res, rej) => {
       const s = document.createElement("script");
-      s.src = ORT_DIR + "ort.min.js";
+      s.src = ORT_DIR + "ort.wasm.min.js";
       s.onload = () => (window.ort && window.ort.InferenceSession ? res(window.ort) : rej(new Error("ort")));
-      s.onerror = () => { s.remove(); rej(new Error("ort laden")); };
+      s.onerror = () => { s.remove(); rej(new Error("ort laden: " + s.src.replace(/^https?:\/\//, ""))); };
       document.head.appendChild(s);
     }).then(ort => {
-      // ohne crossOriginIsolated (iOS) gibt es nur einen Thread; die WASM-Dateien liegen im selben Ordner
+      // ein Thread (ohne geteilten Speicher läuft nur ort-wasm-simd.wasm); die WASM-Dateien liegen im selben Ordner.
+      // Nur für die hier geladene Version: ein fremdes window.ort behält seine eigenen Pfade (es sucht seine .wasm selbst).
       try { ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false; ort.env.wasm.wasmPaths = ORT_DIR; ort.env.logLevel = "error"; } catch (e) {}
       return ort;
     });
@@ -11568,8 +11581,9 @@ class FpPipDock extends HTMLElement {
   _wakeSave(on) { try { if (on) localStorage.setItem(this._wakeKey(), "1"); else localStorage.removeItem(this._wakeKey()); } catch (e) {} }
   _wakeWant() { return !!(this._visible && this._cfg.wake_word && this._wakeOn && this._micOk() && !document.hidden); }
   _wakeBusy() { return this._wkHold || !!this._cur || this._speaking; }
-  _wakeSet(st, why) {
-    this._wk = { st, why: why || "" };
+  _wakeSet(st, why, err) {
+    if (st === "err") console.warn("[fp-assistant] Aktivierungswort:", err || why);
+    this._wk = { st, why: why || "", det: st === "err" ? wkDetail(err) : "" };
     this._wakeRender();
   }
   _wakeRender() {
@@ -11584,7 +11598,7 @@ class FpPipDock extends HTMLElement {
       else if (on && k.st === "load") hint = "Lädt die Erkennung …";
       else if (on && k.st === "wait") hint = `Einmal tippen, dann hört ${this._cfg.name} zu.`;
       else if (on && k.st === "on") hint = `Hört zu. Sag „${w.name}“.`;
-      else if (on && k.st === "err") { hint = WAKE_ERR[k.why] || WAKE_ERR.run; err = true; }
+      else if (on && k.st === "err") { hint = (WAKE_ERR[k.why] || WAKE_ERR.run) + (k.det ? ` (${k.det})` : ""); err = true; }
     }
     this._wkHint.textContent = hint;
     this._wkRow.classList.toggle("err", err);
@@ -11634,7 +11648,7 @@ class FpPipDock extends HTMLElement {
       if (!this._eng) {
         this._eng = new WakeEngine(w);
         this._eng.onwake = sc => this._onWake(sc);
-        this._eng.onerror = () => { if (this._wm) this._wakeFail("run"); };
+        this._eng.onerror = e => { if (this._wm) this._wakeFail("run", e); };
       }
       const eng = this._eng;
       await eng.load();
@@ -11659,7 +11673,7 @@ class FpPipDock extends HTMLElement {
       if (!stale()) {
         this._wkLoading = false;
         const why = (e && e.wk) || "mic";
-        this._wakeSet("err", why);
+        this._wakeSet("err", why, e);
         // Mikrofon verweigert oder getrennt: ein späterer Tipp versucht es noch einmal
         if (why === "perm" || why === "mic") this._wakeArm();
       }
@@ -11683,9 +11697,9 @@ class FpPipDock extends HTMLElement {
       try { m.ctx.resume(); } catch (e) {}
     }
   }
-  _wakeFail(why) {
+  _wakeFail(why, e) {
     this._wmClose();
-    this._wakeSet("err", why);
+    this._wakeSet("err", why, e);
   }
   // Das Mikrofon wurde uns genommen (Gerät getrennt, andere App): ein paar Mal neu versuchen, dann auf den nächsten Tipp warten.
   _wakeLost(m) {
