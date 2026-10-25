@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.3.1 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
+/* Family Planner custom cards v3.3.2 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10199,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v4 (kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v5 (Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10212,6 +10212,10 @@ const TAG = "fp-pip-dock-beta";
 const STORE = "fp-pip-dock-beta:";
 // Schalter "Aktivierungswort" je Gerät (Beta: fp-pip-wake-beta:), Vorgabe aus.
 const WAKE_STORE = TAG.replace("-dock", "-wake") + ":";
+// Schalter "An diesem Gerät klingeln" je Gerät (Beta: fp-pip-ring-beta:), Vorgabe an; "0" = aus.
+const RING_STORE = TAG.replace("-dock", "-ring") + ":";
+// Zuletzt hier behandeltes Klingel-Signal (Beta: fp-pip-ringseen-beta:): { key, st } mit st = on (klingelt) | rang (ausgeklungen) | stop (abgestellt).
+const SEEN_STORE = TAG.replace("-dock", "-ringseen") + ":";
 const EVT = "fp_pip_karte";
 const SUGG = [
   { icon: "📅", text: "Was steht heute an?" },
@@ -10260,6 +10264,11 @@ const wkDetail = e => {
 const WAKE_QUIET = 1200;    // so lange nach Antwort und Vorlesen noch taub (Nachhall)
 const WAKE_IDLE = 30000;    // per Weckwort geöffnetes Fenster schließt sich so lange nach der Antwort von selbst
 const CHIME_MS = 170;       // Länge des Erkennungstons; erst danach geht Ton an Home Assistant
+const RING_AGE = 180;       // ein Klingel-Signal ist höchstens so viele Sekunden alt (danach nimmt Home Assistant es selbst zurück)
+const RING_GAP = 1500;      // Abstand der Glockenschläge
+const ANN_WAIT = 20000;     // so lange darf die Ansage (Assist-Pipeline) auf sich warten lassen
+const PILL_MAX = 3;         // so viele Pillen neben der Figur, der Rest als "+N"
+const RING_ICON = { timer: "⏱", wecker: "⏰", erinnerung: "🔔" };
 const PIP = '<span class="pip st-idle"><span class="ring r1"></span><span class="ring r2"></span><span class="ball"><span class="eye"></span><span class="eye"></span></span></span>';
 // AudioWorklet für die Aufnahme: sammelt je 2048 Werte und reicht sie an die Seite weiter.
 const WORKLET = 'class P extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(2048);this.n=0;}'
@@ -10546,6 +10555,25 @@ function normCfg(c) {
       patience: isFinite(pa) && pa >= 1 ? Math.min(pa, 10) : 2,
     };
   }
+  // alarms: Timer, Wecker und Erinnerungen aus Helfern in Home Assistant (Zustände in hass.states, keine Ereignisse).
+  // Ohne diesen Block gibt es die Funktion nicht. slots brauchen Zeit und Text (leerer Text = Platz frei).
+  let alarms = null;
+  const al = c.alarms;
+  if (al && typeof al === "object" && !Array.isArray(al)) {
+    const ent = (v, dom) => { v = String(v || "").trim(); return v.indexOf(dom + ".") === 0 ? v : ""; };
+    const list = v => (Array.isArray(v) ? v : []).filter(x => x && typeof x === "object");
+    const timers = list(al.timers).map(x => ({ timer: ent(x.timer, "timer"), name: ent(x.name, "input_text") })).filter(x => x.timer);
+    const slots = list(al.slots).map(x => ({ zeit: ent(x.zeit, "input_datetime"), text: ent(x.text, "input_text") })).filter(x => x.zeit && x.text);
+    const klingel = ent(al.klingel, "input_text");
+    const rs = Number(al.ring_seconds), ph = Number(al.preview_hours);
+    if (klingel || timers.length || slots.length) {
+      alarms = {
+        klingel, timers, slots,
+        ring_seconds: isFinite(rs) && rs > 0 ? Math.min(Math.max(rs, 5), 600) : 60,
+        preview_hours: isFinite(ph) && ph > 0 ? Math.min(Math.max(ph, 1), 168) : 24,
+      };
+    }
+  }
   return {
     name,
     pipeline_id: String(c.pipeline_id || "").trim(),
@@ -10555,6 +10583,7 @@ function normCfg(c) {
     lift,
     position: c.position === "left" ? "left" : "right",
     wake_word: wake,
+    alarms,
   };
 }
 // Zeitpunkt als "JJJJ-MM-TT HH:MM:SS" in der Zeitzone von Home Assistant.
@@ -10576,6 +10605,55 @@ function errKey(err) {
   if (err && typeof err.code === "number") return "conn";
   if (err && err.code === "not_found") return "pipeline";
   return "generic";
+}
+
+// ---------- Timer, Wecker, Erinnerungen: Helfer ohne Bezug zur Oberfläche ----------
+// JSON-Objekt aus einem input_text; leer, unbekannt oder kaputt -> null (der Platz ist frei).
+const jsonObj = v => {
+  v = String(v == null ? "" : v).trim();
+  if (!v || v.charAt(0) !== "{") return null;
+  try { const o = JSON.parse(v); return o && typeof o === "object" && !Array.isArray(o) ? o : null; } catch (e) { return null; }
+};
+// "H:MM:SS" (auch "1 day, 2:03:04" und Bruchteile) von Home Assistant -> Sekunden, sonst null
+function parseDur(s) {
+  const m = /^(?:(\d+) days?, )?(\d+):(\d{2}):(\d{2})(?:\.\d+)?$/.exec(String(s == null ? "" : s).trim());
+  return m ? (+(m[1] || 0)) * 86400 + (+m[2]) * 3600 + (+m[3]) * 60 + (+m[4]) : null;
+}
+// Restzeit als "4:32" bzw. "1:02:10"
+function fmtCount(sec) {
+  sec = Math.max(0, Math.ceil(sec - 1e-6));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60, z = U.pad;
+  return h ? `${h}:${z(m)}:${z(s)}` : `${m}:${z(s)}`;
+}
+// Klingel-Signal aus dem input_text: { art, text, t (Unix-Sekunden), key } oder null (leer, kaputt, ohne t)
+function parseKl(raw) {
+  const o = jsonObj(raw), t = o ? Number(o.t) : NaN;
+  if (!o || !isFinite(t) || t <= 0) return null;
+  const art = o.art === "timer" || o.art === "wecker" ? o.art : "erinnerung";
+  const text = String(o.text == null ? "" : o.text).trim();
+  return { art, text, t, key: art + "|" + text + "|" + t };
+}
+function ringTitle(r) {
+  if (r.art === "timer") return r.text ? `Timer „${r.text}“ ist abgelaufen` : "Der Timer ist abgelaufen";
+  if (r.art === "wecker") return "Wecker";
+  return r.text ? `Erinnerung: ${r.text}` : "Erinnerung";
+}
+// Text der Ansage (gesprochen, deshalb ohne Anführungszeichen)
+function ringSay(r) {
+  if (r.art === "timer") return r.text ? `Der Timer ${r.text} ist abgelaufen.` : "Der Timer ist abgelaufen.";
+  if (r.art === "wecker") return r.text ? `Wecker. ${r.text}` : "Der Wecker klingelt.";
+  return r.text ? `Erinnerung: ${r.text}` : "Du hast eine Erinnerung.";
+}
+// Zeitpunkt einer Uhrzeit-Pille in der Zeitzone von Home Assistant: "6:30", "morgen 6:30" oder, weiter weg, "Sa 6:30".
+function slotWhen(ts, now, tz) {
+  const a = localStr(new Date(ts).toISOString(), tz), b = localStr(new Date(now).toISOString(), tz);
+  if (!a || !b) return "";
+  const hm = (+a.slice(11, 13)) + ":" + a.slice(14, 16);
+  const dn = x => Date.UTC(+x.slice(0, 4), +x.slice(5, 7) - 1, +x.slice(8, 10)) / 86400000;
+  const d = Math.round(dn(a) - dn(b));
+  if (d <= 0) return hm;
+  if (d === 1) return "morgen " + hm;
+  return ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][new Date(dn(a) * 86400000).getUTCDay()] + " " + hm;
 }
 
 let dock = null;       // das eine Dock
@@ -10714,6 +10792,9 @@ button{font:inherit;color:inherit;}
 .st-think .ball{animation:pp-wobble 1.3s ease-in-out infinite;}
 .st-think .eye{animation:pp-look 1.5s ease-in-out infinite;}
 .st-speak .ball{animation:pp-pulse .8s ease-in-out infinite;}
+.fig.ringing .ring{animation:pp-ring 1.4s ease-out infinite;}
+.fig.ringing .r2{animation-delay:.7s;}
+.fig.ringing .ball{animation:pp-wobble .45s ease-in-out infinite;}
 @keyframes pp-float{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}
 @keyframes pp-blink{0%,91%,100%{scale:1 1;}95%{scale:1 .1;}}
 @keyframes pp-ring{0%{transform:scale(1);opacity:.6;}100%{transform:scale(var(--rs));opacity:0;}}
@@ -10723,6 +10804,8 @@ button{font:inherit;color:inherit;}
 @keyframes pp-dot{30%{opacity:1;transform:translateY(-3px);}}
 @keyframes pp-ear{0%,100%{opacity:1;}50%{opacity:.4;}}
 @keyframes pp-rec{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--a) 50%,transparent);}100%{box-shadow:0 0 0 12px transparent;}}
+@keyframes pp-alert{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--a) 45%,transparent),0 14px 40px color-mix(in srgb,var(--tx) 26%,transparent);}100%{box-shadow:0 0 0 16px transparent,0 14px 40px color-mix(in srgb,var(--tx) 26%,transparent);}}
+@keyframes pp-bell{0%,45%,100%{transform:none;}8%{transform:rotate(-16deg);}16%{transform:rotate(14deg);}24%{transform:rotate(-10deg);}32%{transform:rotate(6deg);}40%{transform:rotate(-2deg);}}
 
 /* Gesprächs-Panel */
 .panel{position:fixed;z-index:7;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--tx);border:1px solid var(--dv);box-shadow:0 18px 50px color-mix(in srgb,var(--tx) 24%,transparent);visibility:hidden;transition:transform .28s cubic-bezier(.2,.9,.3,1),visibility 0s linear .28s;}
@@ -10741,7 +10824,7 @@ button{font:inherit;color:inherit;}
 .stt{font-size:.8rem;color:var(--tx2);}
 .ib{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:50%;background:var(--s1);color:var(--tx);font-size:1.15rem;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 @media (hover:hover){.ib:hover{background:var(--s2);}}
-.ib:focus-visible,.chip:focus-visible,.go:focus-visible,.in:focus-visible,.ac button:focus-visible{outline:2px solid var(--a);outline-offset:2px;}
+.ib:focus-visible,.chip:focus-visible,.go:focus-visible,.in:focus-visible,.ac button:focus-visible,.pl:focus-visible,.pm button:focus-visible,.al-b:focus-visible{outline:2px solid var(--a);outline-offset:2px;}
 
 /* Schalter "Aktivierungswort" */
 .wk{flex:none;display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--dv);}
@@ -10799,10 +10882,44 @@ button{font:inherit;color:inherit;}
 .go:disabled{opacity:.45;cursor:default;}
 .go.rec{animation:pp-rec 1.2s ease-out infinite;}
 
+/* Pillen (Timer, Wecker, Erinnerungen) und Klingel-Hinweis: stehen über der Figur, auf ihrer Seite, und heben sich mit (--lift).
+   Der Stapel wächst nach oben: unten der Hinweis, darüber die Pillen, die nächste Fälligkeit zuerst. */
+.stk{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(86px + env(safe-area-inset-bottom,0px) + var(--lift,0px));z-index:8;display:flex;flex-direction:column-reverse;align-items:flex-end;gap:10px;max-width:calc(100% - 32px);pointer-events:none;transition:bottom .25s ease,left .2s ease;}
+.stk.left{right:auto;left:calc(16px + var(--gx,0px) + env(safe-area-inset-left,0px));max-width:calc(100% - 32px - var(--gx,0px));align-items:flex-start;}
+.stk > *{pointer-events:auto;}
+.stk.open .pls{display:none;}
+.pls{display:flex;flex-direction:column-reverse;align-items:inherit;gap:8px;max-width:100%;}
+.pls:empty{display:none;}
+.pl{display:inline-flex;align-items:center;gap:7px;max-width:min(320px,100%);min-height:38px;padding:7px 14px;border:1px solid var(--dv);border-radius:999px;background:var(--bg);color:var(--tx);font-size:.92rem;font-weight:700;line-height:1.2;box-shadow:0 4px 14px color-mix(in srgb,var(--tx) 14%,transparent);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+@media (hover:hover){.pl:hover{background:var(--s1);}}
+.pi{flex:none;font-size:1rem;line-height:1;}
+.pt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pc{flex:none;font-variant-numeric:tabular-nums;color:var(--a);}
+.pl.more{padding:7px 12px;color:var(--tx2);}
+.pm{display:flex;flex-direction:column;gap:8px;width:min(290px,100%);padding:10px 12px;border:1px solid var(--dv);border-radius:var(--rsm);background:var(--bg);color:var(--tx);box-shadow:0 8px 26px color-mix(in srgb,var(--tx) 20%,transparent);}
+.pm-h{display:flex;align-items:center;gap:7px;min-width:0;padding:0 2px;font-size:.92rem;font-weight:700;line-height:1.25;}
+.pm-f{display:flex;gap:8px;}
+.pm button{flex:1;min-height:42px;padding:8px 12px;border:0;border-radius:var(--rsm);font-size:.9rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.pm .pri{background:var(--a);color:var(--afg);}
+.pm .ghost{background:transparent;color:var(--tx);box-shadow:inset 0 0 0 1px var(--dv);}
+.pm button:disabled{opacity:.5;cursor:default;}
+.al{display:flex;flex-direction:column;gap:12px;width:360px;max-width:100%;padding:14px;border:3px solid var(--a);border-radius:var(--rad);background:color-mix(in srgb,var(--a) 9%,var(--bg));color:var(--tx);box-shadow:0 14px 40px color-mix(in srgb,var(--tx) 26%,transparent);animation:pp-alert 1.6s ease-out infinite;}
+.al[hidden]{display:none;}
+.al-r{display:flex;align-items:center;gap:12px;}
+.al-i{flex:none;display:flex;align-items:center;justify-content:center;width:50px;height:50px;border-radius:50%;background:var(--bg);box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--a) 35%,transparent);font-size:1.7rem;line-height:1;animation:pp-bell 1.4s ease-in-out infinite;transform-origin:50% 20%;}
+.al-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.al-ti{font-size:1.12rem;font-weight:800;line-height:1.25;overflow-wrap:anywhere;}
+.al-su{font-size:.95rem;line-height:1.35;color:var(--tx2);overflow-wrap:anywhere;}
+.al-hi{font-size:.82rem;line-height:1.3;color:var(--tx2);}
+.al-su:empty,.al-hi:empty{display:none;}
+.al-b{min-height:58px;padding:0 16px;border:0;border-radius:var(--rsm);background:var(--a);color:var(--afg);font-size:1.2rem;font-weight:800;letter-spacing:.02em;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.al-b:active{transform:scale(.98);}
+.al.quiet,.al.quiet .al-i{animation:none;}
+
 @media (prefers-reduced-motion:reduce){
-  .ball,.eye,.ring,.dots i,.go.rec,.fig .ear{animation:none !important;}
-  .panel,.fig,.go,.sw,.sw .kn,.ear{transition:none !important;}
-  .st-listen .r1{opacity:.55;transform:scale(1.25);}
+  .ball,.eye,.ring,.dots i,.go.rec,.fig .ear,.al,.al-i{animation:none !important;}
+  .panel,.fig,.go,.sw,.sw .kn,.ear,.stk{transition:none !important;}
+  .st-listen .r1,.fig.ringing .r1{opacity:.55;transform:scale(1.25);}
 }
 `;
 
@@ -10849,6 +10966,23 @@ class FpPipDock extends HTMLElement {
     this._wkRetry = null;
     this._wkIdleT = null;
     this._wakeOpened = false;  // Fenster wurde vom Weckwort geöffnet
+    // Timer, Wecker, Erinnerungen und Klingeln (alarms)
+    this._alT = null;          // Takt für Countdown und Vorschau (setTimeout)
+    this._alIds = [];          // alle Entitäten aus alarms
+    this._alRefs = null;       // ihre Zustände beim letzten Durchlauf: unverändert -> nichts zu rechnen
+    this._alItems = [];        // Pillen: laufende Timer, Wecker und Erinnerungen der nächsten Stunden
+    this._alSig = "";
+    this._pmKey = "";          // Pille mit offenem Menü
+    this._pmBusy = "";         // Pille, deren Dienst gerade läuft
+    this._plAll = false;       // alle Pillen statt der ersten drei
+    this._klRaw = null;        // zuletzt gelesenes Klingel-Signal
+    this._ring = null;         // laufendes Klingeln: { art, text, t, key, begin, until, silent, mute, over, wait, tone, ann, timer }
+    this._ringOn = true;       // Schalter "An diesem Gerät klingeln"
+    this._rc = null;           // eigener AudioContext fürs Klingeln; schläft, solange nichts klingt
+    this._rcOk = false;        // per Tipp freigeschaltet
+    this._rcArmed = false;
+    this._annc = null;         // Ansage des Klingelns, die gerade über das Audio-Element läuft
+    this._rcGest = () => this._unlockAudio();
     this._kd = e => { if (e.key === "Escape") this._close(); };
     this._vv = () => this._onViewport();
     this._wkGest = () => this._wakeKick();
@@ -10862,6 +10996,14 @@ class FpPipDock extends HTMLElement {
     const r = this.shadowRoot;
     r.innerHTML = `<style>${CSS}</style>
 <button class="fig" type="button" aria-label="Pip öffnen">${PIP}<span class="ear" aria-hidden="true"></span></button>
+<div class="stk">
+  <div class="al" role="alert" hidden>
+    <div class="al-r"><span class="al-i" aria-hidden="true"></span><div class="al-t"><b class="al-ti"></b><span class="al-su"></span></div></div>
+    <span class="al-hi" role="status"></span>
+    <button class="al-b" type="button" data-a="ring">Stopp</button>
+  </div>
+  <div class="pls"></div>
+</div>
 <section class="panel" role="dialog" aria-label="Pip">
   <header class="head">${PIP.replace('class="pip st-idle"', 'class="pip mini st-idle"')}
     <div class="who"><b class="nm">Pip</b><span class="stt" role="status">Bereit</span></div>
@@ -10869,6 +11011,7 @@ class FpPipDock extends HTMLElement {
     <button class="ib" type="button" data-a="close" aria-label="Schließen" title="Schließen">✕</button>
   </header>
   <div class="wk" hidden><div class="wk-t"><span class="wk-l"></span><span class="wk-h" role="status"></span></div><button class="sw" type="button" role="switch" aria-checked="false"><span class="kn"></span></button></div>
+  <div class="wk rg" hidden><div class="wk-t"><span class="wk-l">An diesem Gerät klingeln</span><span class="wk-h" role="status"></span></div><button class="sw" type="button" role="switch" aria-checked="true" aria-label="An diesem Gerät klingeln"><span class="kn"></span></button></div>
   <div class="log" role="log" aria-live="polite"></div>
   <div class="chips"></div>
   <div class="bar"><input class="in" type="text" autocomplete="off" enterkeyhint="send" aria-label="Nachricht"><button class="go" type="button" data-m=""></button></div>
@@ -10886,7 +11029,18 @@ class FpPipDock extends HTMLElement {
     this._wkHint = r.querySelector(".wk-h");
     this._wkSw = r.querySelector(".sw");
     this._pips = Array.from(r.querySelectorAll(".pip"));
+    this._stk = r.querySelector(".stk");
+    this._pls = r.querySelector(".pls");
+    this._al = r.querySelector(".al");
+    this._alI = r.querySelector(".al-i");
+    this._alTi = r.querySelector(".al-ti");
+    this._alSu = r.querySelector(".al-su");
+    this._alHi = r.querySelector(".al-hi");
+    this._rgRow = r.querySelector(".rg");
+    this._rgHint = r.querySelector(".rg .wk-h");
+    this._rgSw = r.querySelector(".rg .sw");
     this._fig.addEventListener("click", () => this._openPanel());
+    this._stk.addEventListener("click", e => this._onStk(e));
     r.querySelector(".head").addEventListener("click", e => {
       const b = e.target.closest ? e.target.closest("[data-a]") : null;
       if (!b) return;
@@ -10905,6 +11059,7 @@ class FpPipDock extends HTMLElement {
     });
     this._go.addEventListener("click", () => this._onGo());
     this._wkSw.addEventListener("click", () => this._wakeToggle());
+    this._rgSw.addEventListener("click", () => this._ringToggle());
     // Wer das Fenster anfasst, will es behalten: dann schließt es sich nach einer Weckwort-Frage nicht von selbst.
     this._panel.addEventListener("pointerdown", () => this._wakeTouched());
     this._in.addEventListener("input", () => this._wakeTouched());
@@ -10935,6 +11090,7 @@ class FpPipDock extends HTMLElement {
     this._wakeOn = !!cfg.wake_word && this._wakeLoad();
     this._wakeRender();
     this._wakeSync();
+    this._alCfg();
   }
 
   setVisible(v) {
@@ -10942,11 +11098,12 @@ class FpPipDock extends HTMLElement {
     if (v === this._visible) return;
     this._visible = v;
     this.hidden = !v;
-    if (v) { this._subs(); this._wakeSync(); } else this._teardown();
+    if (v) { this._subs(); this._wakeSync(); this._alStart(); } else this._teardown();
   }
   hassUpdated() {
     if (!this._visible) return;
     this._subs();
+    if (this._cfg.alarms) this._alSync(false);
     if (this._cfg.position === "left") {
       // Seitenleiste ein- oder ausgeklappt? Dann nach der Animation neu messen.
       const h = getHass(), ds = String(h && h.dockedSidebar);
@@ -10968,11 +11125,13 @@ class FpPipDock extends HTMLElement {
       }
     } catch (e) {}
     this._fig.style.setProperty("--lift", px + "px");
+    this._stk.style.setProperty("--lift", px + "px");
   }
   // Figur und Fenster auf die gewählte Seite setzen. Links sitzen sie am Rand des Inhaltsbereichs, nicht über der HA-Seitenleiste.
   applyPos() {
     const left = this._cfg.position === "left";
     this._fig.classList.toggle("left", left);
+    this._stk.classList.toggle("left", left);
     this._panel.classList.toggle("left", left);
     clearTimeout(this._edgeT);
     if (!left) { this._edgeWatch(null); this._edgeTry = 0; this.style.removeProperty("--gx"); return; }
@@ -11001,6 +11160,7 @@ class FpPipDock extends HTMLElement {
     this._close();
     this._unsubEvents();
     this._wakeOff();
+    this._alStop();
   }
 
   _renderChips() {
@@ -11020,6 +11180,7 @@ class FpPipDock extends HTMLElement {
     if (lastCard && lastCard.isConnected) copyTheme(lastCard);
     this._subs();
     this._panel.classList.add("open");
+    this._stk.classList.add("open");
     this._fig.classList.add("gone");
     document.addEventListener("keydown", this._kd);
     if (window.visualViewport) {
@@ -11045,6 +11206,7 @@ class FpPipDock extends HTMLElement {
     this._wakeTouched();
     if (!wasOpen) return;
     this._panel.classList.remove("open");
+    this._stk.classList.remove("open");
     this._fig.classList.remove("gone");
     document.removeEventListener("keydown", this._kd);
     if (window.visualViewport) {
@@ -11202,6 +11364,7 @@ class FpPipDock extends HTMLElement {
   }
   // iOS: Das Audio-Element muss einmal per Tipp gestartet worden sein, sonst bleibt spätere Wiedergabe stumm.
   _unlockAudio() {
+    this._rcUnlock();
     if (this._unlocked || !SILENT) return;
     this._unlocked = true;
     try {
@@ -11211,12 +11374,14 @@ class FpPipDock extends HTMLElement {
       if (p && p.then) p.then(() => { if (a.src === SILENT) a.pause(); }, () => { this._unlocked = false; });
     } catch (e) { this._unlocked = false; }
   }
-  _play(url) {
+  // ann: Ansage des Klingelns (kein Gespräch: danach wird nicht zugehört)
+  _play(url, ann) {
     const hass = getHass();
     let src = url;
     try { if (hass && hass.hassUrl) src = hass.hassUrl(url); } catch (e) {}
     const a = this._aud();
     this._speaking = true;
+    this._annc = ann || null;
     a.src = src;
     this._setState("speak");
     try {
@@ -11227,9 +11392,12 @@ class FpPipDock extends HTMLElement {
   _audioDone(failed) {
     if (!this._speaking) return;
     this._speaking = false;
-    const go = !failed && this._auto && this._isOpen && this._visible && !this._cur;
+    const ann = this._annc;
+    this._annc = null;
+    const go = !ann && !failed && this._auto && this._isOpen && this._visible && !this._cur;
     this._auto = false;
     this._setState(this._cur ? "think" : "idle");
+    if (ann) this._annEnd(ann);
     if (go) this._listen(true);
   }
   _stopAudio() {
@@ -11239,6 +11407,9 @@ class FpPipDock extends HTMLElement {
       this._speaking = false;
       if (this._st === "speak") this._setState(this._cur ? "think" : "idle");
     }
+    const ann = this._annc;
+    this._annc = null;
+    if (ann) this._annEnd(ann);
   }
 
   // ---------- Anfragen ----------
@@ -11405,6 +11576,7 @@ class FpPipDock extends HTMLElement {
     if (this._cur || !this._isOpen || !this._visible) return;
     if (!this._micOk()) { if (!auto) this._micFail(); return; }
     this._unlockAudio();
+    this._ringSilence();   // wer jetzt spricht, will den Klingelton nicht im Mikrofon
     this._stopAudio();
     // Hört das Aktivierungswort schon mit, ist das Mikrofon offen: denselben Strom nehmen, kein zweites getUserMedia.
     const wm = this._wm;
@@ -11640,7 +11812,7 @@ class FpPipDock extends HTMLElement {
   _wakeLoad() { try { return localStorage.getItem(this._wakeKey()) === "1"; } catch (e) { return false; } }
   _wakeSave(on) { try { if (on) localStorage.setItem(this._wakeKey(), "1"); else localStorage.removeItem(this._wakeKey()); } catch (e) {} }
   _wakeWant() { return !!(this._visible && this._cfg.wake_word && this._wakeOn && this._micOk() && !document.hidden); }
-  _wakeBusy() { return this._wkHold || !!this._cur || this._speaking; }
+  _wakeBusy() { return this._wkHold || !!this._cur || this._speaking || !!(this._ring && this._ring.tone); }
   _wakeSet(st, why, err) {
     if (st === "err") console.warn("[fp-assistant] Aktivierungswort:", err || why);
     this._wk = { st, why: why || "", det: st === "err" ? wkDetail(err) : "" };
@@ -11882,6 +12054,445 @@ class FpPipDock extends HTMLElement {
     clearTimeout(this._wkIdleT);
   }
 
+  // ---------- Timer, Wecker, Erinnerungen und Klingeln (alarms) ----------
+  // Alles kommt aus Zuständen in hass.states, damit auch Konten ohne Ereignis-Abo (das Wand-Tablet) es sehen: Timer (timer.*,
+  // Name als JSON in einem input_text), Uhrzeit-Plätze (input_datetime + input_text mit JSON) und ein Klingel-Signal (input_text
+  // mit JSON). Pillen über der Figur zeigen, was läuft oder ansteht; das Klingel-Signal löst Hinweisfeld, Klingelton und Ansage
+  // aus. Stoppen und Löschen gehen als Dienste an Home Assistant, das Stellen und Auslösen übernehmen dort Skripte und Automationen.
+  _ringKey() { return RING_STORE + (this._cfg.dashboard || pathPart()); }
+  _ringLoad() { try { return localStorage.getItem(this._ringKey()) !== "0"; } catch (e) { return true; } }
+  _seenKey() { return SEEN_STORE + (this._cfg.dashboard || pathPart()); }
+  _seenGet() { try { const s = localStorage.getItem(this._seenKey()); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  _seenSet(key, st) { try { localStorage.setItem(this._seenKey(), JSON.stringify({ key, st })); } catch (e) {} }
+  // Konfiguration neu gelesen: Entitäten merken, Schalter und Pillen neu aufbauen
+  _alCfg() {
+    const al = this._cfg.alarms, ids = [];
+    if (al) {
+      if (al.klingel) ids.push(al.klingel);
+      for (const t of al.timers) { ids.push(t.timer); if (t.name) ids.push(t.name); }
+      for (const x of al.slots) ids.push(x.zeit, x.text);
+    }
+    this._alIds = ids;
+    this._alRefs = null;
+    this._klRaw = null;
+    this._alSig = "";
+    this._pmKey = this._pmBusy = "";
+    this._plAll = false;
+    this._ringOn = !!(al && al.klingel) && this._ringLoad();
+    this._ringSwRender();
+    this._rcPrep();
+    if (al) { this._alStart(); return; }
+    this._alStop();
+    this._alItems = [];
+    this._pls.innerHTML = "";
+  }
+  _alStart() {
+    if (!this._cfg.alarms || !this._visible) return;
+    this._rcPrep();
+    if (this._alT) this._alSync(true); else this._alLoop();
+  }
+  _alStop() {
+    clearTimeout(this._alT);
+    this._alT = null;
+    this._klRaw = null;
+    this._alRefs = null;
+    this._rcDisarm();
+    this._ringKill();
+  }
+  // Zustände lesen: Klingel-Signal und Pillen. Im Sekundentakt (tick) wird immer gerechnet (Countdown, Fenster der Vorschau),
+  // sonst nur, wenn sich einer der Zustände geändert hat.
+  _alSync(tick) {
+    const al = this._cfg.alarms, hass = getHass(), st = hass && hass.states;
+    if (!al || !st) return;
+    const refs = this._alIds.map(id => st[id]), old = this._alRefs;
+    const same = !!old && refs.length === old.length && refs.every((r, i) => r === old[i]);
+    this._alRefs = refs;
+    if (same && !tick) return;
+    this._klSync(hass);
+    this._alItems = this._alCompute(hass, Date.now());
+    this._plRender();
+    if (this._alT && !tick) this._alNext();
+  }
+  _alLoop() {
+    try { this._alSync(true); } catch (e) {}
+    this._alNext();
+  }
+  // Nächster Takt kurz nach dem nächsten Sprung der Restzeit eines laufenden Timers (sonst jede Sekunde): Die Anzeige springt
+  // dann mit der Uhr statt bis zu einer Sekunde daneben zu liegen.
+  _alNext() {
+    clearTimeout(this._alT);
+    this._alT = null;
+    if (!this._cfg.alarms || !this._visible) return;
+    const now = Date.now();
+    let ms = 1000;
+    for (const i of this._alItems) {
+      if (i.kind !== "timer" || i.paused) continue;
+      let rem = (i.end - now) % 1000;
+      if (rem <= 0) rem += 1000;
+      ms = Math.min(ms, rem + 20);
+    }
+    this._alT = setTimeout(() => this._alLoop(), Math.max(40, ms));
+  }
+  // Pillen: laufende Timer (aktiv oder pausiert) und Wecker/Erinnerungen der nächsten preview_hours, nach Fälligkeit sortiert.
+  _alCompute(hass, now) {
+    const al = this._cfg.alarms, st = hass.states, tz = hass.config && hass.config.time_zone, out = [];
+    const obj = ent => (ent && st[ent] ? jsonObj(st[ent].state) : null);
+    for (const t of al.timers) {
+      const s = st[t.timer];
+      if (!s || (s.state !== "active" && s.state !== "paused")) continue;
+      const o = obj(t.name) || {}, art = o.art === "erinnerung" ? "erinnerung" : "timer";
+      const paused = s.state === "paused", a = s.attributes || {};
+      let end = 0, rem = 0;
+      if (paused) { rem = parseDur(a.remaining); if (rem == null) continue; }
+      else { end = Date.parse(a.finishes_at); if (!isFinite(end)) continue; }
+      out.push({ key: t.timer, kind: "timer", art, icon: art === "erinnerung" ? "🔔" : "⏱", lbl: String(o.text == null ? "" : o.text).trim(), paused, end, rem, at: paused ? Infinity : end, ent: t.timer, nameEnt: t.name });
+    }
+    const lim = now + al.preview_hours * 3600000;
+    for (const x of al.slots) {
+      const z = st[x.zeit], o = obj(x.text);   // leerer Text = Platz frei
+      if (!z || !o) continue;
+      const ts = Number(z.attributes && z.attributes.timestamp) * 1000;
+      if (!isFinite(ts) || ts <= now || ts > lim) continue;
+      const art = o.art === "erinnerung" ? "erinnerung" : "wecker", text = String(o.text == null ? "" : o.text).trim();
+      out.push({ key: x.zeit, kind: "slot", art, icon: art === "wecker" ? "⏰" : "🔔", lbl: slotWhen(ts, now, tz) + (text ? " " + text : ""), paused: false, at: ts, ent: x.zeit, textEnt: x.text });
+    }
+    out.sort((p, q) => (p.at < q.at ? -1 : p.at > q.at ? 1 : 0));
+    return out;
+  }
+  _plCount(it, now) { return it.paused ? "‖ " + fmtCount(it.rem) : fmtCount((it.end - now) / 1000); }
+  // Pillen zeichnen. Der Aufbau ändert sich nur, wenn sich etwas ändert (Eintrag, Text, Menü); der Countdown läuft in den
+  // vorhandenen Elementen weiter, damit ein Tipp nicht ins Leere geht, weil die Pille unter dem Finger neu gebaut wurde.
+  _plRender() {
+    const items = this._alItems;
+    if (this._pmKey && !items.some(i => i.key === this._pmKey)) { this._pmKey = this._pmBusy = ""; clearTimeout(this._pmT); }
+    const rest = items.length - PILL_MAX, show = this._plAll ? items : items.slice(0, PILL_MAX);
+    const sig = show.map(i => [i.key, i.icon, i.lbl, i.kind, i.paused ? 1 : 0, i.key === this._pmKey ? (this._pmBusy ? 2 : 1) : 0].join("|")).join("\n")
+      + "#" + (this._plAll ? "a" : rest > 0 ? rest : "");
+    if (sig !== this._alSig) {
+      this._alSig = sig;
+      const esc = U.esc;
+      let h = "";
+      for (const i of show) {
+        const body = `<span class="pi" aria-hidden="true">${i.icon}</span>${i.lbl ? `<span class="pt">${esc(i.lbl)}</span>` : ""}${i.kind === "timer" ? `<span class="pc" data-k="${esc(i.key)}"></span>` : ""}`;
+        if (i.key === this._pmKey) {
+          const dis = this._pmBusy ? " disabled" : "";
+          h += `<div class="pm" role="group" aria-label="${i.kind === "timer" ? "Timer" : i.art === "wecker" ? "Wecker" : "Erinnerung"}"><div class="pm-h">${body}</div><div class="pm-f"><button class="pri" type="button" data-a="do" data-k="${esc(i.key)}"${dis}>${i.kind === "timer" ? "Stoppen" : "Löschen"}</button><button class="ghost" type="button" data-a="close"${dis}>Schließen</button></div></div>`;
+        } else h += `<button class="pl" type="button" data-a="pill" data-k="${esc(i.key)}" aria-haspopup="true">${body}</button>`;
+      }
+      if (this._plAll && rest > 0) h += `<button class="pl more" type="button" data-a="more">weniger</button>`;
+      else if (!this._plAll && rest > 0) h += `<button class="pl more" type="button" data-a="more" aria-label="${rest} weitere anzeigen">+${rest}</button>`;
+      this._pls.innerHTML = h;
+    }
+    const now = Date.now();
+    for (const c of this._pls.querySelectorAll(".pc[data-k]")) {
+      const it = items.find(i => i.key === c.dataset.k), t = it ? this._plCount(it, now) : "";
+      if (c.textContent !== t) c.textContent = t;
+    }
+  }
+  _onStk(e) {
+    const b = e.target.closest ? e.target.closest("[data-a]") : null;
+    if (!b || b.disabled) return;
+    this._unlockAudio();   // jeder Tipp hier schaltet Ton frei (iOS)
+    const a = b.dataset.a, k = b.dataset.k || "";
+    if (a === "ring") { this._ringStop(); return; }
+    if (a === "pill") this._pmKey = this._pmKey === k ? "" : k;
+    else if (a === "more") { this._plAll = !this._plAll; this._pmKey = ""; }
+    else if (a === "close") this._pmKey = "";
+    else if (a === "do") {
+      const it = this._alItems.find(x => x.key === k);
+      if (it) { this._pmBusy = k; this._alDo(it); } else this._pmKey = "";
+    }
+    this._plRender();
+  }
+  // Timer stoppen (und seinen Namen freigeben) bzw. einen Uhrzeit-Platz leeren: direkte Dienste, die auch Nicht-Admins dürfen.
+  async _alDo(it) {
+    const hass = getHass();
+    let ok = false;
+    try {
+      if (!hass || !hass.callService) throw new Error("hass");
+      const clear = id => hass.callService("input_text", "set_value", { entity_id: id, value: "" });
+      if (it.kind === "timer") await Promise.all([hass.callService("timer", "cancel", { entity_id: it.ent }), it.nameEnt ? clear(it.nameEnt) : null]);
+      else await clear(it.textEnt);
+      ok = true;
+    } catch (e) { ok = false; }
+    if (ok) {
+      // Das Menü schließt sich, sobald der Zustand aus Home Assistant da ist; kommt er nicht, nach 4 s von selbst.
+      clearTimeout(this._pmT);
+      this._pmT = setTimeout(() => { if (this._pmBusy === it.key) { this._pmBusy = this._pmKey = ""; this._plRender(); } }, 4000);
+      return;
+    }
+    if (this._pmBusy === it.key) this._pmBusy = this._pmKey = "";
+    this._toast(it.kind === "timer" ? "Stoppen hat nicht geklappt" : "Löschen hat nicht geklappt");
+    this._plRender();
+  }
+
+  // Klingel-Signal lesen: ein JSON mit t (höchstens 3 Minuten alt), das hier noch nicht abgestellt wurde, löst das Klingeln aus.
+  // Wird es leer (anderes Gerät, Sprachbefehl, Zeitablauf in Home Assistant), hört es auch hier auf.
+  _klSync(hass) {
+    const al = this._cfg.alarms, s = al && al.klingel ? hass.states[al.klingel] : null;
+    if (!s) return;
+    const raw = String(s.state == null ? "" : s.state);
+    if (raw === "unavailable" || raw === "unknown" || raw === this._klRaw) return;   // Verbindung weg: nichts ändern
+    this._klRaw = raw;
+    const o = parseKl(raw), r = this._ring;
+    if (!o) { if (r) this._ringKill(); return; }
+    if (r && r.key === o.key) return;
+    if (r) this._ringKill();
+    if (Date.now() / 1000 - o.t > RING_AGE) return;   // altes Signal (etwa nach dem Neuladen): still
+    const sn = this._seenGet();
+    let silent = false;
+    if (sn && sn.key === o.key) { if (sn.st === "stop") return; silent = sn.st === "rang"; }
+    this._ringBegin(o, silent);
+  }
+  // silent: Das Signal hat hier schon ausgeklungen (Neuladen): nur das Hinweisfeld, ohne Ton und Ansage.
+  _ringBegin(o, silent) {
+    const r = this._ring = { art: o.art, text: o.text, t: o.t, key: o.key, begin: Date.now(), until: 0, silent: !!silent, mute: false, over: !!silent, wait: false, tone: null, ann: null, timer: null };
+    r.until = r.begin + this._cfg.alarms.ring_seconds * 1000;
+    if (!silent) this._seenSet(o.key, "on");
+    this._ringView();
+    if (!silent && this._ringOn) this._ringAudio(r);
+  }
+  _ringView() {
+    const r = this._ring;
+    this._al.hidden = !r;
+    this._fig.classList.toggle("ringing", !!r && !r.over);
+    if (!r) return;
+    this._al.classList.toggle("quiet", r.over);
+    this._alI.textContent = RING_ICON[r.art] || "🔔";
+    this._alTi.textContent = ringTitle(r);
+    this._alSu.textContent = r.art === "wecker" ? r.text : "";
+    this._alHi.textContent = r.wait && this._ringOn ? "Einmal tippen, dann klingelt es." : "";
+  }
+  _ringSwRender() {
+    const k = !!(this._cfg.alarms && this._cfg.alarms.klingel);
+    this._rgRow.hidden = !k;
+    this._rgSw.setAttribute("aria-checked", k && this._ringOn ? "true" : "false");
+    this._rgHint.textContent = !k ? "" : this._ringOn ? "Timer, Wecker und Erinnerungen läuten hier." : "Nur ein Hinweis auf dem Bildschirm, kein Ton.";
+  }
+  _ringToggle() {
+    if (!this._cfg.alarms || !this._cfg.alarms.klingel) return;
+    this._ringOn = !this._ringOn;
+    try { if (this._ringOn) localStorage.removeItem(this._ringKey()); else localStorage.setItem(this._ringKey(), "0"); } catch (e) {}
+    const r = this._ring;
+    if (this._ringOn) {
+      this._unlockAudio();   // der Tipp auf den Schalter zählt
+      if (r && !r.over && !r.silent) this._ringAudio(r);
+    } else this._ringSilence();
+    this._rcPrep();
+    this._ringSwRender();
+    this._ringView();
+  }
+  // Stopp: Ton aus, Ansage ab, Signal in Home Assistant leeren (dann hören alle Geräte auf). Das Signal gilt hier als abgestellt.
+  _ringStop() {
+    const r = this._ring, al = this._cfg.alarms;
+    if (!r) return;
+    this._seenSet(r.key, "stop");
+    this._ringKill();
+    const hass = getHass();
+    if (!al || !al.klingel || !hass || !hass.callService) return;
+    const fail = () => this._toast("Stopp hat nicht geklappt");
+    try { Promise.resolve(hass.callService("input_text", "set_value", { entity_id: al.klingel, value: "" })).catch(fail); } catch (e) { fail(); }
+  }
+  // Klingeln beenden, ohne Home Assistant anzusprechen (Signal von außen weg, Dock versteckt, Neues Signal)
+  _ringKill() {
+    const r = this._ring;
+    this._ring = null;
+    if (r) {
+      clearTimeout(r.timer);
+      this._toneOff(r);
+      const ann = r.ann;
+      if (ann && !ann.done) { if (this._annc === ann) this._stopAudio(); else this._annEnd(ann); }
+      this._rcIdle();
+    }
+    this._ringView();
+  }
+  // Ton und Ansage aus, das Hinweisfeld bleibt (Schalter aus, Mikrofon-Knopf)
+  _ringSilence() {
+    const r = this._ring;
+    if (!r) return;
+    r.mute = true;
+    clearTimeout(r.timer);
+    this._toneOff(r);
+    const ann = r.ann;
+    if (ann && !ann.done) { if (this._annc === ann) this._stopAudio(); else this._annEnd(ann); }
+    this._rcIdle();
+  }
+  // Ton starten, sobald der Kontext läuft; sonst (iOS vor dem ersten Tipp) Hinweis zeigen und beim nächsten Tipp nachholen.
+  _ringAudio(r) {
+    r.mute = false;
+    const ctx = this._rcGet();
+    if (!ctx) return;
+    let p;
+    try { p = ctx.resume(); } catch (e) {}
+    Promise.race([Promise.resolve(p).catch(() => {}), delay(400)]).then(() => {
+      if (this._ring !== r || r.over || r.mute) return;
+      if (ctx.state === "running") { this._rcOk = true; this._ringGo(r); }
+      else { this._rcOk = false; r.wait = true; this._rcArm(); this._ringView(); }
+    });
+  }
+  _ringGo(r) {
+    if (this._ring !== r || r.over || r.mute) return;
+    r.wait = false;
+    this._ringView();
+    const left = r.until - Date.now();
+    if (left <= 0) { this._ringOver(r); return; }
+    clearTimeout(r.timer);
+    r.timer = setTimeout(() => this._ringOver(r), left);
+    this._toneOn(r);
+    if (!r.ann) this._annStart(r);
+  }
+  // Nach ring_seconds ist es still; das Hinweisfeld bleibt mit Stopp, bis es abgestellt wird oder Home Assistant das Signal zurücknimmt.
+  _ringOver(r) {
+    if (this._ring !== r || r.over) return;
+    r.over = true;
+    clearTimeout(r.timer);
+    this._toneOff(r);
+    this._seenSet(r.key, "rang");
+    if (!r.ann || r.ann.done) this._rcIdle();
+    this._ringView();
+  }
+
+  // Eigener AudioContext fürs Klingeln (Rate des Geräts). Er schläft, solange nichts klingt, und hängt nur während des Tons am Ausgang.
+  _rcGet() {
+    if (!this._rc || this._rc.state === "closed") { this._rc = mkCtx(); this._rcOk = false; }
+    return this._rc;
+  }
+  _rcIdle() {
+    const c = this._rc, r = this._ring;
+    if (!c || c.state !== "running" || (r && (r.tone || (!r.over && !r.mute)))) return;
+    try { const p = c.suspend(); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+  }
+  // Im Tipp den Kontext starten (iOS lässt Ton nur nach einer Berührung zu); danach darf er schlafen und lässt sich ohne Tipp wecken.
+  _rcUnlock() {
+    const al = this._cfg.alarms;
+    if (!al || !al.klingel || !this._ringOn || (this._rcOk && this._rc && this._rc.state !== "closed")) return;
+    const ctx = this._rcGet();
+    if (!ctx) return;
+    let p;
+    try { p = ctx.resume(); } catch (e) { return; }
+    Promise.resolve(p).then(() => {
+      if (ctx.state !== "running" || this._rc !== ctx) return;
+      this._rcOk = true;
+      this._rcDisarm();
+      const r = this._ring;
+      if (r && r.wait && !r.over && !r.mute) this._ringGo(r); else this._rcIdle();
+    }, () => {});
+  }
+  _rcPrep() {
+    const al = this._cfg.alarms;
+    if (al && al.klingel && this._ringOn && this._visible && !this._rcOk) this._rcArm();
+    else if (!this._ring || !this._ring.wait) this._rcDisarm();
+  }
+  _rcArm() {
+    if (this._rcArmed) return;
+    this._rcArmed = true;
+    for (const t of ["pointerdown", "touchend", "click", "keydown"]) document.addEventListener(t, this._rcGest, true);
+  }
+  _rcDisarm() {
+    if (!this._rcArmed) return;
+    this._rcArmed = false;
+    for (const t of ["pointerdown", "touchend", "click", "keydown"]) document.removeEventListener(t, this._rcGest, true);
+  }
+  // Klingelton: alle RING_GAP ms ein Glockenschlag aus Oszillatoren (keine Datei). Nur solange er klingt, hängt ein Gain am Ausgang.
+  _toneOn(r) {
+    const ctx = this._rc;
+    if (!ctx || r.tone || r.over || r.mute || this._ring !== r || (this._annc && this._annc.ring === r)) return;
+    let mg;
+    try { mg = ctx.createGain(); mg.gain.value = 1; mg.connect(ctx.destination); } catch (e) { return; }
+    const tn = r.tone = { mg, nodes: new Set(), timer: null };
+    const strike = () => {
+      if (r.tone !== tn) return;
+      tn.timer = setTimeout(strike, RING_GAP);
+      try { this._bell(ctx, tn); } catch (e) {}
+    };
+    strike();
+  }
+  // Ein Schlag: zwei Töne (A5, E6), je mit einem leicht unharmonischen Oberton, weich ausklingend.
+  _bell(ctx, tn) {
+    const t = ctx.currentTime + 0.02;
+    [[880, 0], [1318.5, 0.22]].forEach(([f, d]) => {
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t + d);
+      env.gain.exponentialRampToValueAtTime(0.2, t + d + 0.012);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + d + 1.05);
+      env.connect(tn.mg);
+      tn.nodes.add(env);
+      let open = 2;
+      [[1, 1], [2.76, 0.3]].forEach(([m, a]) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.value = f * m;
+        g.gain.value = a;
+        o.connect(g);
+        g.connect(env);
+        tn.nodes.add(o);
+        tn.nodes.add(g);
+        o.onended = () => {
+          try { o.disconnect(); g.disconnect(); } catch (e) {}
+          tn.nodes.delete(o);
+          tn.nodes.delete(g);
+          if (--open === 0) { try { env.disconnect(); } catch (e) {} tn.nodes.delete(env); }
+        };
+        o.start(t + d);
+        o.stop(t + d + 1.1);
+      });
+    });
+  }
+  _toneOff(r) {
+    const tn = r && r.tone;
+    if (!tn) return;
+    r.tone = null;
+    clearTimeout(tn.timer);
+    for (const n of tn.nodes) { try { if (n.stop) n.stop(); } catch (e) {} try { n.disconnect(); } catch (e) {} }
+    tn.nodes.clear();
+    try { tn.mg.disconnect(); } catch (e) {}
+  }
+
+  // Ansage zu Beginn: Assist-Pipeline nur mit Sprachausgabe (tts -> tts); die Adresse wird wie eine Antwort abgespielt.
+  // Der Klingelton pausiert dabei und läuft danach weiter. Ein laufendes Gespräch geht vor.
+  _annStart(r) {
+    if (r.ann) return;
+    const hass = getHass(), conn = hass && hass.connection;
+    if (!conn || !conn.subscribeMessage || this._cur || (this._speaking && !this._annc)) return;
+    const msg = { type: "assist_pipeline/run", start_stage: "tts", end_stage: "tts", input: { text: ringSay(r) } };
+    if (this._cfg.pipeline_id) msg.pipeline = this._cfg.pipeline_id;
+    const ann = r.ann = { ring: r, done: false, got: false, unsub: null, timer: null };
+    ann.timer = setTimeout(() => this._annEnd(ann), ANN_WAIT);
+    let p;
+    try { p = conn.subscribeMessage(ev => { try { this._annEvent(ann, ev); } catch (e) {} }, msg, { resubscribe: false }); }
+    catch (e) { p = Promise.reject(e); }
+    Promise.resolve(p).then(u => { ann.unsub = u; if (ann.done) this._annUnsub(ann); }, () => this._annEnd(ann));
+  }
+  _annUnsub(ann) {
+    const u = ann.unsub;
+    ann.unsub = null;
+    if (u) { try { const x = u(); if (x && x.catch) x.catch(() => {}); } catch (e) {} }
+  }
+  _annEvent(ann, ev) {
+    if (!ev || ann.done) return;
+    if (ev.type === "tts-end") {
+      const url = ev.data && ev.data.tts_output && ev.data.tts_output.url;
+      if (url) { ann.got = true; this._annPlay(ann, url); }
+    } else if (ev.type === "error") this._annEnd(ann);
+    else if (ev.type === "run-end") { this._annUnsub(ann); if (!ann.got) this._annEnd(ann); }
+  }
+  _annPlay(ann, url) {
+    const r = ann.ring;
+    if (this._ring !== r || r.over || r.mute || this._cur || (this._speaking && !this._annc)) { this._annEnd(ann); return; }
+    clearTimeout(ann.timer);
+    this._toneOff(r);
+    this._play(url, ann);
+  }
+  // Ansage zu Ende, gescheitert oder abgebrochen: der Klingelton läuft weiter, solange noch Zeit ist.
+  _annEnd(ann) {
+    if (!ann || ann.done) return;
+    ann.done = true;
+    clearTimeout(ann.timer);
+    this._annUnsub(ann);
+    const r = ann.ring;
+    if (this._ring === r && !r.over && !r.mute && r.until > Date.now()) this._toneOn(r); else this._rcIdle();
+  }
+
   // ---------- Aktionskarten (Ereignis fp_pip_karte) ----------
   _subs() {
     const hass = getHass(), conn = hass && hass.connection;
@@ -11979,7 +12590,7 @@ if (!customElements.get("fp-pip-dock-beta")) customElements.define("fp-pip-dock-
 if (!customElements.get("fp-assistant-card-beta")) {
   customElements.define("fp-assistant-card-beta", FpAssistantCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "fp-assistant-card-beta", name: "FP Assistant Card (Pip)", description: "Unsichtbare Karte: schaltet den schwebenden Sprachassistenten Pip in allen Tabs des Dashboards frei (Assist-Pipeline, Mikrofon, Vorlesen, Aktionskarten, Seite links oder rechts, optional Aktivierungswort im Browser)", preview: false });
+  window.customCards.push({ type: "fp-assistant-card-beta", name: "FP Assistant Card (Pip)", description: "Unsichtbare Karte: schaltet den schwebenden Sprachassistenten Pip in allen Tabs des Dashboards frei (Assist-Pipeline, Mikrofon, Vorlesen, Aktionskarten, Seite links oder rechts, optional Aktivierungswort im Browser sowie Timer, Wecker und Erinnerungen als Pillen mit Klingeln)", preview: false });
 }
 
 // Selbststart: Gibt es für den aktuellen Dashboard-Pfad eine gespeicherte Konfiguration, kommt die Figur von allein,
