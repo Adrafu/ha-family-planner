@@ -16,7 +16,7 @@ Fünfzehn eigene Lovelace-Karten für einen Home-Assistant-Familienplaner:
 - **`fp-diaper-card`** — **Windelprotokoll** je Kind: nass, voll oder beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, heute und gestern mit Summen, Rückblick über 7 Tage.
 - **`fp-milestone-card`** — **Meilensteine** je Kind zum Abhaken: **Erste Male** als Sticker-Album (erstes Lachen, erster Zahn, erste Schritte, erster Schnee …), **Entwicklung** nach Alter mit den Punkten, die gerade dran sind, und **Bewegung** mit den Zeitfenstern der WHO. Abhaken ist ein kleines Fest: Konfetti, ein Jubel-Dialog, Datum und Notiz, auch nachträglich und für Geschwister auf einmal. Eigene Momente lassen sich dazulegen, und zu jedem Meilenstein passt **ein Foto**. Frühgeborene nach korrigiertem Alter.
 - **`fp-baby-overview-card`** — **Übersicht** je Kind im Stil der App Buma, gespeist aus den Kalendern von Still-, Windel-, Gewichts- und Meilensteinkarte und einem eigenen Schlafkalender. **Heute:** am Tablet Schlafknöpfe („Beide schlafen“ und je Kind), farbige Schnellknöpfe für Stillen, Windel und Fläschchen, die Karte **„Nächste Mahlzeit“** mit Zeitfenster, **„Jetzt“** als Liste mit farbigen Symbolen (Zeit seit dem letzten Mal, Ausblick auf den nächsten Schlaf, „Fällig“), **„Tag“** mit Streifen und den Zahlen als Textzeile, Chips für Wachstum und Momente und die Einträge, mit ‹ › durch die letzten Wochen blättern. Am Handy steht unten eine Aktionsleiste mit Schlaf, Beide, Stillen, Windel und Fläschchen, und der Kopf mit der Kinderwahl klebt beim Scrollen kompakt oben. **Protokoll:** Still- und Windelkarte je Kind direkt in der Übersicht, mit Bearbeiten, Rückblick und Bericht. **Muster:** Zusammenfassung, Filter, Tagesschnitt und eine Zeile je Tag. **Wachstum:** aktuelles Gewicht mit Zunahme und Perzentile, Kurve nach Alter mit Perzentilbändern, Messungen, Wiegen direkt in der Karte. **Momente:** die Meilensteinkarte direkt in der Übersicht, ohne eigenen Tab. ✦ öffnet **„Frag nach“**: eine KI (`ai_task`) beantwortet Fragen zu allen Einträgen und sucht Muster. Folgt dem hellen oder dunklen Modus des Geräts, Farben aus dem Theme; Zwillinge am Tablet nebeneinander, am Handy per Schalter im Kopf oder Wischen zum Umschalten. Mit `layout: bar` wird daraus eine schmale **Baby-Leiste** für die Startseite (letzte und nächste Mahlzeit je Kind, ein Tipp öffnet den Baby-Tab bei diesem Kind).
-- **`fp-assistant-card`** — **Sprachassistent „Pip“**: eine unsichtbare Karte, die eine kleine schwebende Figur (ein Spross mit Augen) unten rechts (auf Wunsch links) einblendet, in allen Tabs des Dashboards. Ein Tipp öffnet das Gespräch (am Tablet und PC als Seitenleiste, am Handy als Blatt von unten): Fragen per Text, Vorschlags-Chips oder **Mikrofon**, Antworten der Assist-Pipeline im Verlauf und auf Wunsch **vorgelesen**, Weiterreden, wenn der Gesprächsagent nachfragt; optional hört Pip per **Aktivierungswort** („Hey Pip“) zu, erkannt direkt im Browser. Über das Ereignis `fp_pip_karte` zeigt Pip kleine **Aktionskarten**, etwa „Termin angelegt“ mit **Rückgängig** oder eine Nachfrage mit **Ja/Abbrechen**. Farben und Ecken aus dem Theme.
+- **`fp-assistant-card`** — **Sprachassistent „Pip“**: eine unsichtbare Karte, die eine kleine schwebende Figur (ein Spross mit Augen) unten rechts (auf Wunsch links) einblendet, in allen Tabs des Dashboards. Ein Tipp öffnet das Gespräch (am Tablet und PC als Seitenleiste, am Handy als Blatt von unten): Fragen per Text, Vorschlags-Chips oder **Mikrofon**, Antworten der Assist-Pipeline im Verlauf und auf Wunsch **vorgelesen**, Weiterreden, wenn der Gesprächsagent nachfragt; optional hört Pip per **Aktivierungswort** („Hey Pip“) zu, erkannt direkt im Browser. Über das Ereignis `fp_pip_karte` zeigt Pip kleine **Aktionskarten**, etwa „Termin angelegt“ mit **Rückgängig** oder eine Nachfrage mit **Ja/Abbrechen**. Mit `alarms` zeigt Pip **Timer, Wecker und Erinnerungen** als Pillen mit Countdown neben der Figur und **klingelt** samt Ansage, wenn etwas fällig ist. Farben und Ecken aus dem Theme.
 
 ## Installation (HACS)
 
@@ -540,6 +540,17 @@ wake_word:                    # optional: Aktivierungswort, erkannt im Browser; 
   base: /local/fp-wake/               # Ordner mit melspectrogram.onnx und embedding_model.onnx (Vorgabe: Ordner von model)
   threshold: 0.5                      # Schwelle 0..1 (Vorgabe 0.5)
   patience: 2                         # so viele Blöcke à 80 ms in Folge über der Schwelle (Vorgabe 2)
+alarms:                       # optional: Timer, Wecker und Erinnerungen aus Helfern in Home Assistant; ohne diesen Block gibt es die Funktion nicht
+  klingel: input_text.pip_klingel          # Klingel-Signal (JSON, leer = still); ohne klingel gibt es die Pillen, aber kein Klingeln
+  timers:                                  # Timer-Helfer, je mit einem input_text für Art und Text
+    - { timer: timer.pip_timer_1, name: input_text.pip_timer_1_name }
+    - { timer: timer.pip_timer_2, name: input_text.pip_timer_2_name }
+    - { timer: timer.pip_timer_3, name: input_text.pip_timer_3_name }
+  slots:                                   # Uhrzeit-Plätze: input_datetime (Datum und Uhrzeit) plus input_text
+    - { zeit: input_datetime.pip_zeit_1, text: input_text.pip_zeit_1_text }
+    # … so viele, wie es Plätze gibt (etwa bis pip_zeit_5)
+  ring_seconds: 60            # so lange klingeln (Vorgabe 60)
+  preview_hours: 24           # Wecker und Erinnerungen so weit im Voraus als Pille zeigen (Vorgabe 24)
 ```
 
 Die Karte ist **unsichtbar** (nur beim Bearbeiten steht ein kleiner Platzhalter da). Sie merkt sich ihre Einstellungen im Browser und holt eine einzige schwebende Figur an die Seite. Die Figur erscheint danach in **allen Tabs** des Dashboards, auch wenn direkt ein anderer Tab neu geladen wird. Die Karte muss dafür in einem Tab liegen und auf jedem Gerät einmal geladen worden sein. Pip braucht eine **Assist-Pipeline mit Gesprächsagent**; ohne `pipeline_id` gilt die bevorzugte Pipeline. `lift` hebt die Figur am Handy über eine klebende Aktionsleiste, etwa im Baby-Tab: Steht der letzte Teil der Adresse (`/familien-planer/baby` → `baby`) in `lift`, rückt sie um den Wert in Pixel nach oben; mit `lift: {}` bleibt sie immer unten. Das **Mikrofon** gibt es nur über eine sichere Verbindung (https), sonst bleibt es beim Schreiben. Mit `position: left` sitzt die Figur am linken Rand des Inhaltsbereichs, also rechts neben der HA-Seitenleiste (ausgeklappt, eingeklappt oder im Kiosk-Modus ohne Seitenleiste), und das Gespräch öffnet sich auf derselben Seite; `lift` wirkt auf beiden Seiten gleich. Die Vorgabe-Vorschläge sind „Was steht heute an?“, „Was gibt's heute zum Abendessen?“, „Wann haben die Zwillinge zuletzt getrunken?“, „Was steht auf der Einkaufsliste?“, „Brauchen wir morgen einen Schirm?“ und „Ist die Wohnungstür zugesperrt?“.
@@ -551,6 +562,55 @@ Die Karte ist **unsichtbar** (nur beim Bearbeiten steht ein kleiner Platzhalter 
 - **Erkennung laden:** onnxruntime-web (feste Version, einige MB) wird beim ersten Einschalten von `cdn.jsdelivr.net` geladen und danach vom Browser zwischengespeichert; dafür braucht das Gerät Internet.
 - **Lizenzen:** Der Code von openWakeWord und die Basismodelle (Mel-Spektrogramm, Embedding) stehen unter Apache-2.0, die vortrainierten Weckwörter (etwa „hey jarvis“) unter CC BY-NC-SA 4.0, also nur für nichtkommerzielle Nutzung. Für ein selbst trainiertes Modell gelten die Lizenzen der Trainingsdaten (beim offiziellen Trainingsweg teils ebenfalls nur nichtkommerziell).
 - **Feinabstimmung:** Löst Pip zu oft aus, `threshold` erhöhen oder `patience` auf 3 setzen; hört er zu selten, `threshold` senken. Ein eigenes Wort sollte mindestens drei Silben haben (etwa „Hey Pipo“ statt „Hey Pip“): Kurze Wörter werden schlechter erkannt und lösen öfter falsch aus. Ein Modell, das aus mehreren gemittelten Netzen besteht, verträgt eine höhere Schwelle (z. B. `threshold: 0.8`, `patience: 1`).
+
+**Timer, Wecker und Erinnerungen:** Mit `alarms` liest Pip Helfer aus Home Assistant und zeigt, was läuft oder ansteht. Alles geht über Zustände in `hass.states`, die Karte braucht keine Ereignis-Abos und funktioniert deshalb auch auf Konten ohne Administratorrechte (etwa einem Wand-Tablet). **Das Stellen und Auslösen übernehmen Skripte und Automationen in Home Assistant** (zum Beispiel ein Skript hinter einem Sprachbefehl, das einen freien Platz sucht, und eine Automation, die beim Ablauf das Klingel-Signal schreibt); die Karte zeigt nur an, klingelt und stoppt bzw. löscht.
+
+Was Home Assistant liefern muss:
+
+- **Timer:** Timer-Helfer `timer.*` (Zustände `idle`/`active`/`paused`, Attribute `finishes_at` bzw. `remaining`). Je Timer ein `input_text` mit JSON `{"art":"timer","text":"Nudeln"}`; `art` ist `timer` oder `erinnerung` (dann mit 🔔), leer heißt frei. Nur `active` und `paused` erscheinen.
+- **Uhrzeit-Plätze (Wecker, Erinnerungen):** je Platz ein `input_datetime` mit Datum und Uhrzeit (die Karte liest das Attribut `timestamp`) und ein `input_text` mit JSON `{"art":"wecker","text":""}` bzw. `{"art":"erinnerung","text":"Anruf"}`; leer heißt frei. Es erscheinen Plätze mit Text, deren Zeitpunkt in der Zukunft und innerhalb von `preview_hours` liegt.
+- **Klingel-Signal:** ein `input_text` mit JSON `{"art":"timer","text":"Nudeln","t":1792958163}`; `art` ist `timer`, `wecker` oder `erinnerung`, `t` die Unix-Zeit in Sekunden, leer heißt still. Home Assistant setzt es beim Ablauf und nimmt es nach etwa drei Minuten selbst wieder zurück (die Karte ignoriert ein Signal, das nach der Uhr des Geräts älter als drei Minuten ist). Ein `input_text` fasst höchstens 255 Zeichen.
+
+Was die Karte zeigt und tut:
+
+- **Pillen** über der Figur, auf ihrer Seite (`position`) und mit `lift` zusammen: laufende Timer als „⏱ Nudeln 4:32“ (zählt sekundengenau aus `finishes_at`, ein pausierter Timer steht mit ‖ still), Erinnerungs-Timer mit 🔔, Wecker und Erinnerungen als „⏰ 6:30“, „🔔 15:00 Anruf“ (morgen mit „morgen“, noch weiter weg mit Wochentag; Zeiten in der Zeitzone von Home Assistant). Höchstens drei Pillen, der Rest als „+N“ (Tipp zeigt alle). Ein Tipp auf eine Pille öffnet ein kleines Menü mit **Stoppen** (ruft `timer.cancel` und leert den Namen per `input_text.set_value`) bzw. **Löschen** (leert den Text des Platzes per `input_text.set_value`) und **Schließen**. Ohne laufende oder gestellte Einträge gibt es keine Pillen; bei offenem Gespräch sind sie ausgeblendet.
+- **Klingeln:** Wechselt das Klingel-Signal auf ein JSON, das hier noch nicht abgestellt wurde, erscheint bei der Figur ein Hinweisfeld („Timer „Nudeln“ ist abgelaufen“, „Wecker“, „Erinnerung: …“) mit großem **Stopp**-Knopf. Dazu läutet `ring_seconds` lang ein sanftes Glockenmuster (WebAudio, keine Datei), und zu Beginn sagt Pip einmal an, was los ist: eine Anfrage an die Assist-Pipeline (`pipeline_id`) nur mit der Sprachausgabe-Stufe, unabhängig von `speak`; der Klingelton pausiert dabei. Danach ist es still, das Hinweisfeld bleibt mit Stopp, bis es abgestellt wird oder Home Assistant das Signal zurücknimmt. **Stopp** leert das Klingel-Signal in Home Assistant, dann hören alle Geräte auf; wird es von außen leer (anderes Gerät, Sprachbefehl), hört es auch hier auf. Solange es klingt, ist das Aktivierungswort taub; wer den Mikrofon-Knopf antippt, schaltet den Klingelton aus.
+- **Pro Gerät** gibt es im Gespräch unter dem Aktivierungswort einen Schalter „An diesem Gerät klingeln“ (Vorgabe an, gespeichert im Browser). Aus heißt: nur das Hinweisfeld, ohne Ton und ohne Ansage. Nach dem Neuladen klingelt ein noch aktives Signal einmal; was auf dem Gerät schon abgestellt wurde oder ausgeklungen ist, klingelt nicht erneut.
+- **iOS und iPad:** Ton geht erst nach einer Berührung. Solange das Gerät noch gesperrt ist, zeigt das Hinweisfeld „Einmal tippen, dann klingelt es“; ein Tipp irgendwo auf der Seite holt Ton und Ansage nach (ohne Fehlermeldung). Danach klingelt es ohne Tipp. Der Klingelton läuft über WebAudio, die Ansage wie die Antworten über das Audio-Element.
+
+```yaml
+# Beispiel: Timer „Nudeln“ in 5 Minuten stellen (Skript, z. B. aus einem Sprachbefehl) und beim Ablauf klingeln lassen
+script:
+  pip_timer_nudeln:
+    sequence:
+      - action: input_text.set_value
+        target: { entity_id: input_text.pip_timer_1_name }
+        data: { value: '{"art":"timer","text":"Nudeln"}' }
+      - action: timer.start
+        target: { entity_id: timer.pip_timer_1 }
+        data: { duration: "00:05:00" }
+automation:
+  - alias: Pip Timer 1 abgelaufen
+    triggers:
+      - trigger: event
+        event_type: timer.finished
+        event_data: { entity_id: timer.pip_timer_1 }
+    actions:
+      - action: input_text.set_value                  # Klingel-Signal setzen, Name freigeben
+        target: { entity_id: input_text.pip_klingel }
+        data:
+          value: >-
+            {{ {'art': (states('input_text.pip_timer_1_name') | from_json(default={})).get('art', 'timer'),
+                'text': (states('input_text.pip_timer_1_name') | from_json(default={})).get('text', ''),
+                't': now().timestamp() | int} | to_json }}
+      - action: input_text.set_value
+        target: { entity_id: input_text.pip_timer_1_name }
+        data: { value: "" }
+      - delay: "00:03:00"                              # nach drei Minuten zurücknehmen
+      - action: input_text.set_value
+        target: { entity_id: input_text.pip_klingel }
+        data: { value: "" }
+```
 
 **Aktionskarten:** Eine Automation oder ein Skript schickt das Ereignis `fp_pip_karte`; Pip zeigt es nur, solange eine Frage läuft oder die Antwort höchstens 20 Sekunden her ist (und nur für Konten, die Ereignisse abonnieren dürfen, also Administratoren).
 
@@ -572,7 +632,7 @@ Die Karte ist **unsichtbar** (nur beim Bearbeiten steht ein kleiner Platzhalter 
 - `bestaetigen`: Karte mit „Ja, mach das“ und „Abbrechen“; ein Tipp schickt „Ja“ bzw. „Nein“ als normale Nachricht in dasselbe Gespräch. Das Feld `code` ist für die eigene Automation gedacht und wird nicht angezeigt.
 - `info`: nur Titel und Zeilen.
 
-Der Verlauf liegt nur im Speicher (die letzten 40 Einträge), ↺ im Kopf beginnt ein neues Gespräch. Nach fünf Minuten ohne Nachricht beginnt für Home Assistant ein neuer Gesprächsfaden, der Verlauf bleibt sichtbar. Die Einstellungen liegen im Browser unter `fp-pip-dock:<dashboard>`, der Schalter für das Aktivierungswort unter `fp-pip-wake:<dashboard>`; wird die Karte entfernt, verschwindet die Figur erst, wenn der erste Eintrag gelöscht ist.
+Der Verlauf liegt nur im Speicher (die letzten 40 Einträge), ↺ im Kopf beginnt ein neues Gespräch. Nach fünf Minuten ohne Nachricht beginnt für Home Assistant ein neuer Gesprächsfaden, der Verlauf bleibt sichtbar. Die Einstellungen liegen im Browser unter `fp-pip-dock:<dashboard>`, der Schalter für das Aktivierungswort unter `fp-pip-wake:<dashboard>`, der Schalter „An diesem Gerät klingeln“ unter `fp-pip-ring:<dashboard>` (nur bei „aus“ vorhanden) und das zuletzt behandelte Klingel-Signal unter `fp-pip-ringseen:<dashboard>`; wird die Karte entfernt, verschwindet die Figur erst, wenn der erste Eintrag gelöscht ist.
 
 ## Design-Variablen (Theme)
 
