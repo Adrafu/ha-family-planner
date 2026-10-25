@@ -50,6 +50,16 @@
       if (stapel) el.style.removeProperty("height"); else el.style.height = "100%";
       if (da && !stapel) { p.style.display = "block"; p.style.height = "100%"; }
     },
+    // Zeit fuer Home Assistant (calendar.create_event, calendar/event/update) mit
+    // Zeitzonen-Offset, z. B. 2026-10-25T02:30:00+01:00. Ohne Offset liest HA die Zeit in
+    // seiner Zeitzone und nimmt in der doppelten Stunde beim Ende der Sommerzeit (02:00-03:00)
+    // immer die Sommerzeit: ein Eintrag aus der winterlichen Stunde landet eine Stunde zu frueh,
+    // einer ueber die Umstellung bekommt ein Ende vor dem Beginn. Nur fuer Zeiten an HA, nicht
+    // fuer Anzeige, Schluessel oder <input type="datetime-local">.
+    haZeit: d => {
+      const p = n => String(n).padStart(2, "0"), o = Math.round(-d.getTimezoneOffset()), a = Math.abs(o);
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${o < 0 ? "-" : "+"}${p(Math.floor(a / 60))}:${p(a % 60)}`;
+    },
   };
   // In dasselbe Objekt hineinschreiben, nicht ersetzen: Karten der anderen
   // Datei halten bereits eine Referenz darauf.
@@ -229,7 +239,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card-beta v32 (Heute groß: oben so viel Luft wie seitlich, Nächste Tage enger; davor: Kopf mit „📖 Kochbuch“, wenn cookbook_path gesetzt ist; davor: am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
+/* ===== meal-grid-card-beta v33 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Heute groß: oben so viel Luft wie seitlich, Nächste Tage enger; davor: Kopf mit „📖 Kochbuch“, wenn cookbook_path gesetzt ist; davor: am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -393,14 +403,13 @@ class MealGridCard extends HTMLElement {
     if (!noRefresh) await this._maybeFetch(true);
     return ok;
   }
-  _fmtDT(d) { return `${d.getFullYear()}-${this._pad(d.getMonth() + 1)}-${this._pad(d.getDate())} ${this._pad(d.getHours())}:${this._pad(d.getMinutes())}:00`; }
   async _createEvent(meal, date, text, evForTime) {
     let hour = this._mealHour(meal), mins = 0;
     if (evForTime && evForTime.start) { const d = new Date(evForTime.start); hour = d.getHours(); mins = d.getMinutes(); }
     const sd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), hour, mins);
     const ed = new Date(sd.getTime() + 3600000); // +1h, rollt korrekt über Mitternacht
     try {
-      await this._hass.callService("calendar", "create_event", { entity_id: this.config.entity, summary: text, start_date_time: this._fmtDT(sd), end_date_time: this._fmtDT(ed) });
+      await this._hass.callService("calendar", "create_event", { entity_id: this.config.entity, summary: text, start_date_time: U.haZeit(sd), end_date_time: U.haZeit(ed) });
       return true;
     } catch (e) { this._toast("Eintrag konnte nicht erstellt werden"); return false; }
   }
@@ -993,7 +1002,7 @@ if (!customElements.get("meal-grid-card-beta")) {
 }
 })();
 
-/* ===== family-calendar-card-beta v2.11 (Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
+/* ===== family-calendar-card-beta v2.12 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1669,7 +1678,7 @@ class FamilyCalendarCard extends HTMLElement {
           bd.setMinutes(bd.getMinutes() + 60);
           b = bd.getDate() !== day0 ? "23:59" : pad(bd.getHours()) + ":" + pad(bd.getMinutes());
         }
-        startDT = d + " " + v + ":00"; endDT = d2 + " " + b + ":00";
+        startDT = U.haZeit(new Date(d + "T" + v + ":00")); endDT = U.haZeit(new Date(d2 + "T" + b + ":00"));
       }
       close();
       const refresh = () => this._maybeFetch(true);
@@ -1687,7 +1696,7 @@ class FamilyCalendarCard extends HTMLElement {
         if (it.recurrence_id) msg.recurrence_id = it.recurrence_id;
         if (it.description) msg.event.description = it.description;
         if (ad) { msg.event.dtstart = startDate; msg.event.dtend = endDate; }
-        else { msg.event.dtstart = startDT.replace(" ", "T"); msg.event.dtend = endDT.replace(" ", "T"); }
+        else { msg.event.dtstart = startDT; msg.event.dtend = endDT; }
         this._hass.callWS(msg).then(refresh).catch(createThenDelete);
       } else if (edit && it && it.uid) {
         createThenDelete(); // Kalender gewechselt
@@ -3927,7 +3936,7 @@ if (!customElements.get("fp-glance-card-beta")) {
 }
 })();
 
-/* ===== fp-cookbook-card-beta v24 (KI-Bild kann über ai_image_entity eine eigene KI nutzen, z. B. Gemini, während der Rest auf einer anderen läuft; davor: Zutaten → Einkauf übersteht einen Ausfall der Einkaufsliste: wird nachgeschickt; davor: ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
+/* ===== fp-cookbook-card-beta v25 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: KI-Bild kann über ai_image_entity eine eigene KI nutzen, z. B. Gemini, während der Rest auf einer anderen läuft; davor: Zutaten → Einkauf übersteht einen Ausfall der Einkaufsliste: wird nachgeschickt; davor: ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -4156,12 +4165,11 @@ class FpCookbookCard extends HTMLElement {
 
   // ---------- Aktionen ----------
   _mealHour(label) { const m = (this.config.meals || []).find(x => x.label === label); return m ? m.at : 18; }
-  _fmtDT(dt) { return `${dt.getFullYear()}-${this._pad(dt.getMonth() + 1)}-${this._pad(dt.getDate())} ${this._pad(dt.getHours())}:${this._pad(dt.getMinutes())}:00`; }
   async _addToPlan(d, date, mealLabel) {
     const sd = new Date(date.getFullYear(), date.getMonth(), date.getDate(), this._mealHour(mealLabel), 0);
     const ed = new Date(sd.getTime() + 3600000);
     try {
-      await this._hass.callService("calendar", "create_event", { entity_id: this.config.essensplan_entity, summary: d.name, start_date_time: this._fmtDT(sd), end_date_time: this._fmtDT(ed) });
+      await this._hass.callService("calendar", "create_event", { entity_id: this.config.essensplan_entity, summary: d.name, start_date_time: U.haZeit(sd), end_date_time: U.haZeit(ed) });
       d.last_cooked = new Date().toISOString().slice(0, 10); d.times_cooked = (d.times_cooked || 0) + 1;
       await this._save(d, d.uid);
       this._toast(`„${d.name}" für ${mealLabel} eingeplant`);
@@ -5235,7 +5243,7 @@ if (!customElements.get("dobby-clock-card-beta")) {
   window.customCards.push({ type: "dobby-clock-card-beta", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card-beta v11 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card-beta v12 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -5292,7 +5300,6 @@ class FpFeedingCard extends HTMLElement {
   // ---------- Hilfen ----------
   _p(n) { return String(n).padStart(2, "0"); }
   _hm(d) { return `${this._p(d.getHours())}:${this._p(d.getMinutes())}`; }
-  _local(d, sep) { return `${d.getFullYear()}-${this._p(d.getMonth() + 1)}-${this._p(d.getDate())}${sep}${this._p(d.getHours())}:${this._p(d.getMinutes())}:${this._p(d.getSeconds())}`; }
   _dur(sek) {
     const m = Math.max(0, Math.round(sek / 60));
     if (m < 60) return `${m} Min`;
@@ -5766,7 +5773,7 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
     try {
       await this._hass.callService("calendar", "create_event", {
         entity_id: this.config.calendar, summary: d.summary, description: d.description,
-        start_date_time: this._local(start, " "), end_date_time: this._local(end, " "),
+        start_date_time: U.haZeit(start), end_date_time: U.haZeit(end),
       });
       return true;
     } catch (e) { U.toast(this, "Eintrag konnte nicht gespeichert werden"); return false; }
@@ -5778,7 +5785,7 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
   async _update(ev, typ, start, end, seite, ml, art) {
     const d = this._eventData(typ, seite, ml, art);
     const msg = { type: "calendar/event/update", entity_id: ev.cal || this.config.calendar, uid: ev.uid,
-      event: { summary: d.summary, description: d.description, dtstart: this._local(start, "T"), dtend: this._local(end, "T") } };
+      event: { summary: d.summary, description: d.description, dtstart: U.haZeit(start), dtend: U.haZeit(end) } };
     try { await this._hass.callWS(msg); return true; }
     catch (e) {
       // Rückfall: neu anlegen, dann alt löschen. Bleibt der alte stehen, sagen
@@ -6480,7 +6487,7 @@ if (!customElements.get("fp-weight-card-beta")) {
 }
 })();
 
-/* ===== fp-diaper-card-beta v4 (Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
+/* ===== fp-diaper-card-beta v5 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
 // Ein Eintrag = ein kurzer Termin im eigenen Kalender: Titel "Windel nass",
 // Beschreibung {"typ":"windel","art":"nass|voll|beides"}. Nicht in den
 // Stillkalender schreiben: die 3-h-Erinnerung zählt dort jeden Eintrag als Mahlzeit.
@@ -6506,7 +6513,6 @@ class FpDiaperCard extends HTMLElement {
 
   _p(n) { return String(n).padStart(2, "0"); }
   _hm(d) { return `${this._p(d.getHours())}:${this._p(d.getMinutes())}`; }
-  _local(d, sep) { return `${d.getFullYear()}-${this._p(d.getMonth() + 1)}-${this._p(d.getDate())}${sep}${this._p(d.getHours())}:${this._p(d.getMinutes())}:${this._p(d.getSeconds())}`; }
   _tag(d) { return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
   _hmDauer(ms) { const m = Math.max(0, Math.floor(ms / 60000)); return `${Math.floor(m / 60)}:${this._p(m % 60)} h`; }
   _artText(a) { return a === "beides" ? "nass + voll" : a; }
@@ -6627,7 +6633,7 @@ class FpDiaperCard extends HTMLElement {
     try {
       await this._hass.callService("calendar", "create_event", {
         entity_id: this.config.calendar, summary: `Windel ${this._artText(art)}`, description: JSON.stringify({ typ: "windel", art }),
-        start_date_time: this._local(start, " "), end_date_time: this._local(end, " "),
+        start_date_time: U.haZeit(start), end_date_time: U.haZeit(end),
       });
       U.toast(this, `Windel ${this._artText(art)} eingetragen`);
       this._load();
@@ -6641,14 +6647,14 @@ class FpDiaperCard extends HTMLElement {
     const end = new Date(start.getTime() + 60000), summary = `Windel ${this._artText(art)}`, description = JSON.stringify({ typ: "windel", art });
     try {
       await this._hass.callWS({ type: "calendar/event/update", entity_id: this.config.calendar, uid: ev.uid,
-        event: { summary, description, dtstart: this._local(start, "T"), dtend: this._local(end, "T") } });
+        event: { summary, description, dtstart: U.haZeit(start), dtend: U.haZeit(end) } });
       return true;
     } catch (e) {
       // Rückfall: neu anlegen, dann alt löschen. Bleibt der alte stehen, sagen
       // wir es laut statt still ein Duplikat zu hinterlassen.
       try {
         await this._hass.callService("calendar", "create_event", { entity_id: this.config.calendar, summary, description,
-          start_date_time: this._local(start, " "), end_date_time: this._local(end, " ") });
+          start_date_time: U.haZeit(start), end_date_time: U.haZeit(end) });
       } catch (x) { U.toast(this, "Eintrag konnte nicht gespeichert werden"); return false; }
       if (!(await this._delete(ev.uid, true))) U.toast(this, "Gespeichert, aber der alte Eintrag blieb stehen – bitte Duplikat prüfen");
       return true;
@@ -7752,7 +7758,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v24 (action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v25 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -9226,7 +9232,7 @@ class FpBabyOverviewCard extends HTMLElement {
     try {
       await this._hass.callService("calendar", "create_event", {
         entity_id: cal, summary, description: JSON.stringify(meta),
-        start_date_time: this._local(start, " "), end_date_time: this._local(new Date(+start + MIN), " "),
+        start_date_time: U.haZeit(start), end_date_time: U.haZeit(new Date(+start + MIN)),
       });
       const zurueck = () => this._rueckgaengig(cal, summary, start);
       if (U.undo) U.undo(this, okText, zurueck); else U.toast(this, okText);
@@ -9412,7 +9418,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const d = this._evDaten(typ, p);
     try {
       await this._hass.callService("calendar", "create_event", { entity_id: this._evKal(kid, typ), summary: d.summary, description: d.description,
-        start_date_time: this._local(a, " "), end_date_time: this._local(b, " ") });
+        start_date_time: U.haZeit(a), end_date_time: U.haZeit(b) });
       return true;
     } catch (x) { U.toast(this, "Eintrag konnte nicht gespeichert werden"); return false; }
   }
@@ -9425,7 +9431,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const d = this._evDaten(typ, p);
     try {
       await this._hass.callWS({ type: "calendar/event/update", entity_id: this._evKal(kid, typ), uid: alt.uid,
-        event: { summary: d.summary, description: d.description, dtstart: this._local(a, "T"), dtend: this._local(b, "T") } });
+        event: { summary: d.summary, description: d.description, dtstart: U.haZeit(a), dtend: U.haZeit(b) } });
       return true;
     } catch (x) {
       if (!(await this._evNeu(kid, typ, p, a, b))) return false;
@@ -9554,7 +9560,7 @@ class FpBabyOverviewCard extends HTMLElement {
   async _schlafNeu(kid, a, b) {
     try {
       await this._hass.callService("calendar", "create_event", { entity_id: kid.sleep_calendar, summary: "Schlaf", description: JSON.stringify({ typ: "schlaf", auto: false }),
-        start_date_time: this._local(a, " "), end_date_time: this._local(b, " ") });
+        start_date_time: U.haZeit(a), end_date_time: U.haZeit(b) });
       return true;
     } catch (x) { U.toast(this, "Schlaf konnte nicht gespeichert werden"); return false; }
   }
@@ -9566,7 +9572,7 @@ class FpBabyOverviewCard extends HTMLElement {
   async _schlafAendern(alt, kid, a, b) {
     try {
       await this._hass.callWS({ type: "calendar/event/update", entity_id: kid.sleep_calendar, uid: alt.uid,
-        event: { summary: "Schlaf", description: JSON.stringify({ typ: "schlaf", auto: false }), dtstart: this._local(a, "T"), dtend: this._local(b, "T") } });
+        event: { summary: "Schlaf", description: JSON.stringify({ typ: "schlaf", auto: false }), dtstart: U.haZeit(a), dtend: U.haZeit(b) } });
       return true;
     } catch (x) {
       if (!(await this._schlafNeu(kid, a, b))) return false;
