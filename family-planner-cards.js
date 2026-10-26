@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.5.1 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
+/* Family Planner custom cards v3.5.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10199,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card")) {
 }
 })();
 
-/* ===== fp-assistant-card v9 (Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card v10 (Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10264,6 +10264,7 @@ const wkDetail = e => {
 const WAKE_QUIET = 1200;    // so lange nach Antwort und Vorlesen noch taub (Nachhall)
 const WAKE_IDLE = 30000;    // per Weckwort geöffnetes Fenster schließt sich so lange nach der Antwort von selbst
 const CHIME_MS = 170;       // Länge des Erkennungstons; erst danach geht Ton an Home Assistant
+const SCR_GAP = 4000;       // wake_screen: höchstens ein Knopfdruck in so vielen ms
 const RING_AGE = 180;       // ein Klingel-Signal ist höchstens so viele Sekunden alt (danach nimmt Home Assistant es selbst zurück)
 const RING_GAP = 1500;      // Abstand der Glockenschläge
 const ANN_WAIT = 20000;     // so lange darf die Ansage (Assist-Pipeline) auf sich warten lassen
@@ -10577,6 +10578,8 @@ function normCfg(c) {
   }
   // learn: Skript, das nach jeder Bitte an den Gesprächsagenten (nicht lokal erledigt) aufgerufen wird; ohne gültige Angabe keine Funktion
   const lr = String(c.learn || "").trim();
+  // wake_screen: Knopf oder Skript, das beim Aktivierungswort den Bildschirmschoner beendet (Kiosker: "Bildschirmschoner beenden"); ohne gültige Angabe keine Funktion
+  const ws = String(c.wake_screen || "").trim();
   return {
     name,
     pipeline_id: String(c.pipeline_id || "").trim(),
@@ -10592,6 +10595,7 @@ function normCfg(c) {
     early_tts: c.early_tts === true,
     // mic_pause: Das Weckwort-Mikrofon ist zu, solange Pip spricht oder klingelt (iOS bleibt sonst im Aufnahmemodus und rauscht); Vorgabe an
     mic_pause: c.mic_pause !== false,
+    wake_screen: /^(button|input_button|script)\.[a-z0-9_]+$/.test(ws) ? ws : "",
   };
 }
 // Zeitpunkt als "JJJJ-MM-TT HH:MM:SS" in der Zeitzone von Home Assistant.
@@ -10978,6 +10982,8 @@ class FpPipDock extends HTMLElement {
     this._wkOpening = null;    // laufendes Öffnen des Weckwort-Mikrofons
     this._wkResume = false;    // ... und zwar das Wiederöffnen nach einer Pause
     this._wakeOpened = false;  // Fenster wurde vom Weckwort geöffnet
+    this._scrWake = false;     // Gespräch per Aktivierungswort begonnen (bis zum Schließen oder "Neu"): wake_screen hält den Bildschirm wach
+    this._scrAt = 0;           // Zeit des letzten Drucks auf wake_screen (Drosselung, SCR_GAP)
     // Timer, Wecker, Erinnerungen und Klingeln (alarms)
     this._alT = null;          // Takt für Countdown und Vorschau (setTimeout)
     this._alIds = [];          // alle Entitäten aus alarms
@@ -11218,6 +11224,7 @@ class FpPipDock extends HTMLElement {
     this._isOpen = false;
     this._abortMedia();
     this._wakeTouched();
+    this._scrWake = false;
     if (!wasOpen) return;
     this._panel.classList.remove("open");
     this._stk.classList.remove("open");
@@ -11423,7 +11430,7 @@ class FpPipDock extends HTMLElement {
     this._auto = false;
     this._setState(run ? "think" : "idle");
     this._micSync();
-    if (ann) this._annEnd(ann);
+    if (ann) this._annEnd(ann); else this._screenWake(true);   // Antwort vorgelesen: Bildschirm wach halten (Ansagen beim Klingeln nicht)
     if (go) this._listen(true);
   }
   // Der früh gestartete Ton läuft: Anzeige "Spricht", bei der Ansage ist der Klingelton jetzt aus
@@ -11633,7 +11640,7 @@ class FpPipDock extends HTMLElement {
       this._push({ k: "note", text: "Dazu habe ich keine Antwort." });
     }
     this._ansAt = Date.now();
-    if (!this._speaking) { this._auto = false; this._setState("idle"); }
+    if (!this._speaking) { this._auto = false; this._setState("idle"); this._screenWake(true); }   // ohne Vorlesen ist die Antwort jetzt fertig; sonst folgt _audioDone
     this._renderLog(true);
     this._applyBusy();
     if (go) this._listen(true);
@@ -11692,6 +11699,7 @@ class FpPipDock extends HTMLElement {
     this._convId = null;
     this._convAt = 0;
     this._ansAt = 0;
+    this._scrWake = false;   // ein neues Gespräch per Tipp ist kein Gespräch per Aktivierungswort
     this._setState("idle");
     this._renderLog(true);
     this._applyBusy();
@@ -11701,6 +11709,7 @@ class FpPipDock extends HTMLElement {
   async _listen(auto) {
     if (this._cur || !this._isOpen || !this._visible) return;
     if (!this._micOk()) { if (!auto) this._micFail(); return; }
+    this._screenWake(true);   // es wird (wieder) zugehört: Bildschirm wach halten
     this._unlockAudio();
     this._ringSilence();   // wer jetzt spricht, will den Klingelton nicht im Mikrofon
     this._stopAudio();
@@ -12194,6 +12203,9 @@ class FpPipDock extends HTMLElement {
   _onWake(score) {
     const m = this._wm;
     if (!m || !this._visible || this._wakeBusy()) return;
+    // Bildschirmschoner (wake_screen) sofort beenden, noch vor dem Ton; _scrWake hält ihn bis zum Ende des Gesprächs weg
+    this._scrWake = true;
+    this._screenWake();
     this._wkHold = true;
     if (this._eng) this._eng.reset();
     this._chime(m.ctx);
@@ -12206,6 +12218,21 @@ class FpPipDock extends HTMLElement {
       if (!this._cur) this._setState(this._speaking ? "speak" : "idle");
       this._micSync();
     }, CHIME_MS);
+  }
+  // Bildschirmschoner beenden (wake_screen): drückt den Knopf (button, input_button) bzw. startet das Skript. In der Kiosker-App ist das
+  // "Bildschirmschoner beenden"; der Schoner kommt sonst etwa eine Minute nach der letzten Berührung, auch wenn Pip gerade zuhört oder antwortet.
+  // keep: nur wenn das Gespräch per Aktivierungswort begann (_scrWake); Gespräche per Tipp, auch am Handy, drücken nie. Höchstens alle SCR_GAP ms.
+  // notifyOnError = false (5. Parameter von hass.callService): sonst zeigt das HA-Frontend bei einem Fehler selbst einen Hinweis; Fehler bleiben still.
+  _screenWake(keep) {
+    const id = this._cfg.wake_screen;
+    if (!id || (keep && !this._scrWake)) return;
+    const hass = getHass();
+    if (!hass || typeof hass.callService !== "function") return;
+    const now = Date.now(), dt = now - this._scrAt;
+    if (dt >= 0 && dt < SCR_GAP) return;
+    this._scrAt = now;
+    const dom = id.slice(0, id.indexOf("."));
+    try { const p = hass.callService(dom, dom === "script" ? "turn_on" : "press", { entity_id: id }, undefined, false); if (p && p.catch) p.catch(() => {}); } catch (e) {}
   }
   // Zwei kurze, aufsteigende Töne aus Oszillatoren (keine Datei). Nur für diesen Ton hängt etwas am Lautsprecher-Ausgang:
   // danach werden Oszillatoren und Gain getrennt (auch wenn der Kontext schläft und "ended" nie kommt).
