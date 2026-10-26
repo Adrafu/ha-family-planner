@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.5.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
+/* Family Planner custom cards v3.6.0 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10199,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card")) {
 }
 })();
 
-/* ===== fp-assistant-card v10 (Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card v12 (Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10263,8 +10263,15 @@ const wkDetail = e => {
 };
 const WAKE_QUIET = 1200;    // so lange nach Antwort und Vorlesen noch taub (Nachhall)
 const WAKE_IDLE = 30000;    // per Weckwort geöffnetes Fenster schließt sich so lange nach der Antwort von selbst
+const STAGE_LINGER = 5000; // stage: so lange nach dem Ende der Antwort bleibt die Bühne noch stehen
+const STAGE_OUT = 800;      // stage: so lange dauert der Rückweg (Figur rollt zurück, Fenster geht, Fläche blendet aus)
 const CHIME_MS = 170;       // Länge des Erkennungstons; erst danach geht Ton an Home Assistant
 const SCR_GAP = 4000;       // wake_screen: höchstens ein Knopfdruck in so vielen ms
+const WAKE_LOG_MIN = 0.5;   // wake_log: ab diesem Wert beginnt eine "knappe" Episode (Wert unter der Schwelle, aber nicht Rauschen)
+const WAKE_LOG_WAIT = 20000; // wake_log: so lange darf nach einer Erkennung der Lauf auf sich warten lassen, danach "abbruch"
+const WAKE_LOG_GAP = 5000;  // wake_log: höchstens ein Knapp-Eintrag in so vielen ms
+const WAKE_LOG_HOUR = 60;   // wake_log: höchstens so viele Knapp-Einträge pro Stunde (gleitend)
+const WAKE_LOG_BLK = 1000;  // wake_log: bleibt der Block-Takt (80 ms) so lange aus, ist die Episode zu Ende
 const RING_AGE = 180;       // ein Klingel-Signal ist höchstens so viele Sekunden alt (danach nimmt Home Assistant es selbst zurück)
 const RING_GAP = 1500;      // Abstand der Glockenschläge
 const ANN_WAIT = 20000;     // so lange darf die Ansage (Assist-Pipeline) auf sich warten lassen
@@ -10580,6 +10587,9 @@ function normCfg(c) {
   const lr = String(c.learn || "").trim();
   // wake_screen: Knopf oder Skript, das beim Aktivierungswort den Bildschirmschoner beendet (Kiosker: "Bildschirmschoner beenden"); ohne gültige Angabe keine Funktion
   const ws = String(c.wake_screen || "").trim();
+  // wake_log: Skript, das jede angenommene Erkennung des Aktivierungsworts (mit dem danach verstandenen Text) und knappe Werte unter der Schwelle
+  // protokolliert; ohne gültige Angabe (oder ohne wake_word) keine Funktion
+  const wl = String(c.wake_log || "").trim();
   return {
     name,
     pipeline_id: String(c.pipeline_id || "").trim(),
@@ -10596,6 +10606,9 @@ function normCfg(c) {
     // mic_pause: Das Weckwort-Mikrofon ist zu, solange Pip spricht oder klingelt (iOS bleibt sonst im Aufnahmemodus und rauscht); Vorgabe an
     mic_pause: c.mic_pause !== false,
     wake_screen: /^(button|input_button|script)\.[a-z0-9_]+$/.test(ws) ? ws : "",
+    wake_log: /^script\.[a-z0-9_]+$/.test(wl) ? wl : "",
+    // stage (Bühne): nur bei Gesprächen per Aktivierungswort und ab 700 px Breite wird das Dashboard abgedunkelt, die Figur groß, das Gespräch darunter; Vorgabe aus
+    stage: c.stage === true,
   };
 }
 // Zeitpunkt als "JJJJ-MM-TT HH:MM:SS" in der Zeitzone von Home Assistant.
@@ -10787,6 +10800,13 @@ button{font:inherit;color:inherit;}
 .fig.left{right:auto;left:calc(16px + var(--gx,0px) + env(safe-area-inset-left,0px));}
 .fig.gone{opacity:0;transform:scale(.6);pointer-events:none;visibility:hidden;transition:opacity .2s ease,transform .2s ease,visibility 0s linear .2s;}
 .fig:focus-visible{outline:3px solid var(--a);outline-offset:4px;}
+/* Bühne (stage): .anc sitzt wie die Figur, bleibt aber unverschoben und unsichtbar; daran wird gemessen, wohin die Figur rollen muss.
+   .veil dunkelt das Dashboard ab (unter Figur und Fenster, Tippen darauf beendet die Bühne). Beides nur ab 700 px Breite sichtbar bzw. in Gebrauch. */
+.anc{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px) + var(--lift,0px));width:60px;height:60px;visibility:hidden;pointer-events:none;}
+.anc.left{right:auto;left:calc(16px + var(--gx,0px) + env(safe-area-inset-left,0px));}
+.veil{display:none;position:fixed;inset:0;z-index:5;background:color-mix(in srgb,var(--tx) 60%,transparent);opacity:0;pointer-events:none;transition:opacity .4s ease;-webkit-tap-highlight-color:transparent;}
+.veil.dk{background:color-mix(in srgb,var(--bg) 70%,transparent);}
+.veil.on{opacity:1;pointer-events:auto;}
 .ear{position:absolute;right:3px;bottom:3px;width:13px;height:13px;border-radius:50%;background:var(--a);border:2px solid var(--bg);opacity:0;transform:scale(.5);transition:opacity .25s ease,transform .25s ease;pointer-events:none;}
 .fig.wk-on .ear{opacity:1;transform:none;animation:pp-ear 3.4s ease-in-out infinite;}
 .fig.wk-wait .ear{opacity:1;transform:none;background:var(--bg);border-color:var(--a);}
@@ -10825,6 +10845,20 @@ button{font:inherit;color:inherit;}
   .panel{top:calc(12px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(400px,calc(100vw - 24px - var(--gx,0px)));border-radius:22px;transform:translateX(calc(100% + 40px));}
   .panel.left{right:auto;left:calc(12px + var(--gx,0px) + env(safe-area-inset-left,0px));transform:translateX(calc(-100% - var(--gx,0px) - 40px));}
   .bar{padding-bottom:12px;}
+  /* Bühne (stage): Die Figur rollt mit einer einzigen Verschiebung und Vergrößerung (transform) in die Mitte oben, das Fenster steht darunter.
+     --sx, --sy, --ss (Verschiebung, Maßstab) und --stage-top (Oberkante des Fensters) setzt das Skript aus der Lage der Figur. */
+  .veil{display:block;}
+  .fig.stg{transition:transform .75s cubic-bezier(.35,.9,.3,1);}
+  .fig.stage{transform:translate(var(--sx,0px),var(--sy,0px)) scale(var(--ss,3.2));transform-origin:50% 50%;}
+  .panel.stage,.panel.left.stage{top:var(--stage-top,300px);right:auto;bottom:calc(24px + env(safe-area-inset-bottom,0px));left:max(24px,calc(50vw - 380px));width:min(760px,calc(100vw - 48px));}
+  .panel.stage:not(.open),.panel.left.stage:not(.open){transform:translateY(calc(100% + 60px));transition:transform .45s cubic-bezier(.4,0,.8,.4),visibility 0s linear .45s;}
+  .panel.stage.open,.panel.left.stage.open{transform:none;transition:transform .5s cubic-bezier(.2,.9,.3,1) .3s,visibility 0s;}
+  .panel.stage .head,.panel.stage .wk{display:none;}
+  .panel.stage .ib.sx{display:flex;}
+  .panel.stage .log{padding:46px 20px 6px;gap:12px;}
+  .panel.stage .hello,.panel.stage .ai{font-size:1.25rem;}
+  .panel.stage .me{font-size:1.2rem;}
+  .panel.stage .note{font-size:1.03rem;}
 }
 @media (max-width:699.98px){
   .panel{left:8px;right:8px;bottom:var(--kb,0px);height:min(82vh,calc(var(--vvh,100vh) - 12px));border-radius:22px 22px 0 0;transform:translateY(calc(100% + 40px));}
@@ -10836,6 +10870,7 @@ button{font:inherit;color:inherit;}
 .stt{font-size:.8rem;color:var(--tx2);}
 .ib{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:50%;background:var(--s1);color:var(--tx);font-size:1.15rem;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 @media (hover:hover){.ib:hover{background:var(--s2);}}
+.ib.sx{display:none;position:absolute;top:8px;right:10px;z-index:2;width:38px;height:38px;font-size:1rem;}
 .ib:focus-visible,.chip:focus-visible,.go:focus-visible,.in:focus-visible,.ac button:focus-visible,.pl:focus-visible,.pm button:focus-visible,.al-b:focus-visible{outline:2px solid var(--a);outline-offset:2px;}
 
 /* Schalter "Aktivierungswort" */
@@ -10930,7 +10965,7 @@ button{font:inherit;color:inherit;}
 
 @media (prefers-reduced-motion:reduce){
   .ball,.eye,.ring,.dots i,.go.rec,.fig .ear,.al,.al-i{animation:none !important;}
-  .panel,.fig,.go,.sw,.sw .kn,.ear,.stk{transition:none !important;}
+  .panel,.fig,.go,.sw,.sw .kn,.ear,.stk,.veil{transition:none !important;}
   .st-listen .r1,.fig.ringing .r1{opacity:.55;transform:scale(1.25);}
 }
 `;
@@ -10984,6 +11019,12 @@ class FpPipDock extends HTMLElement {
     this._wakeOpened = false;  // Fenster wurde vom Weckwort geöffnet
     this._scrWake = false;     // Gespräch per Aktivierungswort begonnen (bis zum Schließen oder "Neu"): wake_screen hält den Bildschirm wach
     this._scrAt = 0;           // Zeit des letzten Drucks auf wake_screen (Drosselung, SCR_GAP)
+    this._stg = null;          // Bühne (stage) läuft: { t: Zeitgeber fürs Ende nach der Antwort, hold: Fenster wurde angefasst, bleibt bis zum ✕ }
+    this._stgOut = null;       // Zeitgeber: nach dem Rückweg die Bühnen-Klassen von Figur und Fenster nehmen
+    this._stgRz = () => this._stageLay();   // Größe oder Ausrichtung geändert: Ziel der Figur neu messen
+    this._wl = null;           // wake_log: offener Eintrag zur letzten Erkennung { wert, bloecke, run, timer }, bis feststeht, was danach kam
+    this._wlEp = null;         // wake_log: laufende Episode mit Werten ab WAKE_LOG_MIN { max, n, t, skip }
+    this._wlKn = [];           // wake_log: Zeiten der letzten Knapp-Einträge (Drosselung)
     // Timer, Wecker, Erinnerungen und Klingeln (alarms)
     this._alT = null;          // Takt für Countdown und Vorschau (setTimeout)
     this._alIds = [];          // alle Entitäten aus alarms
@@ -11015,6 +11056,8 @@ class FpPipDock extends HTMLElement {
   _build() {
     const r = this.shadowRoot;
     r.innerHTML = `<style>${CSS}</style>
+<div class="veil" aria-hidden="true"></div>
+<span class="anc" aria-hidden="true"></span>
 <button class="fig" type="button" aria-label="Pip öffnen">${PIP}<span class="ear" aria-hidden="true"></span></button>
 <div class="stk">
   <div class="al" role="alert" hidden>
@@ -11025,6 +11068,7 @@ class FpPipDock extends HTMLElement {
   <div class="pls"></div>
 </div>
 <section class="panel" role="dialog" aria-label="Pip">
+  <button class="ib sx" type="button" aria-label="Schließen" title="Schließen">✕</button>
   <header class="head">${PIP.replace('class="pip st-idle"', 'class="pip mini st-idle"')}
     <div class="who"><b class="nm">Pip</b><span class="stt" role="status">Bereit</span></div>
     <button class="ib" type="button" data-a="new" aria-label="Neues Gespräch" title="Neues Gespräch">↺</button>
@@ -11037,6 +11081,8 @@ class FpPipDock extends HTMLElement {
   <div class="bar"><input class="in" type="text" autocomplete="off" enterkeyhint="send" aria-label="Nachricht"><button class="go" type="button" data-m=""></button></div>
 </section>`;
     this._fig = r.querySelector(".fig");
+    this._anc = r.querySelector(".anc");
+    this._veil = r.querySelector(".veil");
     this._panel = r.querySelector(".panel");
     this._log = r.querySelector(".log");
     this._chips = r.querySelector(".chips");
@@ -11060,6 +11106,8 @@ class FpPipDock extends HTMLElement {
     this._rgHint = r.querySelector(".rg .wk-h");
     this._rgSw = r.querySelector(".rg .sw");
     this._fig.addEventListener("click", () => this._openPanel());
+    r.querySelector(".sx").addEventListener("click", () => this._close());
+    this._veil.addEventListener("click", () => this._close());
     this._stk.addEventListener("click", e => this._onStk(e));
     r.querySelector(".head").addEventListener("click", e => {
       const b = e.target.closest ? e.target.closest("[data-a]") : null;
@@ -11101,6 +11149,7 @@ class FpPipDock extends HTMLElement {
     this._panel.setAttribute("aria-label", cfg.name);
     this._renderChips();
     this._applyBusy();
+    if (!cfg.stage) this._stageEnd();
     // Aktivierungswort: neue Einstellung -> alte Erkennung weg, Schalter dieses Geräts neu lesen
     if (!prev || JSON.stringify(prev.wake_word) !== JSON.stringify(cfg.wake_word)) {
       this._wakeOff();
@@ -11146,11 +11195,13 @@ class FpPipDock extends HTMLElement {
     } catch (e) {}
     this._fig.style.setProperty("--lift", px + "px");
     this._stk.style.setProperty("--lift", px + "px");
+    this._anc.style.setProperty("--lift", px + "px");
   }
   // Figur und Fenster auf die gewählte Seite setzen. Links sitzen sie am Rand des Inhaltsbereichs, nicht über der HA-Seitenleiste.
   applyPos() {
     const left = this._cfg.position === "left";
     this._fig.classList.toggle("left", left);
+    this._anc.classList.toggle("left", left);
     this._stk.classList.toggle("left", left);
     this._panel.classList.toggle("left", left);
     clearTimeout(this._edgeT);
@@ -11201,7 +11252,7 @@ class FpPipDock extends HTMLElement {
     this._subs();
     this._panel.classList.add("open");
     this._stk.classList.add("open");
-    this._fig.classList.add("gone");
+    if (!this._stg) this._fig.classList.add("gone");   // auf der Bühne bleibt die große Figur zu sehen
     document.addEventListener("keydown", this._kd);
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", this._vv);
@@ -11225,6 +11276,8 @@ class FpPipDock extends HTMLElement {
     this._abortMedia();
     this._wakeTouched();
     this._scrWake = false;
+    this._stageEnd();
+    this._wlEnd("abbruch", "");   // Erkennung ohne Lauf (Fenster zu, bevor zugehört wurde)
     if (!wasOpen) return;
     this._panel.classList.remove("open");
     this._stk.classList.remove("open");
@@ -11431,7 +11484,7 @@ class FpPipDock extends HTMLElement {
     this._setState(run ? "think" : "idle");
     this._micSync();
     if (ann) this._annEnd(ann); else this._screenWake(true);   // Antwort vorgelesen: Bildschirm wach halten (Ansagen beim Klingeln nicht)
-    if (go) this._listen(true);
+    if (go) this._listen(true); else this._stageArm();   // ohne Nachfrage geht die Bühne kurz nach dem Vorlesen zu
   }
   // Der früh gestartete Ton läuft: Anzeige "Spricht", bei der Ansage ist der Klingelton jetzt aus
   _audioPlaying() {
@@ -11571,6 +11624,7 @@ class FpPipDock extends HTMLElement {
         const t = d.stt_output && d.stt_output.text;
         if (run.me && run.voice && typeof t === "string" && t.trim()) run.me.text = t.trim();
         if (run.voice) { run.text = typeof t === "string" ? t.trim() : ""; run.t0 = Date.now(); }   // Dauer zählt ab hier: ohne die Zeit, die gesprochen wurde
+        this._wlEnd(run.text ? "text" : "leer", run.text, run);
         this._ensureAi(run);
         this._setState("think");
         this._renderLog(true);
@@ -11627,6 +11681,8 @@ class FpPipDock extends HTMLElement {
     this._unsubRun(run);
     if (run.rec) this._stopRec(run, false, false);
     if (this._cur === run) this._cur = null;
+    // wake_log: ohne Text bis hierher: nichts erkannt (stt-no-text-recognized, run-end ohne Text) ist "leer", jeder andere Fehler "fehler"
+    this._wlEnd(!err || err === "stt-no-text-recognized" ? "leer" : "fehler", "", run);
     // Früh gestarteter Ton: Bei einem Fehler oder ohne tts-end kommt kein (weiterer) Ton, die offene Anfrage würde hängen
     if (this._strm && this._strm.run === run && (err || !this._strm.tts)) this._stopAudio();
     this._learnLog(run);
@@ -11643,7 +11699,7 @@ class FpPipDock extends HTMLElement {
     if (!this._speaking) { this._auto = false; this._setState("idle"); this._screenWake(true); }   // ohne Vorlesen ist die Antwort jetzt fertig; sonst folgt _audioDone
     this._renderLog(true);
     this._applyBusy();
-    if (go) this._listen(true);
+    if (go) this._listen(true); else this._stageArm();   // ohne Vorlesen und ohne Nachfrage geht die Bühne kurz nach dem Lauf zu
   }
   // Werkzeugaufrufe des Gesprächsagenten aus intent-progress (chat_log_delta.tool_calls: [{id, tool_name, tool_args, external}])
   _learnTools(run, list) {
@@ -11684,12 +11740,14 @@ class FpPipDock extends HTMLElement {
     this._unsubRun(run);
     if (run.rec) { run.rec.stopped = true; clearTimeout(run.rec.timer); this._closeRec(run.rec); }
     if (this._cur === run) this._cur = null;
+    this._wlEnd("abbruch", "", run);
     if (run.voice && run.me && run.me.text === "…") this._remove(run.me);
     if (run.ai && !run.ai.text) this._remove(run.ai);
     if (this._strm && this._strm.run === run) this._stopAudio();
     this._setState(this._speaking ? "speak" : "idle");
     this._renderLog();
     this._applyBusy();
+    this._stageArm();
   }
   _reset() {
     if (this._cur) this._cancelRun(this._cur);
@@ -11700,6 +11758,8 @@ class FpPipDock extends HTMLElement {
     this._convAt = 0;
     this._ansAt = 0;
     this._scrWake = false;   // ein neues Gespräch per Tipp ist kein Gespräch per Aktivierungswort
+    this._stageEnd();
+    this._wlEnd("abbruch", "");
     this._setState("idle");
     this._renderLog(true);
     this._applyBusy();
@@ -11709,6 +11769,7 @@ class FpPipDock extends HTMLElement {
   async _listen(auto) {
     if (this._cur || !this._isOpen || !this._visible) return;
     if (!this._micOk()) { if (!auto) this._micFail(); return; }
+    this._stageDisarm();   // es wird zugehört: die Bühne bleibt, bis dieser Lauf zu Ende ist
     this._screenWake(true);   // es wird (wieder) zugehört: Bildschirm wach halten
     this._unlockAudio();
     this._ringSilence();   // wer jetzt spricht, will den Klingelton nicht im Mikrofon
@@ -11758,6 +11819,7 @@ class FpPipDock extends HTMLElement {
     this._expireConv();
     const run = this._newRun(true);
     run.me = this._push({ k: "me", text: "…" });
+    this._wlAttach(run);
     this._cur = run;
     this._convAt = Date.now();
     this._setState("listen");
@@ -12043,6 +12105,7 @@ class FpPipDock extends HTMLElement {
       if (!this._eng) {
         this._eng = new WakeEngine(w);
         this._eng.onwake = sc => this._onWake(sc);
+        if (this._cfg.wake_log) this._eng.onscore = s => this._wlScore(s);
         this._eng.onerror = e => { if (this._wm) this._wakeFail("run", e); };
       }
       const eng = this._eng;
@@ -12202,19 +12265,25 @@ class FpPipDock extends HTMLElement {
   }
   _onWake(score) {
     const m = this._wm;
+    // wake_log: Die laufende Episode ist mit dieser Erkennung entschieden (auch bei einer abgewiesenen), sie wird nie als "knapp" geschrieben;
+    // sie läuft aber weiter, damit der Nachhall des Worts keine neue Episode beginnt
+    const ep = this._wlEp;
+    if (ep) ep.skip = true;
     if (!m || !this._visible || this._wakeBusy()) return;
+    this._wlOpen(score, ep);
     // Bildschirmschoner (wake_screen) sofort beenden, noch vor dem Ton; _scrWake hält ihn bis zum Ende des Gesprächs weg
     this._scrWake = true;
     this._screenWake();
     this._wkHold = true;
     if (this._eng) this._eng.reset();
     this._chime(m.ctx);
-    if (!this._isOpen) { this._wakeOpened = true; this._openPanel(); }
+    if (!this._isOpen) { this._wakeOpened = true; this._stageBegin(); this._openPanel(); }
     this._setState("listen");
     // Erst nach dem Ton aufnehmen, sonst hört Home Assistant den Ton mit.
     setTimeout(() => {
       if (this._wm === m && this._isOpen && !this._cur) this._listen(true);
       this._wkHold = false;
+      this._stageArm();   // kommt kein Lauf zustande, geht die Bühne trotzdem wieder zu
       if (!this._cur) this._setState(this._speaking ? "speak" : "idle");
       this._micSync();
     }, CHIME_MS);
@@ -12233,6 +12302,78 @@ class FpPipDock extends HTMLElement {
     this._scrAt = now;
     const dom = id.slice(0, id.indexOf("."));
     try { const p = hass.callService(dom, dom === "script" ? "turn_on" : "press", { entity_id: id }, undefined, false); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+  }
+  // ---------- Protokoll der Aktivierungswort-Werte (wake_log) ----------
+  // Zweck: Schwelle und patience mit echten Werten einstellen. Zwei Arten von Einträgen, beide als ein Aufruf des Skripts:
+  // "ausgeloest": angenommene Erkennung, geschrieben erst, wenn feststeht, was danach kam (text, leer, fehler, abbruch);
+  // "knapp": Wert zwischen WAKE_LOG_MIN und der Schwelle, ohne Erkennung (gedrosselt). Abgewiesene Erkennungen (Pip spricht gerade) und
+  // Nachfragen im selben Gespräch (kein neues Aktivierungswort) erzeugen nichts. Fehler beim Aufruf bleiben still.
+  _wlCall(data) {
+    const id = this._cfg.wake_log;
+    if (!id) return;
+    const hass = getHass();
+    if (!hass || typeof hass.callService !== "function") return;
+    const w = this._cfg.wake_word || {};
+    data.wert = Math.round(data.wert * 1000) / 1000;
+    data.schwelle = w.threshold;
+    data.geduld = w.patience;
+    // notifyOnError = false (5. Parameter von hass.callService): sonst zeigt das HA-Frontend bei einem Fehler selbst einen Hinweis
+    try { const p = hass.callService("script", id.slice(7), data, undefined, false); if (p && p.catch) p.catch(() => {}); } catch (e) {}
+  }
+  // Erkennung angenommen: Eintrag offen halten. Kommt binnen WAKE_LOG_WAIT kein Lauf, zählt das als Abbruch.
+  _wlOpen(score, ep) {
+    if (!this._cfg.wake_log) return;
+    this._wlEnd("abbruch", "");   // ein noch offener Eintrag der vorigen Erkennung
+    const w = this._cfg.wake_word || {};
+    const e = { wert: Number(score) || 0, bloecke: Math.max(ep ? ep.n : 0, w.patience || 1), run: null, timer: null };
+    e.timer = setTimeout(() => { if (this._wl === e) this._wlEnd("abbruch", ""); }, WAKE_LOG_WAIT);
+    this._wl = e;
+  }
+  // Der Lauf zur Erkennung ist da (erste Sprachanfrage nach der Erkennung): ab jetzt entscheiden dessen Ereignisse.
+  _wlAttach(run) {
+    const e = this._wl;
+    if (!e || e.run) return;
+    e.run = run;
+    clearTimeout(e.timer);
+    e.timer = null;
+  }
+  // Eintrag abschließen und schreiben. run: nur wenn der Eintrag zu diesem Lauf gehört (sonst egal, z. B. beim Schließen).
+  _wlEnd(ende, text, run) {
+    const e = this._wl;
+    if (!e || (run && e.run !== run)) return;
+    this._wl = null;
+    clearTimeout(e.timer);
+    let t = String(text || "").trim();
+    if (t.length > 120) t = t.slice(0, 119).trimEnd() + "…";
+    this._wlCall({ art: "ausgeloest", wert: e.wert, text: t, ende, bloecke: e.bloecke });
+  }
+  // Jeder Block der Erkennung (80 ms): Episoden verfolgen. Eine Episode läuft, solange der Wert bei WAKE_LOG_MIN oder darüber bleibt.
+  _wlScore(s) {
+    if (!this._cfg.wake_log || !this._cfg.wake_word) return;
+    const w = this._cfg.wake_word, now = Date.now();
+    let ep = this._wlEp;
+    if (this._wakeBusy()) { this._wlEp = null; return; }
+    if (ep && now - ep.t > WAKE_LOG_BLK) { this._wlEp = null; this._wlKnapp(ep); ep = null; }   // Pause im Block-Takt (Ruhezeit, Mikrofon-Pause)
+    if (s >= WAKE_LOG_MIN) {
+      if (!ep) ep = this._wlEp = { max: 0, n: 0, t: now, skip: false };
+      if (s > ep.max) ep.max = s;
+      if (s >= w.threshold) ep.n++;
+      ep.t = now;
+    } else if (ep) {
+      this._wlEp = null;
+      this._wlKnapp(ep);
+    }
+  }
+  // Episode zu Ende ohne Erkennung: "knapp" schreiben, höchstens alle WAKE_LOG_GAP ms und WAKE_LOG_HOUR pro Stunde. Liegt die Schwelle selbst
+  // bei WAKE_LOG_MIN oder darunter, ist jeder Wert dieser Höhe schon eine Erkennung und es gibt kein "knapp".
+  _wlKnapp(ep) {
+    const w = this._cfg.wake_word;
+    if (!ep || ep.skip || !w || w.threshold <= WAKE_LOG_MIN) return;
+    const now = Date.now(), l = this._wlKn;
+    while (l.length && now - l[0] >= 3600000) l.shift();
+    if (l.length >= WAKE_LOG_HOUR || (l.length && now - l[l.length - 1] < WAKE_LOG_GAP)) return;
+    l.push(now);
+    this._wlCall({ art: "knapp", wert: ep.max, text: "", ende: "", bloecke: ep.n });
   }
   // Zwei kurze, aufsteigende Töne aus Oszillatoren (keine Datei). Nur für diesen Ton hängt etwas am Lautsprecher-Ausgang:
   // danach werden Oszillatoren und Gain getrennt (auch wenn der Kontext schläft und "ended" nie kommt).
@@ -12277,6 +12418,91 @@ class FpPipDock extends HTMLElement {
   _wakeTouched() {
     this._wakeOpened = false;
     clearTimeout(this._wkIdleT);
+    // Wer das Fenster anfasst, will es behalten: die Bühne bleibt dann bis zum ✕ (oder Tipp auf die dunkle Fläche)
+    const g = this._stg;
+    if (g) { g.hold = true; clearTimeout(g.t); g.t = null; }
+  }
+
+  // ---------- Bühne (stage) ----------
+  // Nur bei Gesprächen per Aktivierungswort, nur ab 700 px Breite (wie die Spalte rechts) und nur mit stage: true. Das Dashboard wird abgedunkelt,
+  // die Figur rollt (ein einziges transform: verschieben und vergrößern) in die Mitte oben, das Fenster steht darunter. Ende: STAGE_LINGER nach der
+  // Antwort, außer es folgt eine Nachfrage oder das Fenster wurde angefasst; ✕, Tipp auf die Fläche, _close und _reset beenden sofort.
+  _stageOk() {
+    try { return !!(window.matchMedia && window.matchMedia("(min-width:700px)").matches); } catch (e) { return false; }
+  }
+  _stageBegin() {
+    if (this._stg || !this._cfg.stage || !this._stageOk()) return;
+    clearTimeout(this._stgOut);
+    this._stgOut = null;
+    this._stg = { t: null, hold: false };
+    this._stageLay();
+    const h = getHass();
+    this._veil.classList.toggle("dk", !!(h && h.themes && h.themes.darkMode));
+    this.classList.add("stage");
+    this._veil.classList.add("on");
+    this._fig.classList.add("stg", "stage");
+    this._panel.classList.add("stage");
+    void this._panel.offsetWidth;   // Fenster steht zu (unten), bevor _openPanel es hochfahren lässt
+    window.addEventListener("resize", this._stgRz);
+    window.addEventListener("orientationchange", this._stgRz);
+  }
+  // Ziel messen: Mitte der Figur bei 50 % der Breite und etwa 22 % der Höhe, mindestens so tief, dass die Ringe oben nicht abgeschnitten werden.
+  // Gemessen wird am unverschobenen Anker (.anc), nicht an der Figur selbst, denn die ist ja gerade unterwegs.
+  _stageLay() {
+    if (!this._stg) return;
+    if (!this._stageOk()) { this._stageEnd(); return; }   // Fenster zu schmal geworden: normale Ansicht
+    const a = this._anc.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight;
+    if (!a.width) return;
+    let rs = 1.9;
+    try { rs = parseFloat(getComputedStyle(this._fig.querySelector(".pip")).getPropertyValue("--rs")) || 1.9; } catch (e) {}
+    const r = a.width / 2, sc = H >= 640 ? 3.2 : Math.max(1.8, 3.2 * H / 640);   // in sehr niedrigen Fenstern etwas kleiner
+    const cx = W / 2, cy = Math.max(H * 0.22, 12 + r * sc * rs);
+    this._fig.style.setProperty("--sx", Math.round(cx - (a.left + r)) + "px");
+    this._fig.style.setProperty("--sy", Math.round(cy - (a.top + r)) + "px");
+    this._fig.style.setProperty("--ss", String(Math.round(sc * 100) / 100));
+    this._panel.style.setProperty("--stage-top", Math.round(cy + r * sc + 24) + "px");
+  }
+  // Nach der Antwort STAGE_LINGER warten, dann schließen. Nicht, solange etwas läuft, gesprochen wird oder das Fenster angefasst wurde.
+  _stageArm() {
+    const g = this._stg;
+    if (!g) return;
+    clearTimeout(g.t);
+    g.t = null;
+    if (g.hold || this._cur || this._speaking) return;
+    g.t = setTimeout(() => {
+      g.t = null;
+      if (this._stg === g && !g.hold && !this._cur && !this._speaking) this._close();
+    }, STAGE_LINGER);
+  }
+  _stageDisarm() {
+    const g = this._stg;
+    if (g) { clearTimeout(g.t); g.t = null; }
+  }
+  // Bühne abbauen. Das Fenster schließt der Aufrufer (_close); ist es noch offen (Klingeln, "Neu", Fenster zu schmal), bleibt es als Spalte stehen
+  // und die Figur verschwindet wie sonst bei offenem Fenster. Sonst rollt die Figur zurück, das Fenster geht nach unten und die Fläche blendet aus.
+  _stageEnd() {
+    const g = this._stg;
+    if (!g) return;
+    this._stg = null;
+    clearTimeout(g.t);
+    window.removeEventListener("resize", this._stgRz);
+    window.removeEventListener("orientationchange", this._stgRz);
+    this.classList.remove("stage");
+    this._veil.classList.remove("on");
+    this._fig.classList.remove("stage");
+    if (this._isOpen) {
+      this._fig.classList.remove("stg");
+      this._fig.classList.add("gone");
+      this._panel.classList.remove("stage");
+      return;
+    }
+    clearTimeout(this._stgOut);
+    this._stgOut = setTimeout(() => {
+      this._stgOut = null;
+      if (this._stg) return;
+      this._fig.classList.remove("stg");
+      this._panel.classList.remove("stage");
+    }, STAGE_OUT);
   }
 
   // ---------- Timer, Wecker, Erinnerungen und Klingeln (alarms) ----------
@@ -12471,6 +12697,7 @@ class FpPipDock extends HTMLElement {
   }
   // silent: Das Signal hat hier schon ausgeklungen (Neuladen): nur das Hinweisfeld, ohne Ton und Ansage.
   _ringBegin(o, silent) {
+    this._stageEnd();   // Klingel-Hinweis wie bisher: die Bühne geht zu, das Fenster bleibt als Spalte
     const r = this._ring = { art: o.art, text: o.text, t: o.t, key: o.key, begin: Date.now(), until: 0, silent: !!silent, mute: false, over: !!silent, wait: false, tone: null, ann: null, timer: null };
     r.until = r.begin + this._cfg.alarms.ring_seconds * 1000;
     if (!silent) this._seenSet(o.key, "on");
