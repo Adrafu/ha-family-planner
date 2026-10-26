@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.4.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
+/* Family Planner custom cards v3.5.1 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10199,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v7 (lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v9 (Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10588,6 +10588,10 @@ function normCfg(c) {
     wake_word: wake,
     alarms,
     learn: /^script\.[a-z0-9_]+$/.test(lr) ? lr : "",
+    // early_tts: Sprachausgabe schon abspielen, während Home Assistant sie erzeugt (stream_response); Vorgabe aus (am iPad rauschte es)
+    early_tts: c.early_tts === true,
+    // mic_pause: Das Weckwort-Mikrofon ist zu, solange Pip spricht oder klingelt (iOS bleibt sonst im Aufnahmemodus und rauscht); Vorgabe an
+    mic_pause: c.mic_pause !== false,
   };
 }
 // Zeitpunkt als "JJJJ-MM-TT HH:MM:SS" in der Zeitzone von Home Assistant.
@@ -10969,6 +10973,10 @@ class FpPipDock extends HTMLElement {
     this._wkTry = 0;
     this._wkRetry = null;
     this._wkIdleT = null;
+    this._mp = null;           // Mikrofon-Pause (mic_pause): { ctx } = Weckwort-Mikrofon ist zu, der (schlafende) AudioContext bleibt für das Wiederöffnen
+    this._mpT = null;          // Zeitgeber fürs Wiederöffnen (nach dem Ton plus WAKE_QUIET)
+    this._wkOpening = null;    // laufendes Öffnen des Weckwort-Mikrofons
+    this._wkResume = false;    // ... und zwar das Wiederöffnen nach einer Pause
     this._wakeOpened = false;  // Fenster wurde vom Weckwort geöffnet
     // Timer, Wecker, Erinnerungen und Klingeln (alarms)
     this._alT = null;          // Takt für Countdown und Vorschau (setTimeout)
@@ -11372,7 +11380,7 @@ class FpPipDock extends HTMLElement {
   // iOS: Das Audio-Element muss einmal per Tipp gestartet worden sein, sonst bleibt spätere Wiedergabe stumm.
   _unlockAudio() {
     this._rcUnlock();
-    if (this._unlocked || !SILENT || this._speaking) return;   // während einer Wiedergabe (auch einer wartenden) die Quelle nicht anfassen
+    if (this._unlocked || !SILENT || (this._speaking && this._strm)) return;   // während eines früh gestarteten (auch noch wartenden) Streams die Quelle nicht anfassen
     this._unlocked = true;
     try {
       const a = this._aud();
@@ -11392,6 +11400,7 @@ class FpPipDock extends HTMLElement {
     this._speaking = true;
     this._annc = ann || null;
     this._strm = str || null;
+    this._micSync();   // zuerst das Mikrofon frei geben (iOS in den reinen Wiedergabemodus), dann abspielen
     a.src = src;
     if (!str) this._setState("speak");
     try {
@@ -11413,6 +11422,7 @@ class FpPipDock extends HTMLElement {
     const go = !ann && !failed && this._auto && this._isOpen && this._visible && !run;
     this._auto = false;
     this._setState(run ? "think" : "idle");
+    this._micSync();
     if (ann) this._annEnd(ann);
     if (go) this._listen(true);
   }
@@ -11446,12 +11456,13 @@ class FpPipDock extends HTMLElement {
     }
     const ann = this._annc;
     this._annc = null;
+    this._micSync();
     if (ann) this._annEnd(ann);
   }
   // Home Assistant streamt die Sprachausgabe (run-start: tts_output.stream_response, ab 2025.6 bei Gesprächsagenten mit Streaming und
   // TTS mit Streaming-Eingang): Die Adresse liefert den Ton schon, während der Text noch entsteht. Der Server hält die Anfrage, bis es
   // etwas zu sagen gibt. Bei tts-end wird dieselbe Adresse nicht noch einmal gestartet (_streamSkip).
-  // Bei Sprachanfragen erst ab stt-end (die Aufnahme ist da zu Ende), bei Text sofort.
+  // Bei Sprachanfragen erst ab stt-end (die Aufnahme ist da zu Ende), bei Text sofort. Nur mit early_tts: true (Vorgabe aus: am iPad rauschte es).
   _streamBegin(run) {
     const o = run.early;
     if (!o || run.str || run.ended || this._cur !== run) return;
@@ -11539,17 +11550,17 @@ class FpPipDock extends HTMLElement {
           }
         }
         const o = d.tts_output;
-        if (o && o.stream_response === true && typeof o.url === "string" && o.url) {
+        if (this._cfg.early_tts && o && o.stream_response === true && typeof o.url === "string" && o.url) {
           run.early = o;
           if (!run.voice) this._streamBegin(run);
         }
         break;
       }
       case "stt-vad-end":
-        this._stopRec(run);
+        this._stopRec(run, true, false);
         break;
       case "stt-end": {
-        this._stopRec(run);
+        this._stopRec(run, true, false);
         const t = d.stt_output && d.stt_output.text;
         if (run.me && run.voice && typeof t === "string" && t.trim()) run.me.text = t.trim();
         if (run.voice) { run.text = typeof t === "string" ? t.trim() : ""; run.t0 = Date.now(); }   // Dauer zählt ab hier: ohne die Zeit, die gesprochen wurde
@@ -11607,7 +11618,7 @@ class FpPipDock extends HTMLElement {
     run.ended = true;
     clearTimeout(run.timer);
     this._unsubRun(run);
-    if (run.rec) this._stopRec(run, false);
+    if (run.rec) this._stopRec(run, false, false);
     if (this._cur === run) this._cur = null;
     // Früh gestarteter Ton: Bei einem Fehler oder ohne tts-end kommt kein (weiterer) Ton, die offene Anfrage würde hängen
     if (this._strm && this._strm.run === run && (err || !this._strm.tts)) this._stopAudio();
@@ -11693,11 +11704,20 @@ class FpPipDock extends HTMLElement {
     this._unlockAudio();
     this._ringSilence();   // wer jetzt spricht, will den Klingelton nicht im Mikrofon
     this._stopAudio();
+    // Mikrofon-Pause (mic_pause): das Weckwort-Mikrofon ist zu, weil gesprochen oder geklingelt wurde. Jetzt wird zugehört: sofort
+    // wieder öffnen (nicht erst nach der Ruhezeit), mit dem schon freigeschalteten Kontext, und dann wie unten den Strom teilen.
+    let wm = this._wm, pre = null;
+    if (!(wm && wm.live) && (this._mp || this._wkResume)) {
+      pre = this._beginVoice();
+      try { if (this._wkOpening && this._wkResume) await this._wkOpening; else await this._wakeOpen(); } catch (e) {}
+      wm = this._wm;
+      if (pre.ended) return;   // inzwischen abgebrochen (Schließen, neues Gespräch)
+      if (!(wm && wm.live)) { this._cancelRun(pre); if (!auto) this._micFail(); return; }
+    }
     // Hört das Aktivierungswort schon mit, ist das Mikrofon offen: denselben Strom nehmen, kein zweites getUserMedia.
-    const wm = this._wm;
     if (wm && wm.live) {
       try { if (wm.ctx.state !== "running") wm.ctx.resume(); } catch (e) {}
-      const run = this._beginVoice();
+      const run = pre || this._beginVoice();
       run.rec = { ctx: wm.ctx, stream: wm.stream, shared: wm, queue: [], qlen: 0, stopped: false, endPending: false, timer: null };
       wm.run = run;
       this._voicePipe(run);
@@ -11767,9 +11787,10 @@ class FpPipDock extends HTMLElement {
       const on = f => { rec.got = true; this._onFrames(run, f); };
       let ok = false;
       if (ctx.audioWorklet && typeof AudioWorkletNode === "function") {
-        const url = URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+        // Der Prozessor lässt sich je Kontext nur einmal registrieren: beim Wiederöffnen nach einer Mikrofon-Pause ist er schon da
+        const url = ctx.__fpRec ? "" : URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
         try {
-          await ctx.audioWorklet.addModule(url);
+          if (url) { await ctx.audioWorklet.addModule(url); ctx.__fpRec = true; }
           const node = new AudioWorkletNode(ctx, "fp-pip-rec", { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
           node.port.onmessage = e => on(e.data);
           rec.src.connect(node);
@@ -11777,7 +11798,7 @@ class FpPipDock extends HTMLElement {
           rec.node = node;
           ok = true;
         } catch (e) { ok = false; this._recUnhook(rec); try { rec.src.disconnect(); } catch (e2) {} }
-        finally { URL.revokeObjectURL(url); }
+        finally { if (url) URL.revokeObjectURL(url); }
       }
       if (!ok) {
         const node = ctx.createScriptProcessor(4096, 1, 1);
@@ -11865,7 +11886,7 @@ class FpPipDock extends HTMLElement {
   // Binärnachricht: erstes Byte = Kennung des Stroms, danach 16-Bit-PCM (Little Endian).
   _flush(run) {
     const rec = run.rec;
-    if (!rec || run.handlerId == null || !rec.qlen) return;
+    if (!rec || run.ended || run.handlerId == null || !rec.qlen) return;   // nach dem Ende des Laufs gilt der Strom in Home Assistant nicht mehr
     const all = new Int16Array(rec.qlen);
     let o = 0;
     for (const q of rec.queue) { all.set(q, o); o += q.length; }
@@ -11883,18 +11904,19 @@ class FpPipDock extends HTMLElement {
     }
   }
   _sendEnd(run) {
-    if (run.endSent || run.handlerId == null) return;
+    if (run.endSent || run.ended || run.handlerId == null) return;
     run.endSent = true;
     const sock = this._sock();
     if (sock && sock.readyState === 1) { try { sock.send(new Uint8Array([run.handlerId])); } catch (e) {} }
   }
   // Aufnahme beenden: Rest senden, Ende melden, Mikrofon und AudioContext freigeben.
-  _stopRec(run, sendEnd) {
+  // rest === false: Rest verwerfen und nur das Ende-Paket schicken (Home Assistant hat das Ende der Sprache schon erkannt).
+  _stopRec(run, sendEnd, rest) {
     const rec = run && run.rec;
     if (!rec || rec.stopped) return;
     rec.stopped = true;
     clearTimeout(rec.timer);
-    this._flush(run);
+    if (rest === false) { rec.queue = []; rec.qlen = 0; } else this._flush(run);
     if (sendEnd !== false && !run.ended) {
       if (run.handlerId != null) this._sendEnd(run); else rec.endPending = true;
     }
@@ -11913,7 +11935,7 @@ class FpPipDock extends HTMLElement {
   }
   _closeRec(rec) {
     // Das Weckwort-Mikrofon bleibt offen: ein Gespräch löst sich nur davon.
-    if (rec.shared) { if (rec.shared.run && rec.shared.run.rec === rec) rec.shared.run = null; return; }
+    if (rec.shared) { if (rec.shared.run && rec.shared.run.rec === rec) rec.shared.run = null; this._micSync(); return; }
     this._dropNodes(rec);
     try { rec.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
     try { const r = rec.ctx.close(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
@@ -11971,6 +11993,7 @@ class FpPipDock extends HTMLElement {
       if (this._wk.st !== "off" && this._wk.st !== "err") this._wakeSet("off");
       return;
     }
+    if (this._mp && this._micHold()) return;   // Mikrofon-Pause: erst nach dem Ton wieder öffnen
     if (!this._wm && !this._wkLoading) this._wakeOpen();
   }
   _wakeOff() {
@@ -11980,14 +12003,30 @@ class FpPipDock extends HTMLElement {
     clearTimeout(this._wkIdleT);
     this._wkWas = false;
     this._wakeDisarm();
+    this._mpClear();
     this._wmClose();
   }
-  async _wakeOpen() {
+  // Öffnet das Mikrofon für die Erkennung; Rückgabe: Promise (endet auch bei Fehlern ohne Ausnahme)
+  _wakeOpen() {
+    const resuming = !!this._mp;
+    this._wkResume = resuming;
+    const p = this._wkOpening = this._wakeOpenRun(resuming);
+    const done = () => { if (this._wkOpening === p) { this._wkOpening = null; this._wkResume = false; } };
+    p.then(done, done);
+    return p;
+  }
+  async _wakeOpenRun(resuming) {
     const w = this._cfg.wake_word, tok = ++this._wkTok, stale = () => tok !== this._wkTok;
     this._wkLoading = true;
-    this._wakeSet("load");
+    // Nach einer Mikrofon-Pause bleibt die Anzeige, wie sie ist; der schlafende AudioContext wird weiterverwendet (iOS lässt einen
+    // neuen außerhalb eines Tipps oft nicht anlaufen, einen schon freigeschalteten dagegen schon)
+    if (!resuming) this._wakeSet("load");
+    const keep = this._mp;
+    clearTimeout(this._mpT);
+    this._mpT = null;
+    this._mp = null;
     // Der AudioContext entsteht gleich hier (meist im Tipp), sonst bleibt er auf iOS stumm.
-    let ctx = mkCtx(), stream = null, ok = false;
+    let ctx = keep && keep.ctx && keep.ctx.state !== "closed" ? keep.ctx : mkCtx(), stream = null, ok = false;
     try { if (ctx) ctx.resume(); } catch (e) {}
     try {
       if (!ctx) throw wkErr(new Error("ctx"), "mic");
@@ -12016,6 +12055,7 @@ class FpPipDock extends HTMLElement {
       this._wkLoading = false;
       eng.reset();
       this._wakeCtxState();
+      this._micSync();   // läuft inzwischen schon wieder Ton: gleich wieder zu
     } catch (e) {
       if (!stale()) {
         this._wkLoading = false;
@@ -12072,6 +12112,48 @@ class FpPipDock extends HTMLElement {
       try { m.ctx.close(); } catch (e) {}
     }
   }
+  // ---------- Mikrofon-Pause (mic_pause) ----------
+  // Solange Pip spricht oder klingelt, ist das Weckwort-Mikrofon zu: Ein offener Aufnahmestrom hält iOS im Modus
+  // "Wiedergabe und Aufnahme" (mit Sprachverarbeitung); die Wiedergabe rauscht dann gelegentlich. Freigegeben werden die Spuren
+  // (stop() beendet die Aufnahme und damit den Modus) und die Aufnahmekette; der AudioContext bleibt, wird aber angehalten:
+  // So konkurriert er nicht mit der Wiedergabe, und er ist schon freigeschaltet, das Wiederöffnen braucht dann keinen Tipp
+  // (ein neuer Kontext bliebe auf iOS ohne Tipp oft stumm). Nach dem Ton plus WAKE_QUIET kommt ein neuer Strom (getUserMedia).
+  _micHold() { return !!(this._cfg.mic_pause && (this._speaking || (this._ring && this._ring.tone))); }
+  // Ton hat begonnen oder geendet: Mikrofon schließen bzw. das Wiederöffnen einplanen
+  _micSync() {
+    if (!this._cfg.mic_pause) return;
+    if (this._micHold()) {
+      clearTimeout(this._mpT);
+      this._mpT = null;
+      this._micPause();
+    } else if (this._mp) {
+      if (!this._mpT) this._mpT = setTimeout(() => { this._mpT = null; if (this._mp && !this._micHold()) this._wakeSync(); }, WAKE_QUIET);
+      this._wakeIdleArm();
+    }
+  }
+  _micPause() {
+    const m = this._wm;
+    if (!m || !m.live || this._wkHold) return;
+    const run = m.run;
+    if (run && !run.ended && run.rec && !run.rec.stopped) return;   // es wird gerade aufgenommen: nach dem Ende der Aufnahme (_closeRec)
+    this._wm = null;
+    m.live = false;
+    m.run = null;
+    try { m.ctx.onstatechange = null; } catch (e) {}
+    if (m.W.rec) { m.W.rec.stopped = true; this._dropNodes(m.W.rec); }
+    try { m.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    try { const r = m.ctx.suspend(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+    if (this._eng) this._eng.reset();
+    this._mp = { ctx: m.ctx };
+  }
+  // Pause verwerfen (Erkennung aus, Dock versteckt, Tab im Hintergrund): auch der angehaltene Kontext wird geschlossen
+  _mpClear() {
+    clearTimeout(this._mpT);
+    this._mpT = null;
+    const mp = this._mp;
+    this._mp = null;
+    if (mp && mp.ctx) { try { const r = mp.ctx.close(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
   // Erster Tipp irgendwo auf der Seite: AudioContext fortsetzen (iOS), Vorlesen freischalten, notfalls neu öffnen.
   _wakeArm() {
     if (this._wkArmed) return;
@@ -12122,6 +12204,7 @@ class FpPipDock extends HTMLElement {
       if (this._wm === m && this._isOpen && !this._cur) this._listen(true);
       this._wkHold = false;
       if (!this._cur) this._setState(this._speaking ? "speak" : "idle");
+      this._micSync();
     }, CHIME_MS);
   }
   // Zwei kurze, aufsteigende Töne aus Oszillatoren (keine Datei). Nur für diesen Ton hängt etwas am Lautsprecher-Ausgang:
@@ -12520,6 +12603,7 @@ class FpPipDock extends HTMLElement {
       tn.timer = setTimeout(strike, RING_GAP);
       try { this._bell(ctx, tn); } catch (e) {}
     };
+    this._micSync();   // erst das Mikrofon frei geben, dann läuten
     strike();
   }
   // Ein Schlag: zwei Töne (A5, E6), je mit einem leicht unharmonischen Oberton, weich ausklingend.
@@ -12561,6 +12645,7 @@ class FpPipDock extends HTMLElement {
     for (const n of tn.nodes) { try { if (n.stop) n.stop(); } catch (e) {} try { n.disconnect(); } catch (e) {} }
     tn.nodes.clear();
     try { tn.mg.disconnect(); } catch (e) {}
+    this._micSync();
   }
 
   // Ansage zu Beginn: Assist-Pipeline nur mit Sprachausgabe (tts -> tts); die Adresse wird wie eine Antwort abgespielt.
@@ -12595,7 +12680,7 @@ class FpPipDock extends HTMLElement {
   // Liefert run-start schon einen Stream (stream_response), wird die Ansage dort gestartet; der Klingelton läuft, bis Ton da ist.
   _annEarly(ann, d) {
     const o = d && d.tts_output, r = ann.ring;
-    if (!o || o.stream_response !== true || typeof o.url !== "string" || !o.url) return;
+    if (!this._cfg.early_tts || !o || o.stream_response !== true || typeof o.url !== "string" || !o.url) return;
     if (this._ring !== r || r.over || r.mute || this._cur || (this._speaking && !this._annc)) return;
     const s = ann.str = { run: null, ann, url: o.url, token: o.token || "", st: "wait", tts: false };
     this._play(o.url, ann, s);
@@ -12613,7 +12698,7 @@ class FpPipDock extends HTMLElement {
     ann.done = true;
     clearTimeout(ann.timer);
     this._annUnsub(ann);
-    if (this._annc === ann) this._stopAudio();   // früh gestartete Ansage, die nicht mehr kommt
+    if (this._annc === ann && this._strm && this._strm.ann === ann) this._stopAudio();   // früh gestartete Ansage, die nicht mehr kommt
     const r = ann.ring;
     if (this._ring === r && !r.over && !r.mute && r.until > Date.now()) this._toneOn(r); else this._rcIdle();
   }
@@ -12622,6 +12707,8 @@ class FpPipDock extends HTMLElement {
   _subs() {
     const hass = getHass(), conn = hass && hass.connection;
     if (!conn || !conn.subscribeEvents || this._evConn === conn) return;
+    // Konten ohne Administratorrechte dürfen keine Ereignisse abonnieren (Home Assistant lehnt es ab und schreibt es ins Protokoll): gar nicht erst versuchen
+    if (hass.user && hass.user.is_admin === false) return;
     this._unsubEvents();
     this._evConn = conn;
     let p;
