@@ -211,6 +211,7 @@ familienplaner-warm:
       fp-tint-rgb: "143, 176, 152"
       fp-accent-fg: "#1E1C18"
       fp-accent: "#8FB098"
+      fp-pip: "#3F9A74"                 # Pipo (Sprachassistent): kräftigeres Grün als der Akzent, sonst wirkt er im Dunkeln blass
       fp-head: "#8FB098"
       fp-meal0-bg: "#332F27"
       fp-meal1-bg: "#2B3529"
