@@ -10199,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v12 (Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v13 (Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10264,7 +10264,8 @@ const wkDetail = e => {
 const WAKE_QUIET = 1200;    // so lange nach Antwort und Vorlesen noch taub (Nachhall)
 const WAKE_IDLE = 30000;    // per Weckwort geöffnetes Fenster schließt sich so lange nach der Antwort von selbst
 const STAGE_LINGER = 5000; // stage: so lange nach dem Ende der Antwort bleibt die Bühne noch stehen
-const STAGE_OUT = 800;      // stage: so lange dauert der Rückweg (Figur rollt zurück, Fenster geht, Fläche blendet aus)
+const STAGE_IDLE = 30000;   // stage: so lange bleibt die Bühne stehen, wenn nach dem Tipp auf die Figur nichts passiert; auch eine Berührung oder Eingabe im Fenster hält sie so lange
+const STAGE_OUT = 800;     // stage: so lange dauert der Rückweg (Figur rollt zurück, Fenster geht, Fläche blendet aus)
 const CHIME_MS = 170;       // Länge des Erkennungstons; erst danach geht Ton an Home Assistant
 const SCR_GAP = 4000;       // wake_screen: höchstens ein Knopfdruck in so vielen ms
 const WAKE_LOG_MIN = 0.5;   // wake_log: ab diesem Wert beginnt eine "knappe" Episode (Wert unter der Schwelle, aber nicht Rauschen)
@@ -10607,7 +10608,7 @@ function normCfg(c) {
     mic_pause: c.mic_pause !== false,
     wake_screen: /^(button|input_button|script)\.[a-z0-9_]+$/.test(ws) ? ws : "",
     wake_log: /^script\.[a-z0-9_]+$/.test(wl) ? wl : "",
-    // stage (Bühne): nur bei Gesprächen per Aktivierungswort und ab 700 px Breite wird das Dashboard abgedunkelt, die Figur groß, das Gespräch darunter; Vorgabe aus
+    // stage (Bühne): bei Gesprächen per Aktivierungswort und per Tipp auf die Figur, ab 700 px Breite, wird das Dashboard abgedunkelt, die Figur groß, das Gespräch darunter; Vorgabe aus
     stage: c.stage === true,
   };
 }
@@ -11019,7 +11020,7 @@ class FpPipDock extends HTMLElement {
     this._wakeOpened = false;  // Fenster wurde vom Weckwort geöffnet
     this._scrWake = false;     // Gespräch per Aktivierungswort begonnen (bis zum Schließen oder "Neu"): wake_screen hält den Bildschirm wach
     this._scrAt = 0;           // Zeit des letzten Drucks auf wake_screen (Drosselung, SCR_GAP)
-    this._stg = null;          // Bühne (stage) läuft: { t: Zeitgeber fürs Ende nach der Antwort, hold: Fenster wurde angefasst, bleibt bis zum ✕ }
+    this._stg = null;          // Bühne (stage) läuft: { t: Zeitgeber fürs Ende }
     this._stgOut = null;       // Zeitgeber: nach dem Rückweg die Bühnen-Klassen von Figur und Fenster nehmen
     this._stgRz = () => this._stageLay();   // Größe oder Ausrichtung geändert: Ziel der Figur neu messen
     this._wl = null;           // wake_log: offener Eintrag zur letzten Erkennung { wert, bloecke, run, timer }, bis feststeht, was danach kam
@@ -11105,7 +11106,11 @@ class FpPipDock extends HTMLElement {
     this._rgRow = r.querySelector(".rg");
     this._rgHint = r.querySelector(".rg .wk-h");
     this._rgSw = r.querySelector(".rg .sw");
-    this._fig.addEventListener("click", () => this._openPanel());
+    this._fig.addEventListener("click", () => {
+      // Tipp auf die Figur: ebenfalls Bühne (falls stage und breit genug); vor _openPanel, damit die Figur nicht mit .gone verschwindet.
+      // Passiert danach nichts, geht die Bühne nach STAGE_IDLE von selbst zu.
+      if (!this._isOpen) { this._stageBegin(); this._openPanel(); this._stageArm(STAGE_IDLE); } else this._openPanel();
+    });
     r.querySelector(".sx").addEventListener("click", () => this._close());
     this._veil.addEventListener("click", () => this._close());
     this._stk.addEventListener("click", e => this._onStk(e));
@@ -11128,9 +11133,10 @@ class FpPipDock extends HTMLElement {
     this._go.addEventListener("click", () => this._onGo());
     this._wkSw.addEventListener("click", () => this._wakeToggle());
     this._rgSw.addEventListener("click", () => this._ringToggle());
-    // Wer das Fenster anfasst, will es behalten: dann schließt es sich nach einer Weckwort-Frage nicht von selbst.
-    this._panel.addEventListener("pointerdown", () => this._wakeTouched());
-    this._in.addEventListener("input", () => this._wakeTouched());
+    // Wer das Fenster anfasst, will es behalten: dann schließt es sich nach einer Weckwort-Frage nicht von selbst, und die Bühne bleibt
+    // STAGE_IDLE stehen. Ein begonnener Text hält sie, solange er im Feld steht (siehe _stageArm).
+    this._panel.addEventListener("pointerdown", () => { this._wakeTouched(); this._stageArm(STAGE_IDLE); });
+    this._in.addEventListener("input", () => { this._wakeTouched(); this._stageArm(STAGE_IDLE); });
     this._renderChips();
     this._renderLog();
     this._syncBtn();
@@ -11558,6 +11564,7 @@ class FpPipDock extends HTMLElement {
   _send(text) {
     text = String(text || "").trim();
     if (!text || this._cur) return;
+    this._stageDisarm();   // ein Lauf beginnt: die Bühne bleibt, bis er zu Ende ist (danach armiert _finishRun)
     this._stopAudio();
     this._expireConv();
     const run = this._newRun(false);
@@ -12418,15 +12425,13 @@ class FpPipDock extends HTMLElement {
   _wakeTouched() {
     this._wakeOpened = false;
     clearTimeout(this._wkIdleT);
-    // Wer das Fenster anfasst, will es behalten: die Bühne bleibt dann bis zum ✕ (oder Tipp auf die dunkle Fläche)
-    const g = this._stg;
-    if (g) { g.hold = true; clearTimeout(g.t); g.t = null; }
   }
 
   // ---------- Bühne (stage) ----------
-  // Nur bei Gesprächen per Aktivierungswort, nur ab 700 px Breite (wie die Spalte rechts) und nur mit stage: true. Das Dashboard wird abgedunkelt,
-  // die Figur rollt (ein einziges transform: verschieben und vergrößern) in die Mitte oben, das Fenster steht darunter. Ende: STAGE_LINGER nach der
-  // Antwort, außer es folgt eine Nachfrage oder das Fenster wurde angefasst; ✕, Tipp auf die Fläche, _close und _reset beenden sofort.
+  // Bei Gesprächen per Aktivierungswort und per Tipp auf die Figur, nur ab 700 px Breite (wie die Spalte rechts) und nur mit stage: true. Das Dashboard
+  // wird abgedunkelt, die Figur rollt (ein einziges transform: verschieben und vergrößern) in die Mitte oben, das Fenster steht darunter.
+  // Ende: STAGE_LINGER nach der Antwort, außer es folgt eine Nachfrage oder im Eingabefeld steht ein Entwurf; per Tipp geöffnet ohne weiteres Tun
+  // nach STAGE_IDLE; eine Berührung des Fensters hält die Bühne STAGE_IDLE. ✕, Tipp auf die Fläche, _close und _reset beenden sofort.
   _stageOk() {
     try { return !!(window.matchMedia && window.matchMedia("(min-width:700px)").matches); } catch (e) { return false; }
   }
@@ -12434,7 +12439,7 @@ class FpPipDock extends HTMLElement {
     if (this._stg || !this._cfg.stage || !this._stageOk()) return;
     clearTimeout(this._stgOut);
     this._stgOut = null;
-    this._stg = { t: null, hold: false };
+    this._stg = { t: null };
     this._stageLay();
     const h = getHass();
     this._veil.classList.toggle("dk", !!(h && h.themes && h.themes.darkMode));
@@ -12462,17 +12467,18 @@ class FpPipDock extends HTMLElement {
     this._fig.style.setProperty("--ss", String(Math.round(sc * 100) / 100));
     this._panel.style.setProperty("--stage-top", Math.round(cy + r * sc + 24) + "px");
   }
-  // Nach der Antwort STAGE_LINGER warten, dann schließen. Nicht, solange etwas läuft, gesprochen wird oder das Fenster angefasst wurde.
-  _stageArm() {
+  // Nach ms (Vorgabe STAGE_LINGER nach der Antwort; STAGE_IDLE nach Tipp, Berührung oder Eingabe) schließen. Nicht, solange etwas läuft, gesprochen
+  // wird oder im Eingabefeld ein Entwurf steht (dann bleibt die Bühne bis zum ✕; wird der Entwurf gelöscht, armiert das input-Ereignis neu).
+  _stageArm(ms = STAGE_LINGER) {
     const g = this._stg;
     if (!g) return;
     clearTimeout(g.t);
     g.t = null;
-    if (g.hold || this._cur || this._speaking) return;
+    if (this._cur || this._speaking || this._in.value.trim()) return;
     g.t = setTimeout(() => {
       g.t = null;
-      if (this._stg === g && !g.hold && !this._cur && !this._speaking) this._close();
-    }, STAGE_LINGER);
+      if (this._stg === g && !this._cur && !this._speaking && !this._in.value.trim()) this._close();
+    }, ms);
   }
   _stageDisarm() {
     const g = this._stg;
