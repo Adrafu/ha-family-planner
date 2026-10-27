@@ -10199,7 +10199,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v13 (Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v14 (Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10273,6 +10273,12 @@ const WAKE_LOG_WAIT = 20000; // wake_log: so lange darf nach einer Erkennung der
 const WAKE_LOG_GAP = 5000;  // wake_log: höchstens ein Knapp-Eintrag in so vielen ms
 const WAKE_LOG_HOUR = 60;   // wake_log: höchstens so viele Knapp-Einträge pro Stunde (gleitend)
 const WAKE_LOG_BLK = 1000;  // wake_log: bleibt der Block-Takt (80 ms) so lange aus, ist die Episode zu Ende
+const WAKE_CLIP_PRE = 3;    // wake_clip: so viele Sekunden Ton vor der Reaktion des Modells kommen in den Clip
+const WAKE_CLIP_POST = 1;   // wake_clip: ... und so viele Sekunden danach
+const WAKE_CLIP_GAP = 10;   // wake_clip: höchstens ein Clip in so vielen Sekunden
+const WAKE_CLIP_HOUR = 30;  // wake_clip: höchstens so viele Clips pro Stunde (gleitend)
+const WAKE_CLIP_HZ = 16000; // wake_clip: Abtastrate des Mikrofontons an der Erkennung
+const WAKE_CLIP_SAFE = 5000; // wake_clip: so lange darf ein Clip ohne angenommene Erkennung offen bleiben (Notausstieg), dann geht er mit dem, was da ist
 const RING_AGE = 180;       // ein Klingel-Signal ist höchstens so viele Sekunden alt (danach nimmt Home Assistant es selbst zurück)
 const RING_GAP = 1500;      // Abstand der Glockenschläge
 const ANN_WAIT = 20000;     // so lange darf die Ansage (Assist-Pipeline) auf sich warten lassen
@@ -10298,6 +10304,32 @@ const SILENT = (() => {
 })();
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
+// wake_clip: WAV (PCM 16 Bit, mono, 16 kHz) aus zwei Int16-Stücken, als Base64. Die Umwandlung läuft stückweise (Vielfache von 3 Byte), damit
+// weder btoa noch String.fromCharCode.apply an eine Grenze stoßen.
+function clipWav(a, b) {
+  const n = a.length + b.length, u = new Uint8Array(44 + n * 2), dv = new DataView(u.buffer);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) u[o + i] = s.charCodeAt(i); };
+  w(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, WAKE_CLIP_HZ, true); dv.setUint32(28, WAKE_CLIP_HZ * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, "data"); dv.setUint32(40, n * 2, true);
+  let o = 44;
+  for (const p of [a, b]) for (let i = 0; i < p.length; i++, o += 2) dv.setInt16(o, p[i], true);
+  let s = "";
+  for (let i = 0; i < u.length; i += 6144) s += btoa(String.fromCharCode.apply(null, u.subarray(i, i + 6144)));
+  return s;
+}
+// wake_clip: grobe Gerätekennung ohne Personendaten, z. B. "iPad 1180x820"
+function clipDevice() {
+  let k = "Sonst";
+  try {
+    const ua = navigator.userAgent || "", pf = navigator.platform || "";
+    if (/iPad/.test(ua) || (/Mac/.test(pf) && navigator.maxTouchPoints > 1)) k = "iPad";
+    else if (/iPhone|iPod/.test(ua)) k = "iPhone";
+    else if (/Android/.test(ua)) k = "Android";
+    else if (/Mac/.test(pf + ua)) k = "Mac";
+  } catch (e) {}
+  return `${k} ${window.innerWidth}x${window.innerHeight}`;
+}
 const pathPart = () => { try { return location.pathname.split("/").filter(Boolean)[0] || ""; } catch (e) { return ""; } };
 const loadCfg = p => { try { const s = localStorage.getItem(STORE + p); return s ? JSON.parse(s) : null; } catch (e) { return null; } };
 const saveCfg = (p, c) => { try { const s = JSON.stringify(c); if (localStorage.getItem(STORE + p) !== s) localStorage.setItem(STORE + p, s); } catch (e) {} };
@@ -10591,6 +10623,9 @@ function normCfg(c) {
   // wake_log: Skript, das jede angenommene Erkennung des Aktivierungsworts (mit dem danach verstandenen Text) und knappe Werte unter der Schwelle
   // protokolliert; ohne gültige Angabe (oder ohne wake_word) keine Funktion
   const wl = String(c.wake_log || "").trim();
+  // wake_clip: Skript, das bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) den Mikrofon-Ton davor und danach als WAV (Base64) bekommt,
+  // um Fehlauslöser als Trainingsdaten zu sammeln; ohne gültige Angabe (oder ohne wake_word) keine Funktion
+  const wc = String(c.wake_clip || "").trim();
   return {
     name,
     pipeline_id: String(c.pipeline_id || "").trim(),
@@ -10608,6 +10643,7 @@ function normCfg(c) {
     mic_pause: c.mic_pause !== false,
     wake_screen: /^(button|input_button|script)\.[a-z0-9_]+$/.test(ws) ? ws : "",
     wake_log: /^script\.[a-z0-9_]+$/.test(wl) ? wl : "",
+    wake_clip: /^script\.[a-z0-9_]+$/.test(wc) ? wc : "",
     // stage (Bühne): bei Gesprächen per Aktivierungswort und per Tipp auf die Figur, ab 700 px Breite, wird das Dashboard abgedunkelt, die Figur groß, das Gespräch darunter; Vorgabe aus
     stage: c.stage === true,
   };
@@ -11026,6 +11062,9 @@ class FpPipDock extends HTMLElement {
     this._wl = null;           // wake_log: offener Eintrag zur letzten Erkennung { wert, bloecke, run, timer }, bis feststeht, was danach kam
     this._wlEp = null;         // wake_log: laufende Episode mit Werten ab WAKE_LOG_MIN { max, n, t, skip }
     this._wlKn = [];           // wake_log: Zeiten der letzten Knapp-Einträge (Drosselung)
+    this._clBuf = null;        // wake_clip: Ringpuffer der letzten WAKE_CLIP_PRE Sekunden { b: Int16Array, w: Schreibzeiger, n: gefüllt }; nur mit wake_clip, nur bei offenem Mikrofon
+    this._cl = null;           // wake_clip: offener Clip { pre, post, pn, wert, bloecke, ep, t, art, folge, acc, rej, run, timer }, bis er geschickt ist
+    this._clKn = [];           // wake_clip: Zeiten der letzten Clips (Drosselung)
     // Timer, Wecker, Erinnerungen und Klingeln (alarms)
     this._alT = null;          // Takt für Countdown und Vorschau (setTimeout)
     this._alIds = [];          // alle Entitäten aus alarms
@@ -11827,6 +11866,7 @@ class FpPipDock extends HTMLElement {
     const run = this._newRun(true);
     run.me = this._push({ k: "me", text: "…" });
     this._wlAttach(run);
+    this._clAttach(run);
     this._cur = run;
     this._convAt = Date.now();
     this._setState("listen");
@@ -12112,7 +12152,7 @@ class FpPipDock extends HTMLElement {
       if (!this._eng) {
         this._eng = new WakeEngine(w);
         this._eng.onwake = sc => this._onWake(sc);
-        if (this._cfg.wake_log) this._eng.onscore = s => this._wlScore(s);
+        if (this._cfg.wake_log || this._cfg.wake_clip) this._eng.onscore = s => { this._wlScore(s); try { this._clScore(s); } catch (e) { this._cl = null; } };
         this._eng.onerror = e => { if (this._wm) this._wakeFail("run", e); };
       }
       const eng = this._eng;
@@ -12182,6 +12222,7 @@ class FpPipDock extends HTMLElement {
     this._wm = null;
     m.live = false;
     try { m.ctx.onstatechange = null; } catch (e) {}
+    this._clClose();
     const run = m.run;
     m.run = null;
     if (run && !run.ended) this._cancelRun(run);
@@ -12219,6 +12260,7 @@ class FpPipDock extends HTMLElement {
     m.live = false;
     m.run = null;
     try { m.ctx.onstatechange = null; } catch (e) {}
+    this._clClose();
     if (m.W.rec) { m.W.rec.stopped = true; this._dropNodes(m.W.rec); }
     try { m.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
     try { const r = m.ctx.suspend(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
@@ -12256,6 +12298,7 @@ class FpPipDock extends HTMLElement {
   _wakeFrames(out) {
     const m = this._wm, eng = this._eng;
     if (!m || !eng) return;
+    if (this._cfg.wake_clip) this._clFeed(out);   // wake_clip: Ringpuffer und Nach-Teil, auch während Ton-Signal und Gespräch
     const run = m.run;
     if (run && !run.ended && run.rec && !run.rec.stopped) { this._queue(run, out); return; }
     if (this._wakeBusy()) { this._wkWas = true; return; }
@@ -12276,8 +12319,9 @@ class FpPipDock extends HTMLElement {
     // sie läuft aber weiter, damit der Nachhall des Worts keine neue Episode beginnt
     const ep = this._wlEp;
     if (ep) ep.skip = true;
-    if (!m || !this._visible || this._wakeBusy()) return;
+    if (!m || !this._visible || this._wakeBusy()) { this._clReject(); return; }
     this._wlOpen(score, ep);
+    this._clAccept(score);
     // Bildschirmschoner (wake_screen) sofort beenden, noch vor dem Ton; _scrWake hält ihn bis zum Ende des Gesprächs weg
     this._scrWake = true;
     this._screenWake();
@@ -12346,6 +12390,7 @@ class FpPipDock extends HTMLElement {
   }
   // Eintrag abschließen und schreiben. run: nur wenn der Eintrag zu diesem Lauf gehört (sonst egal, z. B. beim Schließen).
   _wlEnd(ende, text, run) {
+    this._clEnd(ende, run);   // wake_clip: gleiches Ende (unabhängig von wake_log)
     const e = this._wl;
     if (!e || (run && e.run !== run)) return;
     this._wl = null;
@@ -12381,6 +12426,143 @@ class FpPipDock extends HTMLElement {
     if (l.length >= WAKE_LOG_HOUR || (l.length && now - l[l.length - 1] < WAKE_LOG_GAP)) return;
     l.push(now);
     this._wlCall({ art: "knapp", wert: ep.max, text: "", ende: "", bloecke: ep.n });
+  }
+  // ---------- Fehlauslöser aufzeichnen (wake_clip) ----------
+  // Zweck: Echte Fehlauslöser des Weckwort-Modells (z. B. Babyschreien) als Trainingsdaten sammeln. Solange das Weckwort-Mikrofon läuft, hält ein
+  // Ringpuffer die letzten WAKE_CLIP_PRE Sekunden (fester Speicher, keine Kopien des Tons). Erreicht der erste Block einer Episode die Schwelle, wird ein
+  // Clip angelegt: Momentaufnahme des Puffers plus WAKE_CLIP_POST Sekunden danach. Er geht als ein Aufruf des Skripts hinaus (Felder art, wert, bloecke,
+  // folge, geraet, audio = WAV als Base64), danach bleibt nichts davon im Speicher:
+  // - art "ausgeloest": das Modell hat die Geduld erreicht. folge = wie bei wake_log das Ende (text, leer, fehler, abbruch), geschickt, wenn es feststeht;
+  //   wurde die Erkennung abgewiesen (Pip beschäftigt, Fenster unsichtbar): folge "abgewiesen", geschickt, sobald die Nach-Sekunde voll ist.
+  // - art "schwelle": Wert über der Schwelle, Geduld nicht erreicht. folge "keine", geschickt, sobald die Nach-Sekunde voll und die Episode vorbei ist.
+  // Höchstens ein offener Clip; ein gedrosselter Clip (alle WAKE_CLIP_GAP s, WAKE_CLIP_HOUR pro Stunde) wird gar nicht erst angelegt.
+  // Ist die Nach-Sekunde beim Ende noch nicht voll (Mikrofon zu, Fenster sofort geschlossen), geht der Clip mit dem, was da ist.
+  _clOn() { return !!(this._cfg.wake_clip && this._cfg.wake_word); }
+  // Ton des Weckwort-Mikrofons (16 kHz, Int16): in den Ringpuffer und, bei offenem Clip, in dessen Nach-Teil
+  _clFeed(out) {
+    if (!this._clOn() || !out || !out.length) return;
+    let r = this._clBuf;
+    if (!r) r = this._clBuf = { b: new Int16Array(WAKE_CLIP_PRE * WAKE_CLIP_HZ), w: 0, n: 0 };
+    const b = r.b, L = b.length, len = out.length;
+    if (len >= L) { b.set(out.subarray(len - L)); r.w = 0; r.n = L; }
+    else {
+      const k = Math.min(len, L - r.w);
+      b.set(out.subarray(0, k), r.w);
+      if (k < len) b.set(out.subarray(k), 0);
+      r.w = (r.w + len) % L;
+      r.n = Math.min(L, r.n + len);
+    }
+    const c = this._cl;
+    if (!c) return;
+    if (c.pn < c.post.length) {
+      const k = Math.min(len, c.post.length - c.pn);
+      c.post.set(out.subarray(0, k), c.pn);
+      c.pn += k;
+    }
+    this._clCheck();
+  }
+  // Jeder Block der Erkennung (80 ms): der erste ab der Schwelle legt den Clip an, weitere zählen nur Höchstwert und Blöcke mit
+  _clScore(s) {
+    if (!this._clOn()) return;
+    const w = this._cfg.wake_word, now = Date.now();
+    let c = this._cl;
+    if (s >= w.threshold) {
+      if (!c) c = this._clOpen(now);
+      if (!c) return;
+      if (s > c.wert) c.wert = s;
+      c.bloecke++;
+      c.ep = true;
+      c.t = now;
+    } else if (c && c.ep) {
+      c.ep = false;
+      this._clCheck();
+    }
+  }
+  // Clip anlegen (null, wenn gedrosselt): Momentaufnahme des Ringpuffers, ältester Wert zuerst
+  _clOpen(now) {
+    const l = this._clKn;
+    while (l.length && now - l[0] >= 3600000) l.shift();
+    if (l.length >= WAKE_CLIP_HOUR || (l.length && now - l[l.length - 1] < WAKE_CLIP_GAP * 1000)) return null;
+    l.push(now);
+    const r = this._clBuf, n = r ? r.n : 0, pre = new Int16Array(n);
+    if (n) {
+      const L = r.b.length, a = (r.w - n + L) % L, k = Math.min(n, L - a);
+      pre.set(r.b.subarray(a, a + k), 0);
+      if (k < n) pre.set(r.b.subarray(0, n - k), k);
+    }
+    const c = this._cl = { pre, post: new Int16Array(WAKE_CLIP_POST * WAKE_CLIP_HZ), pn: 0, wert: 0, bloecke: 0, ep: true, t: now, art: "schwelle", folge: "keine", acc: false, rej: false, run: null, timer: null };
+    c.timer = setTimeout(() => { if (this._cl === c) this._clSend(); }, WAKE_CLIP_SAFE);
+    return c;
+  }
+  // Erkennung angenommen: der Clip wartet auf das Ende des Gesprächs (wie wake_log); kommt binnen WAKE_LOG_WAIT kein Lauf, zählt das als Abbruch
+  _clAccept(score) {
+    if (!this._clOn()) return;
+    let c = this._cl;
+    if (c && c.acc) { this._clEnd("abbruch"); c = null; }   // die Erkennung davor ist nicht zu Ende gekommen
+    if (!c) c = this._clOpen(Date.now());
+    if (!c) return;
+    const v = Number(score) || 0;
+    if (v > c.wert) c.wert = v;
+    if (!c.bloecke) c.bloecke = 1;
+    c.art = "ausgeloest";
+    c.acc = true;
+    c.rej = false;
+    c.folge = "";
+    clearTimeout(c.timer);
+    c.timer = setTimeout(() => { if (this._cl === c) this._clEnd("abbruch"); }, WAKE_LOG_WAIT);
+  }
+  // Erkennung abgewiesen (Pip beschäftigt, nicht sichtbar): Clip geht, sobald die Nach-Sekunde voll ist
+  _clReject() {
+    const c = this._cl;
+    if (!c || c.acc) return;
+    c.art = "ausgeloest";
+    c.folge = "abgewiesen";
+    c.rej = true;
+    this._clCheck();
+  }
+  // Der Lauf zur Erkennung ist da: ab jetzt entscheiden dessen Ereignisse
+  _clAttach(run) {
+    const c = this._cl;
+    if (!c || !c.acc || c.run) return;
+    c.run = run;
+    clearTimeout(c.timer);
+    c.timer = null;
+  }
+  // Ende des Gesprächs zur angenommenen Erkennung (gleiche Stellen wie _wlEnd): Clip mit dieser Folge schicken
+  _clEnd(ende, run) {
+    const c = this._cl;
+    if (!c || !c.acc || (run && c.run !== run)) return;
+    c.folge = ende;
+    this._clSend();
+  }
+  // Nicht angenommene Clips: schicken, sobald die Nach-Sekunde voll ist und (bei "schwelle") die Episode vorbei ist
+  _clCheck() {
+    const c = this._cl;
+    if (!c || c.acc || c.pn < c.post.length) return;
+    if (!c.rej && c.ep && Date.now() - c.t <= WAKE_LOG_BLK) return;
+    this._clSend();
+  }
+  // Mikrofon zu (geschlossen oder pausiert): ein noch wartender, nicht angenommener Clip geht mit dem, was da ist; der Ringpuffer wird freigegeben
+  _clClose() {
+    const c = this._cl;
+    if (c && !c.acc) this._clSend();
+    this._clBuf = null;
+  }
+  // Clip hinausschicken und alle Verweise darauf loslassen. Fehler (auch beim Aufruf) bleiben still.
+  _clSend() {
+    const c = this._cl;
+    if (!c) return;
+    this._cl = null;
+    clearTimeout(c.timer);
+    c.timer = null;
+    const id = this._cfg.wake_clip, hass = getHass();
+    if (!id || !hass || typeof hass.callService !== "function") return;
+    try {
+      const data = { art: c.art, wert: Math.round(c.wert * 1000) / 1000, bloecke: c.bloecke, folge: c.folge, geraet: clipDevice(), audio: clipWav(c.pre, c.post.subarray(0, c.pn)) };
+      // notifyOnError = false (5. Parameter von hass.callService): sonst zeigt das HA-Frontend bei einem Fehler selbst einen Hinweis
+      const p = hass.callService("script", id.slice(7), data, undefined, false);
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) {}
   }
   // Zwei kurze, aufsteigende Töne aus Oszillatoren (keine Datei). Nur für diesen Ton hängt etwas am Lautsprecher-Ausgang:
   // danach werden Oszillatoren und Gain getrennt (auch wenn der Kontext schläft und "ended" nie kommt).
