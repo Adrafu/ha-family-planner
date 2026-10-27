@@ -7817,7 +7817,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v27 (Handy: kids_dock – unten eine Leiste mit einer Pille je Kind, ein Tipp öffnet ein Blatt mit Schlafen und Stillen; swipe_views – Ansichten per Wischen mit Namenszeile unter der Kinderwahl statt Ansichtsleiste; dock_gap – Platz links für den Sprachassistenten; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v28 (Handy: kids_dock – mit mindestens zwei Kindern mit Schlafschalter sitzt ganz rechts in der Leiste ein Mond-Knopf, der ein Schlaf-Blatt für alle öffnet (eine Zeile je Kind zum Umschalten, darunter „Beide schlafen“ bzw. „Beide aufwecken“); davor: Handy: kids_dock – unten eine Leiste mit einer Pille je Kind, ein Tipp öffnet ein Blatt mit Schlafen und Stillen; swipe_views – Ansichten per Wischen mit Namenszeile unter der Kinderwahl statt Ansichtsleiste; dock_gap – Platz links für den Sprachassistenten; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7843,6 +7843,7 @@ const ICO = {
   momente: '<rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="2" fill="var(--b-bar)"/><path d="m5 18 5-5 3 3 2-2 4 4z" fill="var(--b-bar)"/>',
   protokoll: '<rect x="4.5" y="4" width="15" height="17" rx="3"/><rect x="8.5" y="2.5" width="7" height="4" rx="1.5"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4" stroke="var(--b-bar)" stroke-width="1.8" stroke-linecap="round" fill="none"/>',
 };
+const MOND = '<svg class="fo-mond" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"/></svg>';
 const SPARK = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2c.7 5.2 4.5 9.1 10 10-5.5.9-9.3 4.8-10 10-.7-5.2-4.5-9.1-10-10 5.5-.9 9.3-4.8 10-10Z"/></svg>';
 
 class FpBabyOverviewCard extends HTMLElement {
@@ -7900,7 +7901,7 @@ class FpBabyOverviewCard extends HTMLElement {
     this._kd = !this._bar && this.config.kids_dock === true && this.config.kids.length > 1;
     this._sw = !this._bar && this.config.swipe_views === true;
     this._dg = Math.min(120, Math.max(0, Math.round(Number(this.config.dock_gap) || 0)));
-    this._kdOffen = null;   // Kind, dessen Blatt aus der Kinder-Leiste offen ist
+    this._kdOffen = null;   // Kind (oder „*“ = Schlaf-Blatt für alle), dessen Blatt aus der Kinder-Leiste offen ist
     if (this._timer) { clearInterval(this._timer); this._timer = setInterval(() => this._tick(), this._bar ? BARTAKT : 1000); }   // Editor: Takt passt zur Darstellung
     if (this.config.growth_data && !this._bar) this._loadRef();
   }
@@ -8600,7 +8601,7 @@ class FpBabyOverviewCard extends HTMLElement {
       const knopf = z("[data-act]");
       if (!(knopf && b.contains(knopf))) { this._zumProtokoll(b.dataset.kind, b.dataset.proto); return; }
     }
-    if ((b = z("[data-kdock]"))) { this._sheetKind(this._kid(b.dataset.kdock)); return; }
+    if ((b = z("[data-kdock]"))) { if (b.dataset.kdock === "*") this._sheetSchlafAlle(); else this._sheetKind(this._kid(b.dataset.kdock)); return; }
     if ((b = z("[data-view]"))) { this._ansichtWechsel(b.dataset.view); return; }
     if ((b = z("[data-nav]"))) { const p = this.config[b.dataset.nav]; if (p) { history.pushState(null, "", p); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); } return; }
     if ((b = z("[data-f]"))) { this._filter = b.dataset.f; this._setPref("filter", this._filter); this._paint(true); return; }
@@ -9390,10 +9391,16 @@ class FpBabyOverviewCard extends HTMLElement {
     return ov;
   }
   // kids_dock (Handy): die Pillen unten, eine je Kind. Keine Zustandsanzeige, nur Avatar und Name in der Kinderfarbe.
+  // Ganz rechts der Mond (nur mit mindestens zwei Kindern mit Schlafschalter): öffnet das Schlaf-Blatt für alle, gefüllt wenn alle schlafen, getönt wenn einige.
   _kdockHtml() {
-    return this.config.kids.map(k => `<button type="button" class="fo-kpill" data-kdock="${U.esc(k.key)}" aria-haspopup="dialog" aria-expanded="${this._kdOffen === k.key}" style="--k:${U.esc(k.color)}">${this._avatar(k, 26)}<span class="fo-kpn">${U.esc(k.name)}</span></button>`).join("");
+    const pillen = this.config.kids.map(k => `<button type="button" class="fo-kpill" data-kdock="${U.esc(k.key)}" aria-haspopup="dialog" aria-expanded="${this._kdOffen === k.key}" style="--k:${U.esc(k.color)}">${this._avatar(k, 26)}<span class="fo-kpn">${U.esc(k.name)}</span></button>`).join("");
+    const sk = this._schlafKids();
+    if (sk.length < 2) return pillen;
+    const n = sk.filter(k => this._schlaeft(k)).length, st = n === sk.length ? " fo-kmoon-alle" : n ? " fo-kmoon-teil" : "";
+    return pillen + `<button type="button" class="fo-kmoon${st}" data-kdock="*" aria-label="Schlafen" aria-haspopup="dialog" aria-expanded="${this._kdOffen === "*"}">${MOND}</button>`;
   }
-  _kdockMarke() { this.querySelectorAll(".fo-kpill").forEach(b => b.setAttribute("aria-expanded", String(b.dataset.kdock === this._kdOffen))); }
+  _schlafKids() { return this.config.kids.filter(k => k.sleep_switch); }
+  _kdockMarke() { this.querySelectorAll("[data-kdock]").forEach(b => b.setAttribute("aria-expanded", String(b.dataset.kdock === this._kdOffen))); }
   // Blatt zu einem Kind: Schlafen und Stillen als zwei große Knöpfe, nur was das Kind an Schaltern hat. Ein Tipp schaltet und schließt das Blatt;
   // Hinweis und „Rückgängig“ kommen aus _schlafToggle und _toggle.
   _sheetKind(kid) {
@@ -9408,7 +9415,29 @@ class FpBabyOverviewCard extends HTMLElement {
   }
   _kindZeichne() {
     const sh = this._ov && this._kdOffen && this._ov.querySelector(".fo-sheet");
-    if (sh) sh.innerHTML = this._kindInner(this._kid(this._kdOffen));
+    if (sh) sh.innerHTML = this._kdOffen === "*" ? this._schlafAlleInner() : this._kindInner(this._kid(this._kdOffen));
+  }
+  // Schlaf-Blatt für alle (Mond in der Kinder-Leiste): eine Zeile je Kind schaltet dessen Schlaf und das Blatt bleibt offen (es folgt dem Zustand
+  // über set hass); der große Knopf darunter schaltet alle auf einmal und schließt das Blatt. Hinweis und „Rückgängig“ kommen aus _schlafToggle.
+  _sheetSchlafAlle() {
+    const ov = this._sheet(this._schlafAlleInner(), "fo-sheet-schlaf");
+    this._kdOffen = "*"; this._kdockMarke();
+    ov.addEventListener("click", ev => {
+      const t = ev.target.closest && ev.target.closest("[data-ks],[data-kalle]"); if (!t) return;
+      if (t.dataset.kalle !== undefined) { this._closeSheet(); this._schlafToggle("*"); } else this._schlafToggle(t.dataset.ks);
+    });
+  }
+  _schlafAlleInner() {
+    const jetzt = Date.now(), kids = this._schlafKids(), alle = kids.length > 0 && kids.every(k => this._schlaeft(k)), wer = kids.length > 2 ? "Alle" : "Beide";
+    const zeilen = kids.map(k => {
+      const s = this._schlaeft(k); let sub = "";
+      if (s) { const ab = this._schlafBeginn(k); sub = `schläft seit <span class="fo-dauer" data-ab="${ab}">${this._hDauer(jetzt - ab)}</span>`; }
+      else { const w = this._wachSeit(k, jetzt); if (w) sub = `wach seit ${U.esc(w)}`; }
+      return `<button type="button" class="fo-ks${s ? " fo-ks-an" : ""}" data-ks="${U.esc(k.key)}" role="switch" aria-checked="${s}">${this._avatar(k, 26)}<span class="fo-ksx"><span class="fo-ksn">${U.esc(k.name)}</span>${sub ? `<span class="fo-kss">${sub}</span>` : ""}</span><span class="fo-ksw" aria-hidden="true"></span></button>`;
+    }).join("");
+    return `<div class="fo-sh-head"><b>${MOND}Schlafen</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-ks-liste">${zeilen}</div>
+      <button type="button" class="fo-kalle${alle ? " fo-kalle-aus" : ""}" data-kalle>${MOND}${wer} ${alle ? "aufwecken" : "schlafen"}</button>`;
   }
   _kindInner(kid) {
     const jetzt = Date.now(), kn = [], seite = this._seite(kid), gross = seite.charAt(0).toUpperCase() + seite.slice(1);
@@ -10246,6 +10275,14 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-kpill:active{transform:scale(.97);}
       .fo-kpill[aria-expanded="true"]{background:var(--k2);}
       .fo-kpn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      /* Mond ganz rechts: Rand in der Schlaf-Farbe; einige schlafen = getönt, alle = gefüllt */
+      .fo-mond{width:24px;height:24px;flex:none;fill:none;stroke:var(--c-sleep);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+      .fo-kmoon{flex:none;width:52px;height:52px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding:0;
+        border:1.5px solid var(--c-sleep);border-radius:50%;background:var(--b-bg);cursor:pointer;}
+      .fo-kmoon:active{transform:scale(.95);}
+      .fo-kmoon.fo-kmoon-teil{background:color-mix(in srgb,var(--c-sleep) 24%,var(--b-bg));}
+      .fo-kmoon.fo-kmoon-alle{background:var(--c-sleep);}
+      .fo-kmoon.fo-kmoon-alle .fo-mond{stroke:var(--b-on);}
       /* swipe_views (Handy): Namenszeile im Kopf, Randflächen am Inhalt, Gleiten beim Wischen */
       .fo-pager,.fo-edge{display:none;}
       .fo-pg{flex:none;margin:0;padding:6px 2px 4px;border:none;border-bottom:3px solid transparent;border-radius:0;background:none;color:var(--b-faint) !important;
@@ -10300,6 +10337,25 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-knx{display:flex;flex-direction:column;min-width:0;}
       .fo-knt{font-weight:800;font-size:1.08rem;line-height:1.2;font-variant-numeric:tabular-nums;}
       .fo-kns{font-size:.84rem;opacity:.85;margin-top:2px;font-variant-numeric:tabular-nums;}
+      /* Schlaf-Blatt für alle (Mond): eine Zeile je Kind mit Schalter-Symbol, darunter der große Knopf für alle */
+      .fo-ks-liste{display:flex;flex-direction:column;gap:10px;margin-bottom:12px;}
+      .fo-ks{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:54px;border:1.5px solid transparent;border-radius:var(--fp-radius-sm, 12px);padding:9px 14px;text-align:left;cursor:pointer;
+        background:var(--b-card);color:var(--b-text) !important;}
+      .fo-ks:active{transform:scale(.98);}
+      .fo-ks.fo-ks-an{background:color-mix(in srgb,var(--c-sleep) 24%,var(--b-bg));border-color:var(--c-sleep);}
+      .fo-ksx{display:flex;flex-direction:column;min-width:0;flex:1;}
+      .fo-ksn{font-weight:800;font-size:1.05rem;line-height:1.2;}
+      .fo-kss{font-size:.84rem;color:var(--b-mut);margin-top:2px;font-variant-numeric:tabular-nums;}
+      .fo-ksw{position:relative;flex:none;width:46px;height:28px;border-radius:999px;background:var(--b-line);}
+      .fo-ksw::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--b-bg);transition:left .15s;}
+      .fo-ks.fo-ks-an .fo-ksw{background:var(--c-sleep);}
+      .fo-ks.fo-ks-an .fo-ksw::after{left:21px;}
+      .fo-kalle{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;box-sizing:border-box;min-height:58px;border:1.5px solid var(--c-sleep);border-radius:var(--fp-radius-sm, 12px);padding:12px 16px;
+        background:var(--c-sleep);color:var(--b-on) !important;font-weight:800;font-size:1.05rem;cursor:pointer;}
+      .fo-kalle .fo-mond{stroke:var(--b-on);}
+      .fo-kalle:active{transform:scale(.98);}
+      .fo-kalle.fo-kalle-aus{background:var(--b-bg);color:var(--b-text) !important;}
+      .fo-kalle.fo-kalle-aus .fo-mond{stroke:var(--c-sleep);}
       .fo-big3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
       .fo-big3 button{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:16px 6px;background:color-mix(in srgb,var(--q) 22%,var(--b-card));font-weight:800;cursor:pointer;}
       .fo-big3 span{font-size:1.8rem;}
