@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.6.1 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
+/* Family Planner custom cards v3.7.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -7817,7 +7817,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v26 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v27 (Handy: kids_dock – unten eine Leiste mit einer Pille je Kind, ein Tipp öffnet ein Blatt mit Schlafen und Stillen; swipe_views – Ansichten per Wischen mit Namenszeile unter der Kinderwahl statt Ansichtsleiste; dock_gap – Platz links für den Sprachassistenten; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -7853,6 +7853,9 @@ class FpBabyOverviewCard extends HTMLElement {
       milestone_calendar: "",    // Kalender der fp-milestone-card-beta (alle Kinder)
       chat: true,                // ✦ „Frag nach“
       action_bar: true,          // Handy: Aktionsleiste (Schlaf, Beide, Stillen, Windel, Fläschchen) über der Ansichtsleiste; false = nicht rendern, kein Platz im Dock
+      kids_dock: false,          // Handy, mehrere Kinder: statt Aktions- und Ansichtsleiste eine Leiste mit einer Pille je Kind; ein Tipp öffnet ein Blatt mit Schlafen und Stillen
+      swipe_views: false,        // Handy: Ansichten per Wischen wechseln, unter der Kinderwahl steht eine Namenszeile; die Ansichtsleiste unten entfällt, das Kind wechselt man nur noch oben
+      dock_gap: 0,               // Handy mit kids_dock: so viele px bleiben links in der Leiste frei (0–120), z. B. für einen schwebenden Sprachassistenten
       ai_entity: "",             // ai_task-Entity für den Chat; leer = die in HA voreingestellte
       days: 14,                  // so viele Tage bekommt die KI
       growth_data: "",           // optional: Perzentilkurven wie bei der fp-weight-card-beta (dazu je Kind birth, ga, sex)
@@ -7893,6 +7896,11 @@ class FpBabyOverviewCard extends HTMLElement {
     if (this._bar) this.getGridOptions = () => ({ columns: "full", rows: "auto" });
     else delete this.getGridOptions;
     this._barHtml = "";
+    // Handy-Optionen (nur Übersicht): Kinder-Leiste unten braucht mehrere Kinder, Wischen zwischen Ansichten nicht.
+    this._kd = !this._bar && this.config.kids_dock === true && this.config.kids.length > 1;
+    this._sw = !this._bar && this.config.swipe_views === true;
+    this._dg = Math.min(120, Math.max(0, Math.round(Number(this.config.dock_gap) || 0)));
+    this._kdOffen = null;   // Kind, dessen Blatt aus der Kinder-Leiste offen ist
     if (this._timer) { clearInterval(this._timer); this._timer = setInterval(() => this._tick(), this._bar ? BARTAKT : 1000); }   // Editor: Takt passt zur Darstellung
     if (this.config.growth_data && !this._bar) this._loadRef();
   }
@@ -7925,7 +7933,7 @@ class FpBabyOverviewCard extends HTMLElement {
     // Beim Stopp schreibt die Automation den Termin erst nach ein paar Sekunden — mehrfach nachladen.
     const gestoppt = (alt, neu) => alt && alt.some((v, i) => v && !neu[i]);
     if (gestoppt(vorher, lauf) || gestoppt(vorherS, schlaf)) this._nachladen([3000, 8000, 20000, 40000]);
-    if (sig !== this._swSig) { this._swSig = sig; this._paint(true); }
+    if (sig !== this._swSig) { this._swSig = sig; this._paint(true); if (this._kdOffen) this._kindZeichne(); }   // das Blatt der Kinder-Leiste folgt dem Zustand
   }
   _nachladen(zeiten) {
     (this._nachT || []).forEach(clearTimeout);
@@ -8494,10 +8502,13 @@ class FpBabyOverviewCard extends HTMLElement {
         <div class="fo-sky"></div>
         <div class="fo-wacht" aria-hidden="true"></div>
         <div class="fo-top"></div>
-        <div class="fo-body"><div class="fo-laden">Einträge werden geladen …</div></div>
-        <div class="fo-dock">${this.config.action_bar === false ? "" : '<div class="fo-act"></div>'}<nav class="fo-tabbar">${this._tabsHtml()}</nav></div>
+        ${this._sw ? '<div class="fo-bw">' : ""}<div class="fo-body"><div class="fo-laden">Einträge werden geladen …</div></div>${this._sw ? '<i class="fo-edge fo-edge-l" hidden></i><i class="fo-edge fo-edge-r" hidden></i></div>' : ""}
+        <div class="fo-dock">${this.config.action_bar === false ? "" : '<div class="fo-act"></div>'}<nav class="fo-tabbar">${this._tabsHtml()}</nav>${this._kd ? `<div class="fo-kdock" style="--fo-dg:${this._dg}px">${this._kdockHtml()}</div>` : ""}</div>
       </ha-card>${this._styles()}`;
     this._card = this.querySelector(".fo-card");
+    if (this._kd) this._card.classList.add("fo-kd");
+    if (this._sw) this._card.classList.add("fo-sw");
+    if (this._sw && !this._kd && this.config.action_bar === false) this._card.classList.add("fo-noact");   // Dock wäre am Handy leer: ganz ausblenden
     this._card.classList.toggle("fo-dark", this._dunkel());
     this._card.addEventListener("click", ev => this._klick(ev));
     this._wischen(this.querySelector(".fo-body"));
@@ -8512,7 +8523,7 @@ class FpBabyOverviewCard extends HTMLElement {
     const card = this._card, top = this.querySelector(".fo-top"), wacht = this.querySelector(".fo-wacht");
     if (!this._built || !card || !top || !wacht || !this.isConnected || !window.IntersectionObserver) return;
     if (!this._roK && window.ResizeObserver) {
-      this._roK = new ResizeObserver(() => { if (card.clientWidth !== this._klebtW) { this._klebtW = card.clientWidth; this._klebt(); } });
+      this._roK = new ResizeObserver(() => { if (card.clientWidth !== this._klebtW) { this._klebtW = card.clientWidth; this._klebt(); if (this._sw) this._pagerMitte(); } });
       this._roK.observe(card);
     }
     const cs = getComputedStyle(top), px = cs.position === "sticky" ? parseFloat(cs.top) : NaN;
@@ -8543,8 +8554,10 @@ class FpBabyOverviewCard extends HTMLElement {
     this._kind = key; this._setPref("kind", key); this._paint(true);
   }
   // Ist nur eine Spalte zu sehen? Dieselbe Grenze wie die Container-Query im CSS: 680 px Inhaltsbreite (ohne 2 × 16 px Rand).
-  _eineSpalte() { return this.config.kids.length > 1 && this._card.clientWidth - 32 < 680; }
-  // Waagrechtes Wischen über dem Inhalt wechselt das Kind: nach links das nächste, nach rechts das vorige.
+  _handy() { return this._card.clientWidth - 32 < 680; }
+  _eineSpalte() { return this.config.kids.length > 1 && this._handy(); }
+  // Waagrechtes Wischen über dem Inhalt wechselt das Kind: nach links das nächste, nach rechts das vorige
+  // (mit swipe_views am Handy stattdessen die Ansicht, siehe _ansichtSchritt).
   // Nicht in Bereichen, die selbst wischen oder tippen (Chips, Blätter, eingebettete Karten, Eingabefelder).
   _wischen(body) {
     let von = null;
@@ -8556,7 +8569,9 @@ class FpBabyOverviewCard extends HTMLElement {
     body.addEventListener("touchend", ev => {
       const t = von && ev.changedTouches[0]; if (!t) return;
       const dx = t.clientX - von.x, dy = t.clientY - von.y; von = null;
-      if (!this._eineSpalte() || Math.abs(dx) <= 70 || Math.abs(dx) <= 2 * Math.abs(dy)) return;
+      if (Math.abs(dx) <= 70 || Math.abs(dx) <= 2 * Math.abs(dy)) return;
+      if (this._sw && this._handy()) { this._ansichtSchritt(dx < 0 ? 1 : -1); return; }   // swipe_views: Wischen wechselt die Ansicht, nicht das Kind
+      if (!this._eineSpalte()) return;
       const kids = this.config.kids, i = kids.findIndex(k => k.key === this._kind), j = i + (dx < 0 ? 1 : -1);   // am Ende nicht herumspringen
       if (j >= 0 && j < kids.length) this._kindWahl(kids[j].key);
     }, { passive: true });
@@ -8585,16 +8600,8 @@ class FpBabyOverviewCard extends HTMLElement {
       const knopf = z("[data-act]");
       if (!(knopf && b.contains(knopf))) { this._zumProtokoll(b.dataset.kind, b.dataset.proto); return; }
     }
-    if ((b = z("[data-view]"))) {
-      const vorher = this._view;
-      this._zielEnde();   // eine Ansicht per Leiste oder Chip ist ein eigener Wunsch: kein Nachführen mehr
-      this._view = b.dataset.view; this._off = 0; this._paint(true);
-      if (vorher === "protokoll" && this._view !== vorher) this._load();   // was dort eingetragen wurde, soll gleich in den anderen Ansichten stehen
-      // Am Handy mit mehreren Kindern klebt der Kopf unter der HA-Kopfzeile: den Kartenanfang dorthin scrollen, nicht darunter,
-      // sonst verdeckt die klebende Zeile den Tagesschalter.
-      this._card.style.scrollMarginTop = this._eineSpalte() ? "calc(var(--header-height, 56px) + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))" : "";
-      window.scrollTo && this._card.scrollIntoView({ block: "start", behavior: "smooth" }); return;
-    }
+    if ((b = z("[data-kdock]"))) { this._sheetKind(this._kid(b.dataset.kdock)); return; }
+    if ((b = z("[data-view]"))) { this._ansichtWechsel(b.dataset.view); return; }
     if ((b = z("[data-nav]"))) { const p = this.config[b.dataset.nav]; if (p) { history.pushState(null, "", p); window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true })); } return; }
     if ((b = z("[data-f]"))) { this._filter = b.dataset.f; this._setPref("filter", this._filter); this._paint(true); return; }
     if ((b = z("[data-sp]"))) { this._spanne = Number(b.dataset.sp); this._setPref("spanne", String(this._spanne)); this._paint(true); return; }
@@ -8623,6 +8630,45 @@ class FpBabyOverviewCard extends HTMLElement {
       if (b.dataset.act === "wiegen") this._sheetWiegen(kid, null);
       return;
     }
+  }
+
+  // Ansicht wechseln (Leiste, Chip, Namenszeile oder Wischen). gleit = 1 (nächste) oder -1 (vorige): nur beim Wischen gleitet der Inhalt kurz.
+  _ansichtWechsel(v, gleit) {
+    const vorher = this._view;
+    this._zielEnde();   // eine Ansicht per Leiste oder Chip ist ein eigener Wunsch: kein Nachführen mehr
+    this._view = v; this._off = 0; this._paint(true);
+    if (gleit) this._gleiten(gleit);
+    if (vorher === "protokoll" && this._view !== vorher) this._load();   // was dort eingetragen wurde, soll gleich in den anderen Ansichten stehen
+    // Am Handy mit mehreren Kindern klebt der Kopf unter der HA-Kopfzeile: den Kartenanfang dorthin scrollen, nicht darunter,
+    // sonst verdeckt die klebende Zeile den Tagesschalter.
+    this._card.style.scrollMarginTop = this._eineSpalte() ? "calc(var(--header-height, 56px) + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))" : "";
+    window.scrollTo && this._card.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+  // swipe_views: eine Ansicht weiter (1) oder zurück (-1); am Ende und am Anfang bleibt es stehen.
+  _ansichtSchritt(richtung) {
+    const liste = this._ansichten().views.map(x => x[0]), i = liste.indexOf(this._view), j = i + richtung;
+    if (i < 0 || j < 0 || j >= liste.length) return;
+    this._ansichtWechsel(liste[j], richtung);
+  }
+  // Kurzes Gleiten des Inhalts beim Wischen (Animation auf .fo-body, 220 ms); mit „weniger Bewegung“ entfällt es, auch per CSS.
+  _gleiten(richtung) {
+    const b = this.querySelector(".fo-body");
+    if (!b || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) return;
+    b.classList.remove("fo-gl-n", "fo-gl-v"); void b.offsetWidth;
+    b.classList.add(richtung > 0 ? "fo-gl-n" : "fo-gl-v");
+    clearTimeout(this._glT); this._glT = setTimeout(() => b.classList.remove("fo-gl-n", "fo-gl-v"), 300);
+  }
+  // swipe_views: die schmalen Randflächen zeigen, ob links oder rechts eine weitere Ansicht folgt.
+  _randFlaechen() {
+    const liste = this._ansichten().views, i = liste.findIndex(x => x[0] === this._view);
+    const l = this.querySelector(".fo-edge-l"), r = this.querySelector(".fo-edge-r");
+    if (l) l.hidden = !(i > 0);
+    if (r) r.hidden = !(i >= 0 && i < liste.length - 1);
+  }
+  // Die Namenszeile ist schmaler als alle Namen: die aktuelle Ansicht liegt in der Mitte der Zeile.
+  _pagerMitte() {
+    const p = this.querySelector(".fo-pager"), c = p && p.querySelector(".fo-pg-cur");
+    if (p && c && p.clientWidth) p.scrollLeft = c.offsetLeft - (p.clientWidth - c.offsetWidth) / 2;
   }
 
   _paint(force) {
@@ -8654,6 +8700,8 @@ class FpBabyOverviewCard extends HTMLElement {
     this.querySelector(".fo-tabbar").innerHTML = this._tabsHtml();
     const act = this.querySelector(".fo-act");   // fehlt mit action_bar: false, dann steht im Dock nur die Ansichtsleiste
     if (act) act.innerHTML = this._aktionsleiste();   // in jeder Ansicht; am Tablet per CSS aus
+    if (this._kd) this.querySelector(".fo-kdock").innerHTML = this._kdockHtml();
+    if (this._sw) { this._randFlaechen(); this._pagerMitte(); }
     this._klebt();   // fo-multi ist gesetzt: jetzt steht fest, ob die Kopfzeile klebt
     if (this._view === "wachstum") this._zeichne();
   }
@@ -8662,12 +8710,17 @@ class FpBabyOverviewCard extends HTMLElement {
   // schon im Gerüst (_build) und ist nie leer. Früher war sie bis zum ersten Laden leer und der Behälter per
   // „.fo-dock:has(.fo-tabbar:empty)“ ausgeblendet; Safari (Wand-Tablet) wertet diese Regel nach dem Füllen nicht immer
   // neu aus, dann fehlte die Leiste bis zum nächsten Neuaufbau.
-  _tabsHtml() {
+  // Die verfügbaren Ansichten in fester Reihenfolge; nav = „Momente“ als Sprung in einen anderen Tab (memories_path), keine Ansicht der Karte.
+  _ansichten() {
     const views = [["heute", "Heute"]];
     if (this._hatProtokoll()) views.push(["protokoll", "Protokoll"]);
     views.push(["muster", "Muster"]);
     if (this.config.weight_calendar) views.push(["wachstum", "Wachstum"]);
     if (this.config.milestone_calendar) views.push(["momente", "Momente"]);
+    return { views, nav: !this.config.milestone_calendar && !!this.config.memories_path };
+  }
+  _tabsHtml() {
+    const views = this._ansichten().views;
     const tabs = views.map(([v, t]) => `<button class="${this._view === v ? "fo-on" : ""}" data-view="${v}"><svg viewBox="0 0 24 24">${ICO[v]}</svg><span>${t}</span></button>`);
     if (!this.config.milestone_calendar && this.config.memories_path) tabs.push(`<button data-nav="memories_path"><svg viewBox="0 0 24 24">${ICO.momente}</svg><span>Momente</span></button>`);
     return tabs.join("");
@@ -8689,7 +8742,18 @@ class FpBabyOverviewCard extends HTMLElement {
     const c = this.config, gear = c.reminder_entity || c.reminder_night_entity || c.meal_pause_entity
       ? `<button class="fo-gear" type="button" aria-label="Einstellungen" title="Einstellungen">⚙\uFE0E</button>` : "";
     const spark = c.chat ? `<button class="fo-spark" type="button" aria-label="Frag nach" title="Frag nach">${SPARK}</button>` : "";
-    return einer + alle + gear + spark;
+    return einer + alle + gear + spark + (this._sw ? this._pagerHtml() : "");
+  }
+  // swipe_views: Namen aller Ansichten unter der Kinderwahl. Die aktuelle ist größer und unterstrichen, die direkten Nachbarn
+  // gedämpft, die übrigen blasser. Jeder Name ist ein Knopf (Tipp wechselt die Ansicht). Am Tablet per CSS aus.
+  _pagerHtml() {
+    const a = this._ansichten(), i = a.views.findIndex(x => x[0] === this._view);
+    const knoepfe = a.views.map(([v, t], n) => {
+      const d = Math.abs(n - i), cls = d === 0 ? "fo-pg-cur" : d === 1 ? "fo-pg-nb" : "";
+      return `<button type="button" class="fo-pg${cls ? ` ${cls}` : ""}" data-view="${v}"${d === 0 ? ' aria-current="true"' : ""}>${t}</button>`;
+    });
+    if (a.nav) knoepfe.push('<button type="button" class="fo-pg" data-nav="memories_path">Momente</button>');
+    return `<nav class="fo-pager" aria-label="Ansichten">${knoepfe.join("")}</nav>`;
   }
   _tagNav() {
     const d = this._mitternacht(new Date(), this._off);
@@ -9315,7 +9379,7 @@ class FpBabyOverviewCard extends HTMLElement {
   }
 
   // ---------- Blätter (Windel, Fläschchen, Nachtragen, Ändern, Einstellungen, Frag nach) ----------
-  _closeSheet() { if (this._ov) { this._ov.remove(); this._ov = null; this._chatOffen = false; this._einstOffen = false; } }
+  _closeSheet() { if (this._ov) { this._ov.remove(); this._ov = null; this._chatOffen = false; this._einstOffen = false; if (this._kdOffen) { this._kdOffen = null; this._kdockMarke(); } } }
   _sheet(inner, cls) {
     this._closeSheet();
     const ov = document.createElement("div");
@@ -9324,6 +9388,52 @@ class FpBabyOverviewCard extends HTMLElement {
     ov.addEventListener("click", ev => { if (ev.target === ov || ev.target.closest(".fo-x")) this._closeSheet(); });
     this._card.appendChild(ov); this._ov = ov;
     return ov;
+  }
+  // kids_dock (Handy): die Pillen unten, eine je Kind. Keine Zustandsanzeige, nur Avatar und Name in der Kinderfarbe.
+  _kdockHtml() {
+    return this.config.kids.map(k => `<button type="button" class="fo-kpill" data-kdock="${U.esc(k.key)}" aria-haspopup="dialog" aria-expanded="${this._kdOffen === k.key}" style="--k:${U.esc(k.color)}">${this._avatar(k, 26)}<span class="fo-kpn">${U.esc(k.name)}</span></button>`).join("");
+  }
+  _kdockMarke() { this.querySelectorAll(".fo-kpill").forEach(b => b.setAttribute("aria-expanded", String(b.dataset.kdock === this._kdOffen))); }
+  // Blatt zu einem Kind: Schlafen und Stillen als zwei große Knöpfe, nur was das Kind an Schaltern hat. Ein Tipp schaltet und schließt das Blatt;
+  // Hinweis und „Rückgängig“ kommen aus _schlafToggle und _toggle.
+  _sheetKind(kid) {
+    const ov = this._sheet(this._kindInner(kid), "fo-sheet-kind");
+    this._kdOffen = kid.key; this._kdockMarke();
+    ov.addEventListener("click", ev => {
+      const b = ev.target.closest && ev.target.closest("[data-kdo]"); if (!b) return;
+      const k = this._kid(this._kdOffen);
+      this._closeSheet();
+      if (b.dataset.kdo === "schlaf") this._schlafToggle(k.key); else this._toggle(k);
+    });
+  }
+  _kindZeichne() {
+    const sh = this._ov && this._kdOffen && this._ov.querySelector(".fo-sheet");
+    if (sh) sh.innerHTML = this._kindInner(this._kid(this._kdOffen));
+  }
+  _kindInner(kid) {
+    const jetzt = Date.now(), kn = [], seite = this._seite(kid), gross = seite.charAt(0).toUpperCase() + seite.slice(1);
+    const knopf = (art, farbe, emoji, text, sub, an) => `<button type="button" class="fo-kn${an ? " fo-kn-an" : ""}" data-kdo="${art}" style="--q:${farbe}">
+      <span class="fo-kne">${emoji}</span><span class="fo-knx"><span class="fo-knt">${text}</span>${sub ? `<span class="fo-kns">${sub}</span>` : ""}</span></button>`;
+    if (kid.sleep_switch) {
+      if (this._schlaeft(kid)) {
+        const ab = this._schlafBeginn(kid);
+        kn.push(knopf("schlaf", "var(--c-sleep)", "💤", `Schläft · <span class="fo-dauer" data-ab="${ab}">${this._hDauer(jetzt - ab)}</span>`, "tippen = aufgewacht", true));
+      } else {
+        const wach = this._wachSeit(kid, jetzt);
+        kn.push(knopf("schlaf", "var(--c-sleep)", "😴", "Schlafen", wach ? `wach seit ${wach}` : "", false));
+      }
+    }
+    if (kid.switch) {
+      if (this._laeuft(kid)) {
+        const ab = this._beginn(kid);
+        kn.push(knopf("still", "var(--c-nurse)", "🤱", `Stillen läuft · <span class="fo-uhr" data-ab="${ab}">${this._uhr((jetzt - ab) / 1000)}</span>`, `${seite ? `${U.esc(gross)} · ` : ""}tippen = Ende`, true));
+      } else {
+        const l = this._vm(kid).letzte;
+        kn.push(knopf("still", "var(--c-nurse)", "🤱", "Stillen", [l ? this._vor(+l.start) : "", seite ? `${U.esc(gross)} als Nächstes` : ""].filter(Boolean).join(" · "), false));
+      }
+    }
+    return `<div class="fo-sh-head"><b>${this._avatar(kid, 34)}${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
+      <div class="fo-kn-liste">${kn.join("") || '<div class="fo-leer">Für dieses Kind ist kein Schalter eingerichtet.</div>'}</div>`;
   }
   _sheetWindel(kid) {
     const ov = this._sheet(`<div class="fo-sh-head"><b>💩 Windel · ${U.esc(kid.name)}</b><button class="fo-x" type="button" aria-label="Schließen">✕</button></div>
@@ -10128,6 +10238,45 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-tabbar button.fo-on{background:var(--b-card2);color:var(--b-acc) !important;}
       .fo-tabbar svg{width:22px;height:22px;fill:currentColor;}
 
+      /* kids_dock (Handy, mehrere Kinder): eine volle Pillenleiste statt Aktionsleiste (und, mit swipe_views, Ansichtsleiste).
+         68 px hoch (1 px Rand + 7 px Polster + 52 px Pillen); links bleibt dock_gap px frei (--fo-dg), dort sitzt der schwebende Assistent. */
+      .fo-kdock{display:none;}
+      .fo-kpill{flex:1 1 0;min-width:0;height:52px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 12px;
+        border:1.5px solid var(--k);border-radius:999px;background:var(--b-bg);color:var(--b-text) !important;font-weight:800;font-size:.95rem;cursor:pointer;}
+      .fo-kpill:active{transform:scale(.97);}
+      .fo-kpill[aria-expanded="true"]{background:var(--k2);}
+      .fo-kpn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      /* swipe_views (Handy): Namenszeile im Kopf, Randflächen am Inhalt, Gleiten beim Wischen */
+      .fo-pager,.fo-edge{display:none;}
+      .fo-pg{flex:none;margin:0;padding:6px 2px 4px;border:none;border-bottom:3px solid transparent;border-radius:0;background:none;color:var(--b-faint) !important;
+        font-size:.8125rem;font-weight:700;line-height:1.2;cursor:pointer;}
+      .fo-pg.fo-pg-nb{color:var(--b-mut) !important;}
+      .fo-pg.fo-pg-cur{color:var(--b-text) !important;font-size:.9375rem;font-weight:800;border-bottom-color:var(--b-acc);}
+      .fo-pg:focus-visible{outline:2px solid var(--b-acc);outline-offset:1px;border-radius:4px;}
+      .fo-bw{position:relative;}
+      .fo-edge[hidden]{display:none !important;}
+      @keyframes fo-gl-n{from{transform:translateX(16px);opacity:.25;}}
+      @keyframes fo-gl-v{from{transform:translateX(-16px);opacity:.25;}}
+      .fo-body.fo-gl-n{animation:fo-gl-n .22s ease-out;}
+      .fo-body.fo-gl-v{animation:fo-gl-v .22s ease-out;}
+      @media (prefers-reduced-motion: reduce){ .fo-body.fo-gl-n,.fo-body.fo-gl-v{animation:none !important;} }
+      @container fo-card (max-width: 679px){
+        .fo-card.fo-kd .fo-act{display:none;}
+        .fo-card.fo-kd .fo-kdock{display:flex;align-self:stretch;gap:8px;box-sizing:border-box;height:68px;padding:7px 7px 7px max(7px, var(--fo-dg, 0px));
+          border-radius:999px;background:var(--b-bar);box-shadow:0 10px 30px var(--b-shadow);border:1px solid var(--b-line);}
+        .fo-card.fo-sw .fo-tabbar{display:none;}
+        .fo-card.fo-noact .fo-dock{display:none;}
+        .fo-card.fo-sw .fo-top{flex-wrap:wrap;row-gap:2px;}
+        .fo-card.fo-sw .fo-pager{display:flex;flex:0 0 100%;box-sizing:border-box;position:relative;align-items:baseline;gap:20px;padding:0 20px;overflow-x:auto;scrollbar-width:none;
+          -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);mask-image:linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);}
+        .fo-card.fo-sw .fo-pager::-webkit-scrollbar{display:none;}
+        .fo-card.fo-sw .fo-pg:first-child{margin-left:auto;}
+        .fo-card.fo-sw .fo-pg:last-child{margin-right:auto;}
+        .fo-card.fo-sw .fo-edge{display:block;position:absolute;top:0;bottom:0;width:8px;border-radius:8px;background:var(--b-card2);pointer-events:none;z-index:2;}
+        .fo-card.fo-sw .fo-edge-l{left:-12px;}
+        .fo-card.fo-sw .fo-edge-r{right:-12px;}
+      }
+
       /* Blätter */
       .fo-ov{position:fixed;inset:0;z-index:999;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;animation:fo-fade .2s;}
       @keyframes fo-fade{from{opacity:0;}}
@@ -10141,6 +10290,16 @@ class FpBabyOverviewCard extends HTMLElement {
       .fo-x{border:none;background:var(--b-card);width:34px;height:34px;border-radius:50%;cursor:pointer;flex:none;}
       .fo-neu{border:none;background:transparent;color:var(--b-mut) !important;font-size:.8rem;font-weight:700;cursor:pointer;}
       .fo-sh-sub{font-size:.8rem;color:var(--b-mut);margin:-6px 0 12px;}
+      /* Blatt der Kinder-Leiste: Schlafen und Stillen als volle Knöpfe, aktiv gefüllt in der Farbe der Tätigkeit */
+      .fo-kn-liste{display:flex;flex-direction:column;gap:10px;}
+      .fo-kn{display:flex;align-items:center;gap:14px;width:100%;box-sizing:border-box;min-height:58px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:12px 16px;text-align:left;cursor:pointer;
+        background:color-mix(in srgb,var(--q) 22%,var(--b-card));color:var(--b-text) !important;}
+      .fo-kn:active{transform:scale(.98);}
+      .fo-kn.fo-kn-an{background:var(--q);color:var(--b-on) !important;box-shadow:0 4px 16px color-mix(in srgb,var(--q) 40%,transparent);}
+      .fo-kne{font-size:1.9rem;line-height:1;flex:none;}
+      .fo-knx{display:flex;flex-direction:column;min-width:0;}
+      .fo-knt{font-weight:800;font-size:1.08rem;line-height:1.2;font-variant-numeric:tabular-nums;}
+      .fo-kns{font-size:.84rem;opacity:.85;margin-top:2px;font-variant-numeric:tabular-nums;}
       .fo-big3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
       .fo-big3 button{display:flex;flex-direction:column;align-items:center;gap:6px;border:none;border-radius:var(--fp-radius-sm, 12px);padding:16px 6px;background:color-mix(in srgb,var(--q) 22%,var(--b-card));font-weight:800;cursor:pointer;}
       .fo-big3 span{font-size:1.8rem;}
