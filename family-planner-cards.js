@@ -7817,7 +7817,7 @@ if (!customElements.get("fp-milestone-card")) {
 })();
 
 
-/* ===== fp-baby-overview-card v29 (Handy: dock_gap setzt in die Kinder-Leiste einen echten Platz für den Sprachassistenten (.fo-pipslot, gemeldet in window.__fpPipSlots), Pip setzt sich darauf; swipe_views – die Randfläche ist eine kurze Lasche auf Bildschirmmitte statt eines Streifens über die ganze Höhe, die Tageszeile zeigt heute das Datum statt „Heute“; davor: Handy: kids_dock – mit mindestens zwei Kindern mit Schlafschalter sitzt ganz rechts in der Leiste ein Mond-Knopf, der ein Schlaf-Blatt für alle öffnet (eine Zeile je Kind zum Umschalten, darunter „Beide schlafen“ bzw. „Beide aufwecken“); davor: Handy: kids_dock – unten eine Leiste mit einer Pille je Kind, ein Tipp öffnet ein Blatt mit Schlafen und Stillen; swipe_views – Ansichten per Wischen mit Namenszeile unter der Kinderwahl statt Ansichtsleiste; dock_gap – Platz links für den Sprachassistenten; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card v30 (Handy: der Platz für den Sprachassistenten (.fo-pipslot) nimmt dessen Figur als Kind auf (display: flex, overflow: visible) und gibt sie beim Neuzeichnen der Leiste an den neuen Platz weiter; davor: dock_gap setzt in die Kinder-Leiste einen echten Platz für den Sprachassistenten (.fo-pipslot, gemeldet in window.__fpPipSlots), Pip setzt sich darauf; swipe_views – die Randfläche ist eine kurze Lasche auf Bildschirmmitte statt eines Streifens über die ganze Höhe, die Tageszeile zeigt heute das Datum statt „Heute“; davor: Handy: kids_dock – mit mindestens zwei Kindern mit Schlafschalter sitzt ganz rechts in der Leiste ein Mond-Knopf, der ein Schlaf-Blatt für alle öffnet (eine Zeile je Kind zum Umschalten, darunter „Beide schlafen“ bzw. „Beide aufwecken“); davor: Handy: kids_dock – unten eine Leiste mit einer Pille je Kind, ein Tipp öffnet ein Blatt mit Schlafen und Stillen; swipe_views – Ansichten per Wischen mit Namenszeile unter der Kinderwahl statt Ansichtsleiste; dock_gap – Platz links für den Sprachassistenten; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card), Windeln
 // (fp-diaper-card), Gewicht (fp-weight-card) und Meilensteine (fp-milestone-card), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -8703,7 +8703,14 @@ class FpBabyOverviewCard extends HTMLElement {
     this.querySelector(".fo-tabbar").innerHTML = this._tabsHtml();
     const act = this.querySelector(".fo-act");   // fehlt mit action_bar: false, dann steht im Dock nur die Ansichtsleiste
     if (act) act.innerHTML = this._aktionsleiste();   // in jeder Ansicht; am Tablet per CSS aus
-    if (this._kd) { this.querySelector(".fo-kdock").innerHTML = this._kdockHtml(); this._slotMelden(); }
+    if (this._kd) {
+      // Neu geschrieben wird die ganze Leiste, auch der Platz: eine Figur, die Pip hineingehängt hat, zieht in den neuen Platz um (kein Flackern, bis Pip sie wieder einhängt)
+      const dock = this.querySelector(".fo-kdock"), alt = dock.querySelector(".fo-pipslot"), gast = alt ? Array.from(alt.childNodes) : [];
+      dock.innerHTML = this._kdockHtml();
+      const neu = dock.querySelector(".fo-pipslot");
+      if (neu) for (const g of gast) neu.appendChild(g);
+      this._slotMelden();
+    }
     if (this._sw) { this._randFlaechen(); this._pagerMitte(); }
     this._klebt();   // fo-multi ist gesetzt: jetzt steht fest, ob die Kopfzeile klebt
     if (this._view === "wachstum") this._zeichne();
@@ -10287,8 +10294,9 @@ class FpBabyOverviewCard extends HTMLElement {
       /* kids_dock (Handy, mehrere Kinder): eine volle Pillenleiste statt Aktionsleiste (und, mit swipe_views, Ansichtsleiste).
          68 px hoch (1 px Rand + 7 px Polster + 52 px Pillen); links bleibt dock_gap px frei (--fo-dg), dort sitzt der schwebende Assistent. */
       .fo-kdock{display:none;}
-      /* Platz für den schwebenden Assistenten (dock_gap > 0): unsichtbar, Pip setzt sich genau darauf; --fo-dgx = was dock_gap über 67 px (7 Polster + 52 + 8 Lücke) hinausgeht */
-      .fo-pipslot{flex:none;align-self:center;width:52px;height:52px;border-radius:50%;margin-right:var(--fo-dgx,0px);pointer-events:none;}
+      /* Platz für den schwebenden Assistenten (dock_gap > 0): unsichtbar, Pip hängt seine Figur als Kind hinein (läuft so mit der klebenden Leiste mit); sie darf mit Blatt,
+         Ringen und Schatten über die Leiste hinausragen (overflow: visible), nur die Figur selbst nimmt Berührungen an; --fo-dgx = was dock_gap über 67 px (7 Polster + 52 + 8 Lücke) hinausgeht */
+      .fo-pipslot{flex:none;display:flex;position:relative;overflow:visible;align-self:center;width:52px;height:52px;border-radius:50%;margin-right:var(--fo-dgx,0px);pointer-events:none;}
       .fo-kpill{flex:1 1 0;min-width:0;height:52px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 12px;
         border:1.5px solid var(--k);border-radius:999px;background:var(--b-bg);color:var(--b-text) !important;font-weight:800;font-size:.95rem;cursor:pointer;}
       .fo-kpill:active{transform:scale(.97);}
@@ -10435,7 +10443,7 @@ if (!customElements.get("fp-baby-overview-card")) {
 }
 })();
 
-/* ===== fp-assistant-card v15 (Handy: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card v16 (Handy: die Figur steckt als echte Kopie (fp-pip-dock-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -11061,32 +11069,16 @@ class FpAssistantCard extends HTMLElement {
   static getStubConfig() { return { name: "Pip" }; }
 }
 
-const CSS = `
-:host{display:block;--a:var(--fp-accent,var(--primary-color));--afg:var(--fp-accent-fg,var(--text-primary-color,#fff));--s1:var(--fp-surface,var(--secondary-background-color));--s2:var(--fp-surface-2,var(--divider-color));--rad:var(--fp-radius,16px);--rsm:var(--fp-radius-sm,12px);--bg:var(--card-background-color,#fff);--tx:var(--primary-text-color,#000);--tx2:var(--secondary-text-color);--dv:var(--divider-color);--pip:var(--fp-pip,var(--a));--hl:var(--bg);--eye:var(--tx);font-family:var(--primary-font-family,inherit);color:var(--tx);-webkit-text-size-adjust:100%;}
+// Der Figur-Teil des Stylesheets (Kugel, Augen, Ringe, Ohr-Punkt, Zustände): gemeinsam für die feste Figur im Dock und die Kopie im Platz der Kinder-Leiste (fp-pip-dock-slotfig).
+const FIG_CSS = `
 /* Dunkles Theme (Klasse dk, vom Skript nach hass.themes.darkMode gesetzt): die Kugel wird zur Mitte hin mit der hellen Schriftfarbe aufgehellt statt mit dem dunklen Hintergrund, die Augen bleiben dunkel */
+:host{--a:var(--fp-accent,var(--primary-color));--bg:var(--card-background-color,#fff);--tx:var(--primary-text-color,#000);--pip:var(--fp-pip,var(--a));--hl:var(--bg);--eye:var(--tx);}
 :host(.dk){--hl:var(--tx);--eye:var(--bg);}
-:host([hidden]){display:none !important;}
 *{box-sizing:border-box;}
 button{font:inherit;color:inherit;}
-
-/* Figur */
-/* --gx = linker Rand des Inhaltsbereichs (rechts neben der HA-Seitenleiste), nur bei position: left gesetzt */
-.fig{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px) + var(--lift,0px));z-index:6;width:60px;height:60px;padding:0;margin:0;border:0;border-radius:50%;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:opacity .2s ease,transform .2s ease,bottom .25s ease,left .2s ease;}
-.fig.left{right:auto;left:calc(16px + var(--gx,0px) + env(safe-area-inset-left,0px));}
-/* Platz in der Kinder-Leiste der Baby-Karte (Handy, window.__fpPipSlots): Figur, Anker und Pillen sitzen mit festen Werten (--sl links, --st oben, --sz Größe, --sr rechts, vom Skript
-   aus dem Rechteck des Platzes gesetzt) genau dort; ohne Übergang, sonst hinkt die Figur beim Scrollen nach. --lift gilt dann nicht. */
-.fig.slot{right:auto;bottom:auto;left:var(--sl,0px);top:var(--st,0px);width:var(--sz,52px);height:var(--sz,52px);}
-.fig.slot{transition:opacity .2s ease,transform .2s ease;}
+.fig{padding:0;margin:0;border:0;border-radius:50%;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 .fig.gone{opacity:0;transform:scale(.6);pointer-events:none;visibility:hidden;transition:opacity .2s ease,transform .2s ease,visibility 0s linear .2s;}
 .fig:focus-visible{outline:3px solid var(--a);outline-offset:4px;}
-/* Bühne (stage): .anc sitzt wie die Figur, bleibt aber unverschoben und unsichtbar; daran wird gemessen, wohin die Figur rollen muss.
-   .veil dunkelt das Dashboard ab (unter Figur und Fenster, Tippen darauf beendet die Bühne). Beides nur ab 700 px Breite sichtbar bzw. in Gebrauch. */
-.anc{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px) + var(--lift,0px));width:60px;height:60px;visibility:hidden;pointer-events:none;}
-.anc.left{right:auto;left:calc(16px + var(--gx,0px) + env(safe-area-inset-left,0px));}
-.anc.slot{right:auto;bottom:auto;left:var(--sl,0px);top:var(--st,0px);width:var(--sz,52px);height:var(--sz,52px);}
-.veil{display:none;position:fixed;inset:0;z-index:5;background:color-mix(in srgb,var(--tx) 60%,transparent);opacity:0;pointer-events:none;transition:opacity .4s ease;-webkit-tap-highlight-color:transparent;}
-.veil.dk{background:color-mix(in srgb,var(--bg) 70%,transparent);}
-.veil.on{opacity:1;pointer-events:auto;}
 .ear{position:absolute;right:3px;bottom:3px;width:13px;height:13px;border-radius:50%;background:var(--pip);border:2px solid var(--bg);opacity:0;transform:scale(.5);transition:opacity .25s ease,transform .25s ease;pointer-events:none;}
 .fig.wk-on .ear{opacity:1;transform:none;animation:pp-ear 3.4s ease-in-out infinite;}
 .fig.wk-wait .ear{opacity:1;transform:none;background:var(--bg);border-color:var(--pip);}
@@ -11113,8 +11105,35 @@ button{font:inherit;color:inherit;}
 @keyframes pp-wobble{0%,100%{transform:rotate(-3deg);}50%{transform:rotate(3deg);}}
 @keyframes pp-look{0%,100%{translate:-45% 0;}50%{translate:45% 0;}}
 @keyframes pp-pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.09);}}
-@keyframes pp-dot{30%{opacity:1;transform:translateY(-3px);}}
 @keyframes pp-ear{0%,100%{opacity:1;}50%{opacity:.4;}}
+@media (prefers-reduced-motion:reduce){
+  .ball,.eye,.ring,.fig .ear{animation:none !important;}
+  .fig,.ear{transition:none !important;}
+  .st-listen .r1,.fig.ringing .r1{opacity:.55;transform:scale(1.25);}
+}
+`;
+
+const CSS = `
+:host{display:block;--afg:var(--fp-accent-fg,var(--text-primary-color,#fff));--s1:var(--fp-surface,var(--secondary-background-color));--s2:var(--fp-surface-2,var(--divider-color));--rad:var(--fp-radius,16px);--rsm:var(--fp-radius-sm,12px);--tx2:var(--secondary-text-color);--dv:var(--divider-color);font-family:var(--primary-font-family,inherit);color:var(--tx);-webkit-text-size-adjust:100%;}
+:host([hidden]){display:none !important;}
+
+/* Figur */
+/* --gx = linker Rand des Inhaltsbereichs (rechts neben der HA-Seitenleiste), nur bei position: left gesetzt */
+.fig{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px) + var(--lift,0px));z-index:6;width:60px;height:60px;transition:opacity .2s ease,transform .2s ease,bottom .25s ease,left .2s ease;}
+.fig.left{right:auto;left:calc(16px + var(--gx,0px) + env(safe-area-inset-left,0px));}
+/* Platz in der Kinder-Leiste der Baby-Karte (Handy, window.__fpPipSlots): Anker und Pillen sitzen mit festen Werten (--sl links, --st oben, --sz Größe, --sr rechts, vom Skript
+   aus dem Rechteck des Platzes gesetzt) dort; die Figur selbst steckt als echte Kopie (fp-pip-dock-slotfig) im Platz und läuft mit der Leiste mit, die feste Figur ist dann unsichtbar (.inslot). */
+.fig.inslot{visibility:hidden;pointer-events:none;transition:none;}
+/* Bühne (stage): .anc sitzt wie die Figur, bleibt aber unverschoben und unsichtbar; daran wird gemessen, wohin die Figur rollen muss.
+   .veil dunkelt das Dashboard ab (unter Figur und Fenster, Tippen darauf beendet die Bühne). Beides nur ab 700 px Breite sichtbar bzw. in Gebrauch. */
+.anc{position:fixed;right:calc(16px + env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px) + var(--lift,0px));width:60px;height:60px;visibility:hidden;pointer-events:none;}
+.anc.left{right:auto;left:calc(16px + var(--gx,0px) + env(safe-area-inset-left,0px));}
+.anc.slot{right:auto;bottom:auto;left:var(--sl,0px);top:var(--st,0px);width:var(--sz,52px);height:var(--sz,52px);}
+.veil{display:none;position:fixed;inset:0;z-index:5;background:color-mix(in srgb,var(--tx) 60%,transparent);opacity:0;pointer-events:none;transition:opacity .4s ease;-webkit-tap-highlight-color:transparent;}
+.veil.dk{background:color-mix(in srgb,var(--bg) 70%,transparent);}
+.veil.on{opacity:1;pointer-events:auto;}
+${FIG_CSS}
+@keyframes pp-dot{30%{opacity:1;transform:translateY(-3px);}}
 @keyframes pp-rec{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--a) 50%,transparent);}100%{box-shadow:0 0 0 12px transparent;}}
 @keyframes pp-alert{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--a) 45%,transparent),0 14px 40px color-mix(in srgb,var(--tx) 26%,transparent);}100%{box-shadow:0 0 0 16px transparent,0 14px 40px color-mix(in srgb,var(--tx) 26%,transparent);}}
 @keyframes pp-bell{0%,45%,100%{transform:none;}8%{transform:rotate(-16deg);}16%{transform:rotate(14deg);}24%{transform:rotate(-10deg);}32%{transform:rotate(6deg);}40%{transform:rotate(-2deg);}}
@@ -11246,11 +11265,31 @@ button{font:inherit;color:inherit;}
 .al.quiet,.al.quiet .al-i{animation:none;}
 
 @media (prefers-reduced-motion:reduce){
-  .ball,.eye,.ring,.dots i,.go.rec,.fig .ear,.al,.al-i{animation:none !important;}
-  .panel,.fig,.go,.sw,.sw .kn,.ear,.stk,.veil{transition:none !important;}
-  .st-listen .r1,.fig.ringing .r1{opacity:.55;transform:scale(1.25);}
+  .dots i,.go.rec,.al,.al-i{animation:none !important;}
+  .panel,.go,.sw,.sw .kn,.stk,.veil{transition:none !important;}
 }
 `;
+
+// Kopie der Figur für den Platz in der Kinder-Leiste der Baby-Karte (Handy). Sie ist ein echtes Kind des Platzes (.fo-pipslot) und läuft deshalb mit der
+// klebenden Leiste mit, auch wenn iOS sie im Compositor bewegt und beim Ausrollen oder Nachfedern keine scroll-Ereignisse liefert. Das Dock hängt sie
+// ein und aus und spiegelt Klassen und Theme-Werte der festen Figur auf sie (_copySync); ein Tipp darauf wirkt wie ein Tipp auf die feste Figur.
+// Der Name leitet sich vom Dock ab ("fp-pip-dock-slotfig", in der Beta "fp-pip-dock-beta-slotfig"), damit Prod- und Beta-Datei sich nicht stören.
+const SLOTFIG_TAG = TAG + "-slotfig";
+class FpPipSlotFig extends HTMLElement {
+  constructor() {
+    super();
+    const r = this.attachShadow({ mode: "open" });
+    r.innerHTML = `<style>${FIG_CSS}
+:host{display:block;flex:none;width:100%;height:100%;pointer-events:auto;}
+:host([hidden]){display:none !important;}
+.fig{position:relative;display:block;width:100%;height:100%;transition:opacity .2s ease,transform .2s ease;}
+</style><button class="fig" type="button">${PIP}<span class="ear" aria-hidden="true"></span></button>`;
+    this.btn = r.querySelector(".fig");
+    this.pip = r.querySelector(".pip");
+  }
+  focus(o) { this.btn.focus(o); }
+}
+if (!customElements.get(SLOTFIG_TAG)) customElements.define(SLOTFIG_TAG, FpPipSlotFig);
 
 class FpPipDock extends HTMLElement {
   constructor() {
@@ -11333,8 +11372,11 @@ class FpPipDock extends HTMLElement {
     this._vv = () => this._onViewport();
     this._wkGest = () => this._wakeKick();
     // Platz in der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, nur Handy)
-    this._slotEl = null;       // Platz, auf dem die Figur gerade sitzt
+    this._slotEl = null;       // Platz, in dem die Kopie der Figur gerade steckt
     this._slotRO = null;       // beobachtet seine Größe
+    this._copy = null;         // Kopie der Figur (fp-pip-dock-slotfig), genau eine; nur im Platz eingehängt
+    this._copyMO = null;       // spiegelt Klassen und Beschriftung der festen Figur auf die Kopie
+    this._copyMH = null;       // spiegelt Theme-Werte und Dunkelmodus des Docks auf die Kopie
     this._slotRaf = 0;
     this._slotSig = "";
     this._slotRun = () => { this._slotRaf = 0; this._slotApply(); };
@@ -11407,11 +11449,7 @@ class FpPipDock extends HTMLElement {
     this._rgRow = r.querySelector(".rg");
     this._rgHint = r.querySelector(".rg .wk-h");
     this._rgSw = r.querySelector(".rg .sw");
-    this._fig.addEventListener("click", () => {
-      // Tipp auf die Figur: ebenfalls Bühne (falls stage und breit genug); vor _openPanel, damit die Figur nicht mit .gone verschwindet.
-      // Passiert danach nichts, geht die Bühne nach STAGE_IDLE von selbst zu.
-      if (!this._isOpen) { this._stageBegin(); this._openPanel(); this._stageArm(STAGE_IDLE); } else this._openPanel();
-    });
+    this._fig.addEventListener("click", () => this._figTap());
     r.querySelector(".sx").addEventListener("click", () => this._close());
     this._veil.addEventListener("click", () => this._close());
     this._stk.addEventListener("click", e => this._onStk(e));
@@ -11545,8 +11583,10 @@ class FpPipDock extends HTMLElement {
 
   // ---------- Platz in der Kinder-Leiste ----------
   // Am Handy (Fenster < 700 px) meldet die Baby-Karte mit kids_dock und dock_gap > 0 einen unsichtbaren Platz (52 × 52) in window.__fpPipSlots.
-  // Gibt es ein sichtbares Element, setzt sich die Figur mit Anker und Pillen genau darauf (feste px-Werte aus seinem Rechteck, Größe des Platzes);
-  // sonst bleibt alles wie bisher in der Ecke (mit lift). Die Bühne (ab 700 px) und das Gesprächsfenster sind davon unberührt.
+  // Gibt es ein sichtbares Element, hängt sich eine Kopie der Figur (fp-pip-dock-slotfig) als Kind hinein und die feste Figur wird unsichtbar: die Kopie ist Teil der
+  // Leiste und bewegt sich mit ihr, ohne dass ein Skript sie nachführen muss (iOS liefert beim Ausrollen und Nachfedern keine scroll-Ereignisse). Anker und Pillen
+  // sitzen mit festen px-Werten aus dem Rechteck des Platzes darüber; sonst bleibt alles wie bisher in der Ecke (mit lift).
+  // Die Bühne (ab 700 px) und das Gesprächsfenster sind davon unberührt.
   _slotSched() {
     if (this._slotRaf) return;
     const S = window.__fpPipSlots;
@@ -11573,6 +11613,7 @@ class FpPipDock extends HTMLElement {
       this._slotEl = el;
       if (typeof ResizeObserver === "function") { this._slotRO = new ResizeObserver(this._slotCb); this._slotRO.observe(el); }
     }
+    this._copyPlace(el);   // die Figur selbst: als Kopie im Platz, ohne Skript-Nachführen
     const q = v => Math.round(v * 100) / 100;
     const sig = [q(r.left), q(r.top), q(r.width), q(r.right), left].join("|");
     if (sig === this._slotSig) return;
@@ -11581,17 +11622,73 @@ class FpPipDock extends HTMLElement {
     this.style.setProperty("--st", q(r.top) + "px");
     this.style.setProperty("--sz", q(r.width) + "px");
     this.style.setProperty("--sr", q(r.right) + "px");
-    for (const e of [this._fig, this._anc, this._stk]) e.classList.add("slot");
+    for (const e of [this._anc, this._stk]) e.classList.add("slot");   // Anker und Pillen folgen dem Rechteck des Platzes
     this._stk.classList.toggle("rt", !left);
   }
   _slotOff() {
     if (this._slotRO) { try { this._slotRO.disconnect(); } catch (e) {} this._slotRO = null; }
+    this._copyOff();
     if (!this._slotEl && !this._slotSig) return;
     this._slotEl = null;
     this._slotSig = "";
-    for (const e of [this._fig, this._anc, this._stk]) e.classList.remove("slot");
+    for (const e of [this._anc, this._stk]) e.classList.remove("slot");
     this._stk.classList.remove("rt");
     for (const v of ["--sl", "--st", "--sz", "--sr"]) this.style.removeProperty(v);
+  }
+  // Kopie der Figur in den Platz hängen (oder in den neuen Platz, wenn die Leiste neu gezeichnet wurde; es gibt nie zwei Kopien) und die feste Figur ausblenden.
+  _copyPlace(el) {
+    let c = this._copy;
+    if (!c) c = this._copy = document.createElement(SLOTFIG_TAG);
+    if (c.parentNode !== el) {
+      el.appendChild(c);
+      c.addEventListener("click", this._copyTap || (this._copyTap = () => this._figTap()));
+    }
+    if (!this._copyMO && typeof MutationObserver === "function") {
+      const cb = () => this._copySync();
+      this._copyMO = new MutationObserver(cb);
+      this._copyMO.observe(this._fig, { attributes: true, attributeFilter: ["class", "aria-label", "title"], subtree: true });
+      this._copyMH = new MutationObserver(cb);
+      this._copyMH.observe(this, { attributes: true, attributeFilter: ["class", "style"] });
+    }
+    this._fig.classList.add("inslot");
+    this._fig.setAttribute("tabindex", "-1");
+    this._fig.setAttribute("aria-hidden", "true");
+    this._copySync();
+  }
+  // Kopie wieder aus dem Platz nehmen; die feste Figur steht sofort wieder in der Ecke (mit lift).
+  _copyOff() {
+    if (this._copyMO) { this._copyMO.disconnect(); this._copyMO = null; }
+    if (this._copyMH) { this._copyMH.disconnect(); this._copyMH = null; }
+    if (this._copy && this._copy.parentNode) this._copy.remove();
+    if (this._fig.classList.contains("inslot")) {
+      this._fig.classList.remove("inslot");
+      this._fig.removeAttribute("tabindex");
+      this._fig.removeAttribute("aria-hidden");
+    }
+  }
+  // Alles, was die feste Figur an Klassen (Zustand, wk-on, wk-wait, ringing, gone), Beschriftung, Dunkelmodus und Theme-Werten hat, bekommt die Kopie auch.
+  _copySync() {
+    const c = this._copy;
+    if (!c || !c.parentNode) return;
+    const cls = Array.from(this._fig.classList).filter(n => n !== "slot" && n !== "inslot" && n !== "left" && n !== "stg" && n !== "stage").concat("fig").join(" ");
+    if (c.btn.className !== cls) c.btn.className = cls;
+    const pc = this._fig.querySelector(".pip").className;
+    if (c.pip.className !== pc) c.pip.className = pc;
+    for (const a of ["aria-label", "title"]) {
+      const v = this._fig.getAttribute(a);
+      if (v === null) c.btn.removeAttribute(a); else if (c.btn.getAttribute(a) !== v) c.btn.setAttribute(a, v);
+    }
+    c.classList.toggle("dk", this.classList.contains("dk"));
+    for (const v of THEME_VARS) {
+      const val = this.style.getPropertyValue(v);
+      if (val) { if (c.style.getPropertyValue(v) !== val) c.style.setProperty(v, val); } else if (c.style.getPropertyValue(v)) c.style.removeProperty(v);
+    }
+  }
+
+  // Tipp auf die Figur (die feste oder ihre Kopie im Platz): ebenfalls Bühne (falls stage und breit genug); vor _openPanel, damit die Figur nicht mit .gone verschwindet.
+  // Passiert danach nichts, geht die Bühne nach STAGE_IDLE von selbst zu.
+  _figTap() {
+    if (!this._isOpen) { this._stageBegin(); this._openPanel(); this._stageArm(STAGE_IDLE); } else this._openPanel();
   }
 
   // Verstecken: Panel zu, Mikrofon und Ton aus, Karten-Abo beenden. Das Gespräch bleibt im Speicher.
@@ -11657,7 +11754,7 @@ class FpPipDock extends HTMLElement {
       window.visualViewport.removeEventListener("scroll", this._vv);
     }
     if (this.shadowRoot.activeElement && this._panel.contains(this.shadowRoot.activeElement)) {
-      try { this._fig.focus({ preventScroll: true }); } catch (e) {}
+      try { (this._copy && this._copy.isConnected ? this._copy : this._fig).focus({ preventScroll: true }); } catch (e) {}
     }
   }
   // Am Handy schiebt die Bildschirmtastatur das Blatt nach oben und kürzt es.
