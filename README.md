@@ -539,6 +539,7 @@ early_tts: false                    # optional: Antwort schon vorlesen, während
 learn: script.pip_lernen_merken     # optional: Skript, das jede Bitte an den Gesprächsagenten protokolliert (siehe „Lernen“ unten); ohne Angabe passiert nichts
 wake_screen: button.kiosker_xxx_dismiss_screensaver   # optional: Knopf (button, input_button) oder Skript, das beim Aktivierungswort den Bildschirmschoner beendet (siehe „Aktivierungswort“); ohne Angabe passiert nichts
 wake_log: script.pip_weckwort_merken   # optional: Skript, das die Erkennungswerte des Aktivierungsworts protokolliert (siehe „Aktivierungswort“); ohne Angabe passiert nichts
+wake_clip: script.pip_fehlausloeser_speichern   # optional: Skript, das bei jeder Reaktion des Weckwort-Modells den Ton davor und danach als WAV bekommt, um Fehlauslöser zu sammeln (siehe „Aktivierungswort“); ohne Angabe passiert nichts
 stage: false                        # optional: Bühne: beim Aktivierungswort und beim Tipp auf die Figur wird das Dashboard abgedunkelt und Pip groß in die Mitte gerollt (Vorgabe aus, siehe „Aktivierungswort“)
 wake_word:                    # optional: Aktivierungswort, erkannt im Browser; ohne diesen Block gibt es die Funktion nicht
   name: Hey Pip                       # Anzeige im Schalter (Vorgabe „Hey <Name>“)
@@ -583,6 +584,26 @@ Die Karte ist **unsichtbar** (nur beim Bearbeiten steht ein kleiner Platzhalter 
             name: Pip Weckwort
             message: >-
               {{ art }} {{ wert }} (Schwelle {{ schwelle }}, Geduld {{ geduld }}, {{ bloecke }} Blöcke) {{ ende }} {{ text }}
+  ```
+
+- **Fehlauslöser aufzeichnen (`wake_clip`):** Springt das Modell im Betrieb falsch an (etwa bei Babyschreien, Wert 0,995), braucht man genau diesen Ton als Trainingsdaten. Mit `wake_clip: script.<name>` schickt die Karte bei jeder Reaktion des Modells die **letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach** als WAV (16 kHz, 16 Bit, mono, Base64) an ein Skript (direkt als Dienst `script.<name>`, das geht auch ohne Administratorrechte). Als Wert gelten nur `script.` mit Kleinbuchstaben, Ziffern und `_`, alles andere schaltet es aus; es wirkt nur zusammen mit `wake_word` und auf jedem Gerät, auf dem der Schalter für das Aktivierungswort an ist, und unabhängig von `wake_log`. Solange das Weckwort-Mikrofon läuft, hält die Karte dafür nur die letzten 3 Sekunden in einem Ringpuffer im Arbeitsspeicher; nach dem Senden bleibt nichts zurück, nichts wird im Browser gespeichert. Ein Clip entsteht, sobald ein Block (80 ms) die Schwelle erreicht. Felder: `art` (`ausgeloest` = das Modell hat die Geduld `patience` erreicht und Pip hat reagiert oder die Erkennung wurde abgewiesen; `schwelle` = der Wert lag über der Schwelle, die Geduld wurde aber nicht erreicht), `wert` (Höchstwert der Episode, drei Nachkommastellen), `bloecke` (Zahl der Blöcke à 80 ms über der Schwelle), `folge` (bei `ausgeloest` wie `ende` bei `wake_log`: `text` = es wurde etwas verstanden, `leer` = nichts erkannt, `fehler` = Fehler vor einem Text, `abbruch` = Fenster geschlossen, getippt, „Neu“ oder binnen 20 Sekunden kein Zuhören; dazu `abgewiesen` = Pip war gerade beschäftigt oder die Seite verdeckt; bei `schwelle` immer `keine`), `geraet` (grobe Kennung ohne Personendaten, etwa `iPad 1180x820`) und `audio` (das WAV als Base64). So findet man die Fehlauslöser: `folge: leer` oder `keine`, ohne verständlichen Text. Gedrosselt: höchstens ein Clip alle 10 Sekunden und 30 pro Stunde, ein gedrosselter Clip wird gar nicht erst angelegt. Ist die Sekunde nach dem Treffer beim Ende noch nicht voll (Fenster sofort geschlossen, Mikrofon zu), geht der Clip mit dem, was da ist. Scheitert der Aufruf, bleibt das ohne Hinweis. **Datenschutz:** Der Ton geht nur an das eigene Home Assistant und von dort in eine Datei auf dem eigenen Server (unten: `/media`); er enthält, was im Raum zu hören war, also auch Gespräche kurz vor dem Treffer. Die Funktion deshalb nur so lange einschalten, wie man Fehlauslöser sammelt, und die Datei danach löschen. Beispiel: Eine Datei-Entität (Integration „File“ mit dem Pfad `/media/pip_fehlausloeser.txt`, Entität `notify.pip_fehlausloeser`) bekommt über `notify.send_message` pro Clip eine Zeile `zeit;art;wert;bloecke;folge;geraet;audio`; das Skript hängt sie an die Datei an (liegt der Pfad außerhalb von `/config`, muss er unter `allowlist_external_dirs` freigegeben sein):
+
+  ```yaml
+  alias: "Pip: Fehlauslöser speichern"
+  mode: queued
+  max: 20
+  fields:
+    art: {name: Art, selector: {text: {}}}
+    wert: {name: Wert, selector: {number: {min: 0, max: 1, step: 0.001, mode: box}}}
+    bloecke: {name: Blöcke, selector: {number: {min: 0, max: 100, mode: box}}}
+    folge: {name: Folge, selector: {text: {}}}
+    geraet: {name: Gerät, selector: {text: {}}}
+    audio: {name: Audio (WAV, Base64), selector: {text: {multiline: true}}}
+  sequence:
+    - action: notify.send_message
+      target: {entity_id: notify.pip_fehlausloeser}
+      data:
+        message: "{{ now().isoformat(timespec='seconds') }};{{ art }};{{ '%.3f' | format(wert | float(0)) }};{{ bloecke }};{{ folge }};{{ geraet | replace(';', ',') }};{{ audio }}"
   ```
 
 - **Nur über https.** Ohne sichere Verbindung ist der Schalter gesperrt. Am iPad bzw. in der Kiosk-App startet Audio erst nach einer Berührung: Nach einem Neuladen steht am Schalter „Einmal tippen, dann hört Pip zu“, ein Tipp irgendwo auf der Seite reicht. Verliert das Gerät das Mikrofon oder wird die Seite verdeckt, schließt Pip es und öffnet es bei der Rückkehr wieder (am iPad ggf. nach einem Tipp).
