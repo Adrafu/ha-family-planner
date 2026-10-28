@@ -1,6 +1,6 @@
 /* Family Planner custom cards v3.8.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
-/* ===== shared utils (einmal global, von allen Karten genutzt; lightbox: Dialoge als nativer Dialog in der obersten Ebene) ===== */
+/* ===== shared utils (einmal global, von allen Karten genutzt; lightbox: Dialoge als nativer Dialog in der obersten Ebene; Hinweise erscheinen bei offenem Dialog auch im Dialog) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
 // Ein "if (window.__fpUtils) return" wuerde bedeuten, dass die zuerst geladene
 // Datei gewinnt — neue Helfer aus der zweiten Datei fehlen dann und die Karten
@@ -112,6 +112,9 @@
     // (ov.remove(), removeChild, innerHTML): ein modaler Dialog ohne Inhalt bleibt so nie stehen.
     // Gibt den Dialog zurück, im Rückfall (kein <dialog>/showModal, Host nicht angehängt) null: dann hängt ov wie
     // früher direkt an host.
+    // Offene Dialoge stehen in window.__fpLbOpen (seitenweit, der zuletzt geöffnete bzw. zuletzt wieder aufgestellte hinten):
+    // Hinweise von Home Assistant (hass-notification) liegen unter einem modalen Dialog verdeckt, deshalb zeigt sie der
+    // Zuhörer weiter unten (window.__fpLbToast) zusätzlich im obersten Dialog.
     lightbox: (host, ov, onCancel) => {
       const rueckfall = () => { host.appendChild(ov); return null; };
       const D = window.HTMLDialogElement;
@@ -135,6 +138,10 @@
       try { dlg.showModal(); }
       catch (e) { dlg.remove(); return rueckfall(); }
       let fertig = false, mo = null, io = null, raf = 0;
+      // Wer zuletzt showModal() aufgerufen hat, liegt in der obersten Ebene ganz oben und steht deshalb hinten in der Liste.
+      const offen = Array.isArray(window.__fpLbOpen) ? window.__fpLbOpen : (window.__fpLbOpen = []);
+      const nachOben = () => { const i = offen.indexOf(dlg); if (i >= 0) offen.splice(i, 1); offen.push(dlg); };
+      nachOben();
       // showModal() fokussiert das erste Feld; am Handy öffnete das die Tastatur. Dort bleibt der Fokus auf dem Dialog.
       const fokus = () => { try { if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) dlg.focus({ preventScroll: true }); } catch (e) {} };
       const ende = () => {
@@ -142,6 +149,8 @@
         if (mo) mo.disconnect();
         if (io) io.disconnect();
         cancelAnimationFrame(raf);
+        const i = offen.indexOf(dlg); if (i >= 0) offen.splice(i, 1);
+        if (typeof dlg._fpHinweisWeg === "function") { try { dlg._fpHinweisWeg(); } catch (e) {} }
         try { if (dlg.open) dlg.close(); } catch (e) {}
         dlg.remove();
       };
@@ -151,7 +160,7 @@
       dlg.addEventListener("cancel", ev => { ev.preventDefault(); abbruch(); });
       // Hat der Browser ihn doch geschlossen (Escape ohne vorherige Nutzeraktion ist nicht abbrechbar), die Karte das
       // Overlay aber behalten will, steht er wieder auf.
-      dlg.addEventListener("close", () => { if (!fertig && ov.parentNode === dlg && dlg.isConnected) { try { dlg.showModal(); } catch (e) {} } });
+      dlg.addEventListener("close", () => { if (!fertig && ov.parentNode === dlg && dlg.isConnected) { try { const war = dlg.open && dlg.matches(":modal"); dlg.showModal(); if (!war) nachOben(); } catch (e) {} } });
       mo = new MutationObserver(() => { if (ov.parentNode !== dlg) ende(); });
       mo.observe(dlg, { childList: true });
       // Wird die Karte abgehängt, verliert der Dialog den modalen Zustand von selbst. Beim nächsten Bild räumt das hier
@@ -165,7 +174,7 @@
       // Wächter pro Bild stellt das wieder her; solange der Dialog offen ist, kostet er eine Abfrage je Bild.
       const wacht = () => {
         if (fertig) return;
-        try { if (dlg.isConnected && dlg.open && !dlg.matches(":modal")) { dlg.close(); dlg.showModal(); fokus(); } }
+        try { if (dlg.isConnected && dlg.open && !dlg.matches(":modal")) { dlg.close(); dlg.showModal(); nachOben(); fokus(); } }
         catch (e) { return; }   // ":modal" unbekannt oder showModal geht nicht: kein Wächter mehr
         raf = requestAnimationFrame(wacht);
       };
@@ -267,6 +276,98 @@
     };
   })();
   for (const k of Object.keys(queue)) if (!(k in u)) u[k] = queue[k];
+
+  // ---------- Hinweise bei offenem Dialog auch im Dialog zeigen ----------
+  // Home Assistant zeigt seinen Hinweis (hass-notification) nicht in der obersten Ebene: unter einem offenen modalen
+  // Dialog (U.lightbox) bleibt er verdeckt, "Änderung fehlgeschlagen" oder "Bitte ein Datum wählen" wären nicht zu sehen.
+  // Solange ein modaler Dialog offen ist, erscheint jeder Hinweis deshalb zusätzlich als kleine Pille unten mittig im
+  // obersten Dialog (Text aus detail.message, bei einer action mit Knopf, der sie aufruft). toast/undo bleiben unberührt:
+  // Auf dem Beta-Dashboard stammen sie aus der zuerst geladenen Datei. Darum gibt es genau einen Zuhörer je Seite (globale
+  // Marke window.__fpLbToast), egal welche Datei ihn anlegt. Das Ereignis wird nicht gestoppt, Home Assistant zeigt seinen
+  // Hinweis weiter (sichtbar, sobald der Dialog zu ist). Capture-Phase, damit ein stopPropagation weiter unten im Baum den
+  // Zuhörer nicht umgeht. Die Pille hängt als zusätzliches Kind im Dialog; der Beobachter der lightbox schaut nur, ob ov noch
+  // im Dialog steckt, und reagiert deshalb weder auf ihr Kommen noch auf ihr Gehen.
+  if (!window.__fpLbToast) {
+    try {
+      const STD_MS = 4000, MAX_MS = 8000;
+      let akt = null;   // die Pille, die gerade steht: { weg }
+      // Oberster offener, modaler Dialog: der letzte in der Liste, den es noch gibt (die lightbox führt sie).
+      const oberster = () => {
+        const l = window.__fpLbOpen;
+        if (!Array.isArray(l)) return null;
+        for (let i = l.length - 1; i >= 0; i--) {
+          const d = l[i];
+          if (!d || !d.isConnected || !d.open) continue;
+          let modal = true;
+          try { modal = d.matches(":modal"); } catch (e) {}   // ":modal" unbekannt: dann gilt "offen" als modal
+          if (modal) return d;
+        }
+        return null;
+      };
+      const zeige = (dlg, det) => {
+        const msg = det && det.message;
+        if (typeof msg !== "string" || !msg.trim()) return;
+        const act = det.action && typeof det.action.action === "function" ? det.action : null;
+        const dauer = Number(det.duration);
+        const ms = isFinite(dauer) && dauer > 0 ? Math.min(dauer, MAX_MS) : STD_MS;
+        // Ein Rückgängig-Knopf soll nur einmal wirken: Home Assistant zeigt denselben Hinweis nach dem Schließen des Dialogs
+        // noch einmal mit Knopf, und ein zweiter Tipp würde sonst ein zweites Mal rückgängig machen.
+        if (act && !act.action._fpEinmal) {
+          const orig = act.action; let schon = false;
+          const einmal = function () { if (schon) return; schon = true; return orig.apply(act, arguments); };
+          einmal._fpEinmal = true;
+          try { act.action = einmal; } catch (e) {}
+        }
+        if (akt) akt.weg();   // der neue ersetzt den alten
+        // Behälter mit role="status" zuerst leer einhängen, Inhalt einen Augenblick später: so liest ein Screenreader den Text vor.
+        const wrap = document.createElement("div");
+        wrap.className = "fp-lb-toast";
+        wrap.setAttribute("role", "status");
+        wrap.setAttribute("aria-live", "polite");
+        wrap.setAttribute("aria-atomic", "true");
+        wrap.style.cssText = "position:fixed;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom, 0px));z-index:2147483647;display:flex;justify-content:center;box-sizing:border-box;margin:0;padding:0 16px;pointer-events:none;";
+        let tFuell = 0, tEnde = 0;
+        const me = { weg: () => {
+          clearTimeout(tFuell); clearTimeout(tEnde);
+          wrap.remove();
+          if (akt === me) akt = null;
+          if (dlg._fpHinweisWeg === me.weg) dlg._fpHinweisWeg = null;
+        } };
+        akt = me; dlg._fpHinweisWeg = me.weg;
+        dlg.appendChild(wrap);
+        tFuell = setTimeout(() => {
+          const pille = document.createElement("div");
+          pille.style.cssText = "pointer-events:auto;display:inline-flex;align-items:center;gap:12px;box-sizing:border-box;max-width:min(100%,480px);min-height:40px;padding:8px 18px;border-radius:999px;background:var(--primary-text-color);color:var(--card-background-color);box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:14px;font-weight:500;line-height:1.35;text-align:left;text-shadow:none;letter-spacing:normal;text-transform:none;white-space:normal;overflow-wrap:anywhere;cursor:pointer;";
+          const tx = document.createElement("span");
+          tx.textContent = msg;
+          pille.appendChild(tx);
+          if (act) {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.textContent = String(act.text || "OK");
+            b.style.cssText = "flex:none;min-height:32px;margin:-6px -8px -6px 0;padding:6px 8px;border:0;border-radius:999px;background:transparent;color:inherit;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;";
+            b.addEventListener("click", ev => {
+              ev.stopPropagation();
+              me.weg();
+              try { act.action(); } catch (e) { console.warn("[fp-lightbox] Knopf im Hinweis fehlgeschlagen:", e); }
+            });
+            pille.appendChild(b);
+          }
+          pille.addEventListener("click", ev => { ev.stopPropagation(); me.weg(); });
+          wrap.appendChild(pille);
+          try { if (!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) pille.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: 160, easing: "ease-out" }); } catch (e) {}
+        }, 30);
+        tEnde = setTimeout(me.weg, ms);
+      };
+      window.__fpLbToast = { zeige, oberster };
+      window.addEventListener("hass-notification", ev => {
+        try {
+          const dlg = oberster();
+          if (dlg) zeige(dlg, ev.detail);
+        } catch (e) { console.warn("[fp-lightbox] Hinweis im Dialog fehlgeschlagen:", e); }
+      }, true);
+    } catch (e) { console.warn("[fp-lightbox] Hinweise im Dialog nicht verfügbar:", e); }
+  }
 
   // Formularelemente erben die Schrift nicht — sie nehmen die des Systems.
   // Unsere Karten leben im Light DOM, ein Stil im Kopf reicht also aus.
