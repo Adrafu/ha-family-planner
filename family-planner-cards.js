@@ -10692,7 +10692,7 @@ if (!customElements.get("fp-baby-overview-card")) {
 }
 })();
 
-/* ===== fp-assistant-card v18 (Rückfragen: das Weckwort-Mikrofon geht bei mic_pause kurz vor dem Ende des Vorlesens wieder auf (PRE_OPEN_MS), Pip hört nach dem Vorlesen sofort zu statt erst nach knapp 3 Sekunden; sobald nach einer Rückfrage zugehört wird, spielt ein kurzer Ton, ab dem man sprechen kann (er geht nicht an Home Assistant); davor: Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card v19 (Klingeln per Stimme abstellen: solange es klingelt (Timer, Wecker, Erinnerung), bleibt das Weckwort-Mikrofon auch mit mic_pause offen, auch während der Ansage; das Aktivierungswort stellt das Klingeln sofort ab (auf allen Geräten, wie der Stopp-Knopf) und Pip hört danach wie gewohnt zu; davor: Rückfragen: das Weckwort-Mikrofon geht bei mic_pause kurz vor dem Ende des Vorlesens wieder auf (PRE_OPEN_MS), Pip hört nach dem Vorlesen sofort zu statt erst nach knapp 3 Sekunden; sobald nach einer Rückfrage zugehört wird, spielt ein kurzer Ton, ab dem man sprechen kann (er geht nicht an Home Assistant); davor: Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -11136,7 +11136,8 @@ function normCfg(c) {
     learn: /^script\.[a-z0-9_]+$/.test(lr) ? lr : "",
     // early_tts: Sprachausgabe schon abspielen, während Home Assistant sie erzeugt (stream_response); Vorgabe aus (am iPad rauschte es)
     early_tts: c.early_tts === true,
-    // mic_pause: Das Weckwort-Mikrofon ist zu, solange Pip spricht oder klingelt (iOS bleibt sonst im Aufnahmemodus und rauscht); Vorgabe an
+    // mic_pause: Das Weckwort-Mikrofon ist zu, solange Pip eine Antwort vorliest (iOS bleibt sonst im Aufnahmemodus und rauscht); Vorgabe an.
+    // Beim Klingeln (Ton und Ansage) bleibt es offen, damit das Aktivierungswort das Klingeln abstellen kann.
     mic_pause: c.mic_pause !== false,
     wake_screen: /^(button|input_button|script)\.[a-z0-9_]+$/.test(ws) ? ws : "",
     wake_log: /^script\.[a-z0-9_]+$/.test(wl) ? wl : "",
@@ -12531,7 +12532,7 @@ class FpPipDock extends HTMLElement {
     this._unlockAudio();
     this._ringSilence();   // wer jetzt spricht, will den Klingelton nicht im Mikrofon
     this._stopAudio();
-    // Mikrofon-Pause (mic_pause): das Weckwort-Mikrofon ist zu, weil gesprochen oder geklingelt wurde. Jetzt wird zugehört: sofort
+    // Mikrofon-Pause (mic_pause): das Weckwort-Mikrofon ist zu, weil gesprochen wurde. Jetzt wird zugehört: sofort
     // wieder öffnen (nicht erst nach der Ruhezeit), mit dem schon freigeschalteten Kontext, und dann wie unten den Strom teilen.
     let wm = this._wm, pre = null;
     if (!(wm && wm.live) && (this._mp || this._wkResume)) {
@@ -12781,7 +12782,13 @@ class FpPipDock extends HTMLElement {
   _wakeLoad() { try { return localStorage.getItem(this._wakeKey()) === "1"; } catch (e) { return false; } }
   _wakeSave(on) { try { if (on) localStorage.setItem(this._wakeKey(), "1"); else localStorage.removeItem(this._wakeKey()); } catch (e) {} }
   _wakeWant() { return !!(this._visible && this._cfg.wake_word && this._wakeOn && this._micOk() && !document.hidden); }
-  _wakeBusy() { return this._wkHold || !!this._cur || this._speaking || !!(this._ring && this._ring.tone); }
+  // Taub: Gespräch läuft, Erkennung gerade angenommen oder Pip liest eine Antwort vor. Klingelton und Ansage des Klingelns zählen nicht:
+  // Dort soll das Aktivierungswort gerade das Klingeln abstellen (_onWake). Ob das Mikrofon dabei offen ist, regelt _micHold.
+  _wakeBusy() { return this._wkHold || !!this._cur || (this._speaking && !this._ringSpk()); }
+  // Läuft gerade die Ansage des aktuellen Klingelns (kein gewöhnliches Vorlesen)?
+  _ringSpk() { return !!(this._annc && this._annc.ring && this._annc.ring === this._ring); }
+  // Klingelt es laut (Klingelton oder Ansage)? Dann schließt sich ein per Aktivierungswort geöffnetes Fenster nicht von selbst.
+  _ringLoud() { return !!(this._ring && (this._ring.tone || this._ringSpk())); }
   _wakeSet(st, why, err) {
     if (st === "err") console.warn("[fp-assistant] Aktivierungswort:", err || why);
     this._wk = { st, why: why || "", det: st === "err" ? wkDetail(err) : "" };
@@ -12948,12 +12955,15 @@ class FpPipDock extends HTMLElement {
     }
   }
   // ---------- Mikrofon-Pause (mic_pause) ----------
-  // Solange Pip spricht oder klingelt, ist das Weckwort-Mikrofon zu: Ein offener Aufnahmestrom hält iOS im Modus
+  // Solange Pip eine Antwort vorliest, ist das Weckwort-Mikrofon zu: Ein offener Aufnahmestrom hält iOS im Modus
   // "Wiedergabe und Aufnahme" (mit Sprachverarbeitung); die Wiedergabe rauscht dann gelegentlich. Freigegeben werden die Spuren
   // (stop() beendet die Aufnahme und damit den Modus) und die Aufnahmekette; der AudioContext bleibt, wird aber angehalten:
   // So konkurriert er nicht mit der Wiedergabe, und er ist schon freigeschaltet, das Wiederöffnen braucht dann keinen Tipp
   // (ein neuer Kontext bliebe auf iOS ohne Tipp oft stumm). Nach dem Ton plus WAKE_QUIET kommt ein neuer Strom (getUserMedia).
-  _micHold() { return !!(this._cfg.mic_pause && !this._preOpen && (this._speaking || (this._ring && this._ring.tone))); }
+  // Ausnahme Klingeln: Klingelton und Ansage des Klingelns halten nicht. Das Mikrofon bleibt die ganze Zeit offen, damit das
+  // Aktivierungswort das Klingeln abstellen kann (_onWake); es gibt kein Auf und Zu im Takt der Glockenschläge. Am iPad kann die
+  // Glocke bei offenem Mikrofon etwas anders klingen (Sprachverarbeitung), das ist der Preis dafür.
+  _micHold() { return !!(this._cfg.mic_pause && !this._preOpen && this._speaking && !this._ringSpk()); }
   // Ton hat begonnen oder geendet: Mikrofon schließen bzw. das Wiederöffnen einplanen
   _micSync() {
     if (!this._cfg.mic_pause) return;
@@ -13103,6 +13113,10 @@ class FpPipDock extends HTMLElement {
     this._scrWake = true;
     this._screenWake();
     this._wkHold = true;
+    // Es klingelt (laut, still gestellt oder ausgeklungen mit Hinweisfeld): das Aktivierungswort stellt es ab, wie der Stopp-Knopf
+    // (Ton aus, Ansage ab, Signal in Home Assistant leeren, dann hören alle Geräte auf). Nach _wkHold, damit _micPause (über _micSync in
+    // _toneOff/_stopAudio) nichts anfasst; ein dabei gesetztes "idle" überschreibt gleich das "listen" unten.
+    if (this._ring) this._ringStop();
     if (this._eng) this._eng.reset();
     this._chime(m.ctx);
     if (!this._isOpen) { this._wakeOpened = true; this._stageBegin(); this._openPanel(); }
@@ -13378,7 +13392,7 @@ class FpPipDock extends HTMLElement {
     clearTimeout(this._wkIdleT);
     if (!this._wakeOpened) return;
     this._wkIdleT = setTimeout(() => {
-      if (this._wakeOpened && this._isOpen && !this._wakeBusy()) this._close();
+      if (this._wakeOpened && this._isOpen && !this._wakeBusy() && !this._ringLoud()) this._close();
     }, WAKE_IDLE);
   }
   _wakeTouched() {
