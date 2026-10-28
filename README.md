@@ -715,6 +715,10 @@ automation:
 
 Der Verlauf liegt nur im Speicher (die letzten 40 Einträge), ↺ im Kopf beginnt ein neues Gespräch. Nach fünf Minuten ohne Nachricht beginnt für Home Assistant ein neuer Gesprächsfaden, der Verlauf bleibt sichtbar. Die Einstellungen liegen im Browser unter `fp-pip-dock:<dashboard>`, der Schalter für das Aktivierungswort unter `fp-pip-wake:<dashboard>`, der Schalter „An diesem Gerät klingeln“ unter `fp-pip-ring:<dashboard>` (nur bei „aus“ vorhanden) und das zuletzt behandelte Klingel-Signal unter `fp-pip-ringseen:<dashboard>`; wird die Karte entfernt, verschwindet die Figur erst, wenn der erste Eintrag gelöscht ist.
 
+## Dialoge
+
+Alle Dialoge der Karten (Bearbeiten, Nachtragen, Einstellungen, Blätter der Baby-Übersicht, Bericht, Foto in Vollbild) öffnen als natives `<dialog>` in der obersten Ebene des Browsers (Top Layer). Sie stehen deshalb immer mittig im sichtbaren Bildschirm, auch wenn die Karte lang ist und weit über den Bildschirm reicht, und Blätter, die am Handy unten andocken, sitzen am unteren Bildschirmrand. Escape schließt den Dialog; solange er offen ist, ist die Seite dahinter gesperrt. Das gilt für Safari ab iOS 15.4 und Chromium-Browser; in älteren Browsern ohne `<dialog>` erscheinen die Dialoge wie früher im Rahmen der Karte.
+
 ## Design-Variablen (Theme)
 
 Die Karten nehmen Farben, Flächen und Ecken aus Theme-Variablen `--fp-*`. Jede Karte liest sie mit Rückfallwerten, ohne Theme bleibt alles benutzbar. Hell und dunkel kommen aus den `modes` des Themes, die Karten folgen dem Modus des Geräts. Text und Kartenflächen kommen weiter aus den HA-Variablen (`primary-text-color`, `card-background-color` …).
