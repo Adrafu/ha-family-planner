@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.8.2 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
+/* Family Planner custom cards v3.8.3 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt; lightbox: Dialoge als nativer Dialog in der obersten Ebene; Hinweise erscheinen bei offenem Dialog auch im Dialog) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
