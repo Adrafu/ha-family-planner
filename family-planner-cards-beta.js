@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.8.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
+/* Family Planner custom cards v3.8.1 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt; lightbox: Dialoge als nativer Dialog in der obersten Ebene; Hinweise erscheinen bei offenem Dialog auch im Dialog) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10692,7 +10692,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v17 (Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-beta-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v18 (Rückfragen: das Weckwort-Mikrofon geht bei mic_pause kurz vor dem Ende des Vorlesens wieder auf (PRE_OPEN_MS), Pip hört nach dem Vorlesen sofort zu statt erst nach knapp 3 Sekunden; sobald nach einer Rückfrage zugehört wird, spielt ein kurzer Ton, ab dem man sprechen kann (er geht nicht an Home Assistant); davor: Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-beta-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10761,6 +10761,9 @@ const STAGE_IDLE = 30000;   // stage: so lange bleibt die Bühne stehen, wenn na
 const STAGE_OUT = 800;     // stage: so lange dauert der Rückweg (Figur rollt zurück, Fenster geht, Fläche blendet aus)
 const SLOT_WAIT = 1000;    // Handy: ist der Platz in der Kinder-Leiste weg, die Seite aber dieselbe (Karten werden neu aufgebaut, z. B. beim Herunterziehen zum Aktualisieren), wartet die Figur so lange unsichtbar auf den neuen Platz
 const CHIME_MS = 170;       // Länge des Erkennungstons; erst danach geht Ton an Home Assistant
+const CHIME_TAIL = 50;      // Ton beim Zuhören nach einer Rückfrage: so lange nach CHIME_MS (Nachhall im Mikrofon) wird noch nichts gesendet
+const PRE_OPEN_MS = 1200;   // mic_pause: wird eine Rückfrage vorgelesen, geht das Weckwort-Mikrofon so lange vor dem Ende des Vorlesens wieder auf
+const SAY_CPS = 13;         // Zeichen pro Sekunde: Schätzung der Sprechdauer aus der Textlänge, nur zum Planen des Vor-Öffnens (nie zum Abschneiden)
 const SCR_GAP = 4000;       // wake_screen: höchstens ein Knopfdruck in so vielen ms
 const WAKE_LOG_MIN = 0.5;   // wake_log: ab diesem Wert beginnt eine "knappe" Episode (Wert unter der Schwelle, aber nicht Rauschen)
 const WAKE_LOG_WAIT = 20000; // wake_log: so lange darf nach einer Erkennung der Lauf auf sich warten lassen, danach "abbruch"
@@ -11585,6 +11588,9 @@ class FpPipDock extends HTMLElement {
     this._wkIdleT = null;
     this._mp = null;           // Mikrofon-Pause (mic_pause): { ctx } = Weckwort-Mikrofon ist zu, der (schlafende) AudioContext bleibt für das Wiederöffnen
     this._mpT = null;          // Zeitgeber fürs Wiederöffnen (nach dem Ton plus WAKE_QUIET)
+    this._preOpen = null;      // Rückfrage wird vorgelesen und das Weckwort-Mikrofon ist schon wieder auf (PRE_OPEN_MS vor dem Ende): { run }; hält _micHold() auf false
+    this._preT = null;         // Zeitgeber, der kurz vor dem Vor-Öffnen nachsieht (_preCheck)
+    this._preLen = 0;          // Zeichen der Antwort, die als Rückfrage vorgelesen wird (Schätzung der Dauer, falls der Ton seine Länge nicht verrät)
     this._wkOpening = null;    // laufendes Öffnen des Weckwort-Mikrofons
     this._wkResume = false;    // ... und zwar das Wiederöffnen nach einer Pause
     this._wakeOpened = false;  // Fenster wurde vom Weckwort geöffnet
@@ -12176,6 +12182,8 @@ class FpPipDock extends HTMLElement {
     a.addEventListener("ended", () => this._audioDone(false));
     a.addEventListener("error", () => this._audioDone(true));
     a.addEventListener("playing", () => this._audioPlaying());
+    // Rückfrage: Länge und Stand des Vorlesens verfolgen (Vor-Öffnen des Mikrofons, _preCheck)
+    for (const ev of ["timeupdate", "durationchange", "loadedmetadata", "progress", "suspend"]) a.addEventListener(ev, () => this._preCheck());
     return a;
   }
   // iOS: Das Audio-Element muss einmal per Tipp gestartet worden sein, sonst bleibt spätere Wiedergabe stumm.
@@ -12201,6 +12209,7 @@ class FpPipDock extends HTMLElement {
     this._speaking = true;
     this._annc = ann || null;
     this._strm = str || null;
+    this._preClear();   // ein neuer Ton: das vorab geöffnete Mikrofon (falls eines) gehörte zum alten
     this._micSync();   // zuerst das Mikrofon frei geben (iOS in den reinen Wiedergabemodus), dann abspielen
     a.src = src;
     if (!str) this._setState("speak");
@@ -12223,9 +12232,10 @@ class FpPipDock extends HTMLElement {
     const go = !ann && !failed && this._auto && this._isOpen && this._visible && !run;
     this._auto = false;
     this._setState(run ? "think" : "idle");
+    this._preClear();
     this._micSync();
     if (ann) this._annEnd(ann); else this._screenWake(true);   // Antwort vorgelesen: Bildschirm wach halten (Ansagen beim Klingeln nicht)
-    if (go) this._listen(true); else this._stageArm();   // ohne Nachfrage geht die Bühne kurz nach dem Vorlesen zu
+    if (go) this._listen(true, true); else this._stageArm();   // ohne Nachfrage geht die Bühne kurz nach dem Vorlesen zu
   }
   // Der früh gestartete Ton läuft: Anzeige "Spricht", bei der Ansage ist der Klingelton jetzt aus
   _audioPlaying() {
@@ -12257,6 +12267,7 @@ class FpPipDock extends HTMLElement {
     }
     const ann = this._annc;
     this._annc = null;
+    this._preClear();
     this._micSync();
     if (ann) this._annEnd(ann);
   }
@@ -12347,7 +12358,8 @@ class FpPipDock extends HTMLElement {
         if (run.voice && id != null) {
           run.handlerId = id;
           if (run.rec) {
-            this._flush(run);
+            if (run.fup && !run.rec.stopped && this._fupChime(run)) { /* Zuhören nach Rückfrage: erst der Ton, danach wird aufgenommen */ }
+            else this._flush(run);
             if (run.rec.stopped && run.rec.endPending) this._sendEnd(run);
           }
         }
@@ -12398,7 +12410,9 @@ class FpPipDock extends HTMLElement {
         this._convAt = Date.now();
         this._ansAt = Date.now();
         this._auto = !!(run.voice && run.cont && this._cfg.speak !== "never");
+        this._preLen = this._auto ? ai.text.length : 0;
         this._renderLog(true);
+        if (this._auto) this._preCheck();   // läuft das Vorlesen schon (früh gestarteter Ton), kann das Mikrofon jetzt eingeplant werden
         break;
       }
       case "tts-end": {
@@ -12441,7 +12455,7 @@ class FpPipDock extends HTMLElement {
     if (!this._speaking) { this._auto = false; this._setState("idle"); this._screenWake(true); }   // ohne Vorlesen ist die Antwort jetzt fertig; sonst folgt _audioDone
     this._renderLog(true);
     this._applyBusy();
-    if (go) this._listen(true); else this._stageArm();   // ohne Vorlesen und ohne Nachfrage geht die Bühne kurz nach dem Lauf zu
+    if (go) this._listen(true, true); else this._stageArm();   // ohne Vorlesen und ohne Nachfrage geht die Bühne kurz nach dem Lauf zu
   }
   // Werkzeugaufrufe des Gesprächsagenten aus intent-progress (chat_log_delta.tool_calls: [{id, tool_name, tool_args, external}])
   _learnTools(run, list) {
@@ -12508,7 +12522,8 @@ class FpPipDock extends HTMLElement {
   }
 
   // ---------- Mikrofon ----------
-  async _listen(auto) {
+  // auto: kein Tipp auf den Mikrofon-Knopf (Weckwort oder Rückfrage); fup: Weiterhören nach einer Rückfrage (kurzer Ton, sobald zugehört wird)
+  async _listen(auto, fup) {
     if (this._cur || !this._isOpen || !this._visible) return;
     if (!this._micOk()) { if (!auto) this._micFail(); return; }
     this._stageDisarm();   // es wird zugehört: die Bühne bleibt, bis dieser Lauf zu Ende ist
@@ -12520,7 +12535,7 @@ class FpPipDock extends HTMLElement {
     // wieder öffnen (nicht erst nach der Ruhezeit), mit dem schon freigeschalteten Kontext, und dann wie unten den Strom teilen.
     let wm = this._wm, pre = null;
     if (!(wm && wm.live) && (this._mp || this._wkResume)) {
-      pre = this._beginVoice();
+      pre = this._beginVoice(fup);
       try { if (this._wkOpening && this._wkResume) await this._wkOpening; else await this._wakeOpen(); } catch (e) {}
       wm = this._wm;
       if (pre.ended) return;   // inzwischen abgebrochen (Schließen, neues Gespräch)
@@ -12529,7 +12544,7 @@ class FpPipDock extends HTMLElement {
     // Hört das Aktivierungswort schon mit, ist das Mikrofon offen: denselben Strom nehmen, kein zweites getUserMedia.
     if (wm && wm.live) {
       try { if (wm.ctx.state !== "running") wm.ctx.resume(); } catch (e) {}
-      const run = pre || this._beginVoice();
+      const run = pre || this._beginVoice(fup);
       run.rec = { ctx: wm.ctx, stream: wm.stream, shared: wm, queue: [], qlen: 0, stopped: false, endPending: false, timer: null };
       wm.run = run;
       this._voicePipe(run);
@@ -12539,7 +12554,7 @@ class FpPipDock extends HTMLElement {
     let ctx = mkCtx();
     if (!ctx) { if (!auto) this._micFail(); return; }
     try { ctx.resume(); } catch (e) {}
-    const run = this._beginVoice();
+    const run = this._beginVoice(fup);
     let stream = null, rec = null;
     try {
       stream = await navigator.mediaDevices.getUserMedia(MIC);
@@ -12557,9 +12572,10 @@ class FpPipDock extends HTMLElement {
     this._voicePipe(run);
   }
   // Neue Sprachanfrage im Verlauf anlegen (Platzhalter "…" für das, was gesagt wird).
-  _beginVoice() {
+  _beginVoice(fup) {
     this._expireConv();
     const run = this._newRun(true);
+    run.fup = !!fup;
     run.me = this._push({ k: "me", text: "…" });
     this._wlAttach(run);
     this._clAttach(run);
@@ -12689,9 +12705,11 @@ class FpPipDock extends HTMLElement {
   _queue(run, out) {
     const rec = run.rec;
     if (!rec || rec.stopped) return;
+    let first = false;
+    if (rec.dropUntil) { if (Date.now() < rec.dropUntil) return; rec.dropUntil = 0; first = true; }   // Ton nach einer Rückfrage: nichts davon an Home Assistant; der erste Block danach geht gleich los
     rec.queue.push(out);
     rec.qlen += out.length;
-    if (run.handlerId != null && rec.qlen >= 1600) this._flush(run);
+    if (run.handlerId != null && (first || rec.qlen >= 1600)) this._flush(run);
   }
   _sock() {
     const h = getHass(), c = h && h.connection;
@@ -12913,6 +12931,7 @@ class FpPipDock extends HTMLElement {
     if (this._wkTry++ < 3) this._wkRetry = setTimeout(() => this._wakeSync(), 2500);
   }
   _wmClose() {
+    this._preClear();
     const m = this._wm;
     if (!m) return;
     this._wm = null;
@@ -12934,7 +12953,7 @@ class FpPipDock extends HTMLElement {
   // (stop() beendet die Aufnahme und damit den Modus) und die Aufnahmekette; der AudioContext bleibt, wird aber angehalten:
   // So konkurriert er nicht mit der Wiedergabe, und er ist schon freigeschaltet, das Wiederöffnen braucht dann keinen Tipp
   // (ein neuer Kontext bliebe auf iOS ohne Tipp oft stumm). Nach dem Ton plus WAKE_QUIET kommt ein neuer Strom (getUserMedia).
-  _micHold() { return !!(this._cfg.mic_pause && (this._speaking || (this._ring && this._ring.tone))); }
+  _micHold() { return !!(this._cfg.mic_pause && !this._preOpen && (this._speaking || (this._ring && this._ring.tone))); }
   // Ton hat begonnen oder geendet: Mikrofon schließen bzw. das Wiederöffnen einplanen
   _micSync() {
     if (!this._cfg.mic_pause) return;
@@ -12970,6 +12989,68 @@ class FpPipDock extends HTMLElement {
     const mp = this._mp;
     this._mp = null;
     if (mp && mp.ctx) { try { const r = mp.ctx.close(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  }
+  // Rückfrage (mic_pause): Pip stellt eine Frage und wird danach zuhören. Das Weckwort-Mikrofon ist während des Vorlesens zu; es wieder zu
+  // öffnen (getUserMedia, Kontext fortsetzen) dauert am iPad knapp eine Sekunde. Deshalb geht es PRE_OPEN_MS vor dem Ende des Vorlesens auf
+  // (nicht früher: der Großteil des Satzes läuft ohne offenes Mikrofon und ohne Rauschen). _preOpen hält _micHold() so lange auf false,
+  // bis das Vorlesen endet oder abbricht (_preClear). Bis dahin ist _wakeBusy() wahr: die Erkennung bekommt keinen Ton, ans Gespräch
+  // hängt nichts, an Home Assistant geht nichts. Endet das Vorlesen, findet _listen ein offenes Mikrofon und startet sofort.
+  _preCheck() {
+    if (!this._auto || !this._speaking || this._annc || this._preOpen || !this._mp || !this._cfg.mic_pause) return;
+    clearTimeout(this._preT);
+    this._preT = null;
+    if (this._wm || this._wkLoading || (this._ring && this._ring.tone) || !this._isOpen || !this._wakeWant()) return;
+    // Erst wenn der Ton wirklich läuft (iOS soll zuerst im reinen Wiedergabemodus anlaufen), auch bei sehr kurzen Sätzen
+    const a = this._a, rem = a && !a.paused && a.currentTime > 0.15 ? this._preRemain() : NaN;
+    if (rem >= 0 && rem <= PRE_OPEN_MS) {
+      this._preOpen = { run: this._cur };
+      this._wakeSync();   // mic_pause hält nicht mehr (_preOpen): öffnet mit dem schon freigeschalteten Kontext
+      return;
+    }
+    // Länge unbekannt oder noch weit: später nachsehen (die Audio-Ereignisse tun das auch), kurz vor dem Ziel genau
+    this._preT = setTimeout(() => { this._preT = null; this._preCheck(); }, rem > PRE_OPEN_MS ? Math.max(30, Math.min(rem - PRE_OPEN_MS, 250)) : 250);
+  }
+  // Restzeit des Vorlesens in ms; NaN = (noch) nicht zu sagen. Reihenfolge: bekannte Länge (audio.duration; bei einem Stream erst, wenn er
+  // fertig geladen ist), sonst die Länge aus dem Puffer, sobald nichts mehr nachkommt (networkState IDLE nach suspend), sonst eine Schätzung
+  // aus der Textlänge (SAY_CPS ist bewusst langsam gewählt: zu spät ist unschädlich, zu früh nicht). Ist die Schätzung aufgebraucht, aber
+  // der Ton läuft weiter, wird nicht geraten, sondern auf die echte Länge gewartet. IDLE heißt auch "genug vorgeladen" (der Browser hält den
+  // Abruf an): Dann liegt der Puffer aber weit vor der Wiedergabe (Chrome: ab etwa 2,5 s), die Restzeit bleibt über PRE_OPEN_MS und löst nichts
+  // aus; sie schrumpft erst, wenn wirklich alles geladen ist und der Puffer das Ende erreicht.
+  _preRemain() {
+    const a = this._a;
+    if (!a) return NaN;
+    try {
+      const ct = a.currentTime || 0, d = a.duration, n = a.buffered ? a.buffered.length : 0, be = n ? a.buffered.end(n - 1) : 0;
+      const done = a.networkState === 1 && n > 0;   // NETWORK_IDLE: es kommt nichts mehr nach
+      let total = NaN, est = false;
+      if (isFinite(d) && d > 0 && (done || !this._strm)) total = d;
+      else if (done) total = be;
+      else if (this._preLen > 0) { total = Math.max(this._preLen / SAY_CPS, isFinite(d) ? d : 0, be); est = true; }
+      if (!(total > 0)) return NaN;
+      const rem = (total - ct) * 1000;
+      return est && rem <= 0 ? NaN : Math.max(0, rem);
+    } catch (e) { return NaN; }
+  }
+  // Markierung weg (Vorlesen zu Ende oder abgebrochen, Klingeln, neuer Ton, Weckwort aus): Ein schon offenes Mikrofon bleibt für das
+  // Weckwort offen, die Erkennung bleibt aber WAKE_QUIET lang taub (_wkWas); wer danach Ton macht, schließt es über _micSync wieder.
+  _preClear() {
+    clearTimeout(this._preT);
+    this._preT = null;
+    if (!this._preOpen) return;
+    this._preOpen = null;
+    if (this._wm && this._wm.live) this._wkWas = true;
+  }
+  // Zuhören nach einer Rückfrage hat begonnen (run-start mit Kennung des Tonstroms): kurzer Ton als Zeichen, dass jetzt gesprochen werden kann.
+  // Wie beim Weckwort zählt die Aufnahme erst nach dem Ton: Alles davor (Nachhall der Frage) und der Ton selbst (plus CHIME_TAIL) wird verworfen.
+  // false: kein Ton (Kontext läuft nicht, etwa iOS vor dem ersten Tipp), dann wird wie gewohnt gesendet.
+  _fupChime(run) {
+    const rec = run.rec;
+    if (!rec || rec.stopped || !rec.ctx || rec.ctx.state !== "running") return false;
+    rec.queue = [];
+    rec.qlen = 0;
+    rec.dropUntil = Date.now() + CHIME_MS + CHIME_TAIL;
+    this._chime(rec.ctx);
+    return true;
   }
   // Erster Tipp irgendwo auf der Seite: AudioContext fortsetzen (iOS), Vorlesen freischalten, notfalls neu öffnen.
   _wakeArm() {
@@ -13741,6 +13822,7 @@ class FpPipDock extends HTMLElement {
       tn.timer = setTimeout(strike, RING_GAP);
       try { this._bell(ctx, tn); } catch (e) {}
     };
+    this._preClear();   // es klingelt: auch ein vorab geöffnetes Mikrofon (Rückfrage) geht wieder zu
     this._micSync();   // erst das Mikrofon frei geben, dann läuten
     strike();
   }
