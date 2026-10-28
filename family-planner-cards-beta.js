@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.7.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
+/* Family Planner custom cards v3.8.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -2978,7 +2978,7 @@ if (!customElements.get("nav-card-beta")) {
 }
 })();
 
-/* ===== fp-todo-card-beta v20 (Liste kurz nicht erreichbar: neue Einträge bleiben ausgegraut mit Hinweis stehen und werden nachgeschickt, Verschieben bricht ab statt den Eintrag zu verlieren; davor: Einkauf in einer Karte: add_placeholder, create_position: top, header_actions, eingebettete Favoriten, empty_style: compact; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+/* ===== fp-todo-card-beta v21 (Änderungsdialog richtet sich nach den Fähigkeiten der Liste: „Bis wann?“ und due_date nur bei Listen mit Datum (Bring! hat keins), optionales Feld für die Beschreibung/Menge (description_label, description_placeholder), eigener Kopf und eigene Beschriftung für „Wer?“ (edit_title, targets_label), Enter speichert, Escape schließt; davor: Liste kurz nicht erreichbar: neue Einträge bleiben ausgegraut mit Hinweis stehen und werden nachgeschickt, Verschieben bricht ab statt den Eintrag zu verlieren; davor: Einkauf in einer Karte: add_placeholder, create_position: top, header_actions, eingebettete Favoriten, empty_style: compact; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
 // Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
 // selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
 // Hinzufügen über das Ereignis fp-todo-add bleiben.
@@ -3004,6 +3004,8 @@ class FpTodoCard extends HTMLElement {
     };
     // Warteschlange (U.addItem) hat sich bewegt: wartende Zeilen neu zeichnen, zugestellte nach 20 s aufräumen
     this._onQueue = () => { this._paint(); this._after(() => this._paint(), 20100); };
+    // Escape schließt den Änderungsdialog, auch wenn der Fokus nicht im Dialog liegt (nur solange er offen ist)
+    this._onKey = e => { if (e.key === "Escape" && this._ov) { e.stopPropagation(); this._closeEdit(); } };
   }
   setConfig(config) {
     if (!config || !config.entity) throw new Error("entity erforderlich");
@@ -3014,6 +3016,14 @@ class FpTodoCard extends HTMLElement {
     this._edit = !!config.edit_dialog;
     this._targets = config.edit_targets || config.targets || [];
     this._repeats = config.repeat_options || [];
+    // Beschriftungen des Dialogs; leer = Vorgabe. Das Beschreibungsfeld gibt es nur, wenn
+    // description_label oder description_placeholder gesetzt ist (und die Liste Beschreibungen kann).
+    const txt = v => v == null ? "" : String(v).trim();
+    this._editTitle = txt(config.edit_title) || "Aufgabe bearbeiten";
+    this._tgtLabel = txt(config.targets_label) || "Wer?";
+    this._descLabel = txt(config.description_label);
+    this._descPh = txt(config.description_placeholder);
+    this._descEdit = !!(this._descLabel || this._descPh);
     this._items = null; this._err = false; this._errShown = false; this._loadedOnce = false; this._failAt = 0;
     this._pending = []; this._ovr.clear(); this._keep.clear();
     // Kopf-Pillen: nur Einträge mit Dienst „domain.service“ und etwas zum Beschriften
@@ -3497,6 +3507,16 @@ class FpTodoCard extends HTMLElement {
     const t = this._targets.find(x => x.entity === entity);
     return (t && t.project_id) || "";
   }
+  // Fähigkeiten der Liste (supported_features der Entität): 16/32 = Datum, 64 = Beschreibung. null = unbekannt.
+  // Bring! kann nur Beschreibung (71), Todoist alles (127). Home Assistant lehnt due_date/description an einer
+  // Liste ohne das Merkmal ab, auch mit null; deshalb wird dort gar nichts davon mitgeschickt.
+  _feat(entity) {
+    const st = this._hass && this._hass.states && this._hass.states[entity];
+    const f = st && st.attributes ? Number(st.attributes.supported_features) : NaN;
+    return isNaN(f) ? null : f;
+  }
+  _canDate(entity) { const f = this._feat(entity); return f === null || (f & 48) !== 0; }   // unbekannt: wie bisher mit Datum
+  _canDesc(entity) { const f = this._feat(entity); return f !== null && (f & 64) !== 0; }
   async _loadItem(uid) {
     const ent = this.config.entity;
     const r = await this._hass.callService("todo", "get_items", { entity_id: ent }, undefined, false, true);
@@ -3511,6 +3531,8 @@ class FpTodoCard extends HTMLElement {
 
     const src = this.config.entity;
     let sel = src, due = (item.due || "").slice(0, 10), rep = "";
+    const dateOn = this._canDate(src);                       // „Bis wann?“ nur bei Listen mit Datum
+    const descOn = this._descEdit && this._canDesc(src);     // Beschreibungsfeld nur auf Wunsch und bei Listen mit Beschreibung
     const tbtns = this._targets.map(t => `<button class="ft-tgt${t.entity === src ? " ft-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
     const rbtns = [`<button class="ft-rep ft-on" data-r="">Unverändert</button>`]
       .concat(this._repeats.map(o => `<button class="ft-rep" data-r="${this._esc(o.due_string)}">${this._esc(o.label)}</button>`))
@@ -3519,19 +3541,29 @@ class FpTodoCard extends HTMLElement {
       .map(([u, l]) => `<button class="ft-cu${u === "week" ? " ft-on" : ""}" data-u="${u}">${l}</button>`).join("");
 
     const ov = document.createElement("div"); ov.className = "ft-ov"; this._ov = ov;
+    const descHtml = descOn
+      ? `<div class="ft-sub ft-dsub">${this._esc(this._descLabel || "Beschreibung")}</div><input class="ft-name ft-desc" type="text" value="${this._esc(item.description == null ? "" : item.description)}"${this._descPh ? ` placeholder="${this._esc(this._descPh)}"` : ""} style="margin-top:0">`
+      : "";
+    const dateHtml = dateOn
+      ? `<div class="ft-sub">Bis wann?</div>
+      <div class="ft-row"><button class="ft-q" data-q="none">Kein Datum</button><button class="ft-q" data-q="today">Heute</button><button class="ft-q" data-q="tom">Morgen</button><button class="ft-q" data-q="week">In 1 Woche</button><div class="ft-datewrap${due ? "" : " ft-dempty"}"><input class="ft-date" type="date" value="${this._esc(due)}"></div></div>`
+      : "";
     ov.innerHTML = `<div class="ft-modal">
-      <div class="ft-head">Aufgabe bearbeiten</div>
-      <input class="ft-name" type="text" value="${this._esc(item.summary || "")}">
-      ${tbtns ? `<div class="ft-sub">Wer?</div><div class="ft-row">${tbtns}</div>` : ""}
-      <div class="ft-sub">Bis wann?</div>
-      <div class="ft-row"><button class="ft-q" data-q="none">Kein Datum</button><button class="ft-q" data-q="today">Heute</button><button class="ft-q" data-q="tom">Morgen</button><button class="ft-q" data-q="week">In 1 Woche</button><div class="ft-datewrap${due ? "" : " ft-dempty"}"><input class="ft-date" type="date" value="${this._esc(due)}"></div></div>
+      <div class="ft-head">${this._esc(this._editTitle)}</div>
+      <input class="ft-name" type="text" value="${this._esc(item.summary || "")}">${descHtml}
+      ${tbtns ? `<div class="ft-sub">${this._esc(this._tgtLabel)}</div><div class="ft-row">${tbtns}</div>` : ""}
+      ${dateHtml}
       ${this._repeats.length ? `<div class="ft-sub ft-rsub">Wiederholung</div><div class="ft-row ft-reps">${rbtns}</div>`
         + `<div class="ft-cust" style="display:none"><span class="ft-cust-lbl">alle</span><input class="ft-cust-n" type="number" min="1" max="99" value="2"><div class="ft-cus">${ubtns}</div></div>` : ""}
       <div class="ft-foot"><button class="ft-btn ft-save">Speichern</button><button class="ft-btn ft-cancel">Abbrechen</button><button class="ft-btn ft-del">🗑</button></div>
     </div>${this._editStyles()}`;
     this.appendChild(ov);
+    document.addEventListener("keydown", this._onKey);
 
-    const dateInp = ov.querySelector(".ft-date");
+    const nameInp = ov.querySelector(".ft-name:not(.ft-desc)");
+    const descInp = ov.querySelector(".ft-desc");   // null ohne Beschreibungsfeld
+    const descBase = descInp ? descInp.value : "";  // Ausgangswert: mehrzeilige Beschreibungen werden im Feld einzeilig, nur eine echte Änderung wird geschickt
+    const dateInp = ov.querySelector(".ft-date");   // null bei Listen ohne Datum
     const cust = ov.querySelector(".ft-cust");
     const custDue = () => {
       const nEl = cust.querySelector(".ft-cust-n");
@@ -3548,31 +3580,41 @@ class FpTodoCard extends HTMLElement {
     // Kein Klick aus dem Dialog darf nach außen durchschlagen — sonst deutet
     // eine umschließende nav-card-beta ihn als Navigation und wechselt den Tab.
     ov.addEventListener("click", e => { e.stopPropagation(); if (e.target === ov) this._closeEdit(); });
+    // Datum und Beschreibung verschwinden, wenn man in eine Liste ohne dieses Merkmal verschiebt (sie würden dort nicht gespeichert)
+    const dateWrap = ov.querySelector(".ft-datewrap");
+    const dateBlk = dateWrap ? [dateWrap.parentNode.previousElementSibling, dateWrap.parentNode] : [];
+    const descBlk = descInp ? [ov.querySelector(".ft-dsub"), descInp] : [];
+    const syncCaps = () => {
+      dateBlk.forEach(x => x.style.display = this._canDate(sel) ? "" : "none");
+      descBlk.forEach(x => x.style.display = this._canDesc(sel) ? "" : "none");
+    };
     ov.querySelectorAll(".ft-tgt").forEach(b => b.addEventListener("click", () => {
       sel = b.dataset.e;
       ov.querySelectorAll(".ft-tgt").forEach(x => x.classList.toggle("ft-on", x === b));
       syncRep();
+      syncCaps();
     }));
-    const dateWrap = ov.querySelector(".ft-datewrap");
-    // Wie bei der Einkaufskarte: den Datumswähler von Hand aufklappen.
-    dateWrap.addEventListener("click", () => {
-      try { if (dateInp.showPicker) dateInp.showPicker(); else { dateInp.focus(); dateInp.click(); } }
-      catch (e) { dateInp.focus(); }
-    });
-    const paintDue = quickActive => {
-      const has = !!dateInp.value;
-      dateWrap.classList.toggle("ft-dempty", !has);
-      dateWrap.classList.toggle("ft-dsel", has && !quickActive);
-    };
-    ov.querySelectorAll(".ft-q").forEach(b => b.addEventListener("click", () => {
-      const q = b.dataset.q;
-      if (q === "none") { due = ""; dateInp.value = ""; }
-      else { const d = new Date(); if (q === "tom") d.setDate(d.getDate() + 1); if (q === "week") d.setDate(d.getDate() + 7); due = this._iso(d); dateInp.value = due; }
-      ov.querySelectorAll(".ft-q").forEach(x => x.classList.toggle("ft-on", x === b));
-      paintDue(true);
-    }));
-    dateInp.addEventListener("change", () => { due = dateInp.value; ov.querySelectorAll(".ft-q").forEach(x => x.classList.remove("ft-on")); paintDue(false); });
-    paintDue(false);
+    if (dateInp) {
+      // Wie bei der Einkaufskarte: den Datumswähler von Hand aufklappen.
+      dateWrap.addEventListener("click", () => {
+        try { if (dateInp.showPicker) dateInp.showPicker(); else { dateInp.focus(); dateInp.click(); } }
+        catch (e) { dateInp.focus(); }
+      });
+      const paintDue = quickActive => {
+        const has = !!dateInp.value;
+        dateWrap.classList.toggle("ft-dempty", !has);
+        dateWrap.classList.toggle("ft-dsel", has && !quickActive);
+      };
+      ov.querySelectorAll(".ft-q").forEach(b => b.addEventListener("click", () => {
+        const q = b.dataset.q;
+        if (q === "none") { due = ""; dateInp.value = ""; }
+        else { const d = new Date(); if (q === "tom") d.setDate(d.getDate() + 1); if (q === "week") d.setDate(d.getDate() + 7); due = this._iso(d); dateInp.value = due; }
+        ov.querySelectorAll(".ft-q").forEach(x => x.classList.toggle("ft-on", x === b));
+        paintDue(true);
+      }));
+      dateInp.addEventListener("change", () => { due = dateInp.value; ov.querySelectorAll(".ft-q").forEach(x => x.classList.remove("ft-on")); paintDue(false); });
+      paintDue(false);
+    }
     ov.querySelectorAll(".ft-rep").forEach(b => b.addEventListener("click", () => {
       ov.querySelectorAll(".ft-rep").forEach(x => x.classList.toggle("ft-on", x === b));
       if (b.dataset.r === "__custom" && cust) { cust.style.display = "flex"; rep = custDue(); }
@@ -3596,14 +3638,22 @@ class FpTodoCard extends HTMLElement {
     });
     ov.querySelector(".ft-save").addEventListener("click", async e => {
       const btn = e.currentTarget; btn.disabled = true;
-      const name = ov.querySelector(".ft-name").value.trim() || item.summary;
+      const name = nameInp.value.trim() || item.summary;
+      // desc: nur gesetzt, wenn die Angabe im Feld geändert wurde (leer = löschen); sonst undefined
+      const desc = descInp && descInp.value.trim() !== descBase.trim() ? descInp.value.trim() : undefined;
       try {
-        await this._saveEdit({ uid, src, sel, name, due, rep, old: item });
+        await this._saveEdit({ uid, src, sel, name, due, rep, old: item, desc });
         this._closeEdit();
       } catch (err) { U.toast(this, err && err.message === "Liste nicht erreichbar" ? "Liste gerade nicht erreichbar – bitte gleich nochmal versuchen" : "Änderung fehlgeschlagen"); btn.disabled = false; }
     });
+    // Enter im Namens- oder Beschreibungsfeld speichert (Escape schließt über _onKey)
+    [nameInp, descInp].forEach(inp => inp && inp.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); ov.querySelector(".ft-save").click(); }
+    }));
+    // Fokus ins Namensfeld nur mit Maus/Trackpad; am Handy würde die Tastatur aufspringen und das Layout verschieben
+    try { if (window.matchMedia && window.matchMedia("(pointer: fine)").matches) { nameInp.focus(); const n = nameInp.value.length; nameInp.setSelectionRange(n, n); } } catch (e) {}
   }
-  async _saveEdit({ uid, src, sel, name, due, rep, old }) {
+  async _saveEdit({ uid, src, sel, name, due, rep, old, desc }) {
     const moved = sel !== src;
     // Serie: nur über die Todoist-Schnittstelle setzbar, HA reicht sie nicht durch
     if (rep && this._projectOf(sel)) {
@@ -3619,19 +3669,28 @@ class FpTodoCard extends HTMLElement {
       // das Original löschen — der Eintrag wäre verloren. Dann lieber abbrechen.
       if (!U.listUp(this._hass, sel) || !U.listUp(this._hass, src)) throw new Error("Liste nicht erreichbar");
       const data = { entity_id: sel, item: name };
-      if (due) data.due_date = due;
+      if (due && this._canDate(sel)) data.due_date = due;   // Zielliste ohne Datum: Datum entfällt
+      // Beschreibung mitnehmen (geändert: Wert aus dem Feld, sonst die ursprüngliche), wenn die Zielliste sie kann
+      const dsc = desc !== undefined ? desc : (old.description == null ? "" : String(old.description));
+      if (dsc && this._canDesc(sel)) data.description = dsc;
       await this._hass.callService("todo", "add_item", data);
       await this._hass.callService("todo", "remove_item", { entity_id: src, item: uid });
       U.toast(this, `„${name}" verschoben`);
     } else {
       const data = { entity_id: src, item: uid, rename: name };
-      if (due) data.due_date = due; else data.due_date = null;
+      if (this._canDate(src)) data.due_date = due ? due : null;   // Liste ohne Datum: gar nichts mitschicken (auch nicht null)
+      // Leere Angabe = leerer String (HA erlaubt string oder null; Bring! macht daraus eine leere Angabe und löscht sie)
+      if (desc !== undefined && this._canDesc(src)) data.description = desc;
       await this._hass.callService("todo", "update_item", data);
     }
     const refresh = moved || rep ? [src, sel] : [src];
     setTimeout(() => this._hass.callService("homeassistant", "update_entity", { entity_id: refresh }).catch(() => {}), 2500);
   }
-  _closeEdit() { if (this._ov && this._ov.parentNode) this._ov.parentNode.removeChild(this._ov); this._ov = null; }
+  _closeEdit() {
+    document.removeEventListener("keydown", this._onKey);
+    if (this._ov && this._ov.parentNode) this._ov.parentNode.removeChild(this._ov);
+    this._ov = null;
+  }
   _editStyles() {
     return `<style>
       .ft-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:22;}
