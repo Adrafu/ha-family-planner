@@ -10443,7 +10443,7 @@ if (!customElements.get("fp-baby-overview-card")) {
 }
 })();
 
-/* ===== fp-assistant-card v16 (Handy: die Figur steckt als echte Kopie (fp-pip-dock-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card v17 (Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10510,6 +10510,7 @@ const WAKE_IDLE = 30000;    // per Weckwort geöffnetes Fenster schließt sich s
 const STAGE_LINGER = 5000; // stage: so lange nach dem Ende der Antwort bleibt die Bühne noch stehen
 const STAGE_IDLE = 30000;   // stage: so lange bleibt die Bühne stehen, wenn nach dem Tipp auf die Figur nichts passiert; auch eine Berührung oder Eingabe im Fenster hält sie so lange
 const STAGE_OUT = 800;     // stage: so lange dauert der Rückweg (Figur rollt zurück, Fenster geht, Fläche blendet aus)
+const SLOT_WAIT = 1000;    // Handy: ist der Platz in der Kinder-Leiste weg, die Seite aber dieselbe (Karten werden neu aufgebaut, z. B. beim Herunterziehen zum Aktualisieren), wartet die Figur so lange unsichtbar auf den neuen Platz
 const CHIME_MS = 170;       // Länge des Erkennungstons; erst danach geht Ton an Home Assistant
 const SCR_GAP = 4000;       // wake_screen: höchstens ein Knopfdruck in so vielen ms
 const WAKE_LOG_MIN = 0.5;   // wake_log: ab diesem Wert beginnt eine "knappe" Episode (Wert unter der Schwelle, aber nicht Rauschen)
@@ -11379,6 +11380,9 @@ class FpPipDock extends HTMLElement {
     this._copyMH = null;       // spiegelt Theme-Werte und Dunkelmodus des Docks auf die Kopie
     this._slotRaf = 0;
     this._slotSig = "";
+    this._slotPath = "";       // Seite (location.pathname), auf der zuletzt ein Platz da war
+    this._slotLost = 0;        // Zeitpunkt (performance.now), seit dem der Platz fehlt; 0 = nicht in der Wartezeit
+    this._slotWaitT = 0;       // Zeitgeber, der während der Wartezeit regelmäßig neu prüft und sie beendet
     this._slotRun = () => { this._slotRaf = 0; this._slotApply(); };
     this._slotCb = () => this._slotSched();
     this.attachShadow({ mode: "open" });
@@ -11606,9 +11610,12 @@ class FpPipDock extends HTMLElement {
   }
   _slotApply() {
     const f = this._visible ? this._slotFind() : null;
-    if (!f) { this._slotOff(); return; }
+    if (!f) { if (!this._slotHold()) this._slotOff(); return; }
+    this._slotLost = 0;   // Platz da (wieder): Wartezeit zu Ende
+    if (this._slotWaitT) { clearTimeout(this._slotWaitT); this._slotWaitT = 0; }
     const { el, r } = f, left = this._cfg.position === "left";
     if (el !== this._slotEl) {
+      this._slotPath = location.pathname;   // Seite merken, wenn ein (neuer) Platz übernommen wird; nicht bei jedem Lauf, sonst ginge ein Seitenwechsel verloren, solange die alte Karte noch im DOM steht
       if (this._slotRO) { try { this._slotRO.disconnect(); } catch (e) {} this._slotRO = null; }
       this._slotEl = el;
       if (typeof ResizeObserver === "function") { this._slotRO = new ResizeObserver(this._slotCb); this._slotRO.observe(el); }
@@ -11625,7 +11632,26 @@ class FpPipDock extends HTMLElement {
     for (const e of [this._anc, this._stk]) e.classList.add("slot");   // Anker und Pillen folgen dem Rechteck des Platzes
     this._stk.classList.toggle("rt", !left);
   }
+  // Platz weg, obwohl vorher einer da war: Baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren), wird die alte Baby-Karte getrennt und die neue meldet
+  // kurz darauf einen neuen Platz. In der Lücke bleibt die feste Figur unsichtbar (inslot), Anker und Pillen behalten ihre letzten Werte; kommt der Platz (fp-pip-slot, oder die
+  // regelmäßige Prüfung hier), zieht die Kopie dort ein. Ohne Platz nach SLOT_WAIT gilt wie bisher _slotOff (feste Figur in der Ecke).
+  // Auch ein Dock, das in der Lücke kurz unsichtbar und wieder sichtbar wird (setVisible(false), dann (true) beim Neuanlegen der unsichtbaren Karte), verkürzt die Wartezeit nicht:
+  // _teardown räumt den Platz nicht mehr sofort, sondern lässt ihn über diese Wartezeit auslaufen; die feste Figur bleibt als .inslot unsichtbar.
+  // Sofort aus (false): Platz war nie da, Seite gewechselt, Fenster ab 700 px.
+  _slotHold() {
+    if (!this._slotEl || window.innerWidth >= 700 || location.pathname !== this._slotPath) return false;
+    const now = performance.now();
+    if (!this._slotLost) this._slotLost = now;
+    const rest = SLOT_WAIT - (now - this._slotLost);
+    if (rest <= 0) return false;
+    if (this._slotWaitT) clearTimeout(this._slotWaitT);
+    this._slotWaitT = setTimeout(() => { this._slotWaitT = 0; this._slotApply(); }, Math.max(1, Math.min(100, Math.ceil(rest))));
+    return true;
+  }
   _slotOff() {
+    if (this._slotWaitT) { clearTimeout(this._slotWaitT); this._slotWaitT = 0; }
+    this._slotLost = 0;
+    this._slotPath = "";
     if (this._slotRO) { try { this._slotRO.disconnect(); } catch (e) {} this._slotRO = null; }
     this._copyOff();
     if (!this._slotEl && !this._slotSig) return;
@@ -11693,7 +11719,7 @@ class FpPipDock extends HTMLElement {
 
   // Verstecken: Panel zu, Mikrofon und Ton aus, Karten-Abo beenden. Das Gespräch bleibt im Speicher.
   _teardown() {
-    this._slotOff();
+    this._slotApply();   // unsichtbar: kein Platz mehr gesucht; läuft die Wartezeit nicht, wird sofort geräumt, sonst nach SLOT_WAIT (siehe _slotHold)
     this._close();
     this._unsubEvents();
     this._wakeOff();
