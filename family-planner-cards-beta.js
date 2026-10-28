@@ -1,6 +1,6 @@
 /* Family Planner custom cards v3.8.0 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
-/* ===== shared utils (einmal global, von allen Karten genutzt) ===== */
+/* ===== shared utils (einmal global, von allen Karten genutzt; lightbox: Dialoge als nativer Dialog in der obersten Ebene) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
 // Ein "if (window.__fpUtils) return" wuerde bedeuten, dass die zuerst geladene
 // Datei gewinnt — neue Helfer aus der zweiten Datei fehlen dann und die Karten
@@ -100,6 +100,78 @@
         return new Date(a >= r ? a : b);
       }
       return new Date(b <= Date.now() ? b : a);
+    },
+    // Dialog („Lightbox“) als nativer <dialog> in der obersten Ebene (Top Layer): steht immer mittig im sichtbaren
+    // Bildschirm, egal wie lang die Karte ist. Ein position:fixed-Overlay im Kartenbaum hängt dagegen am Rahmen eines
+    // Vorfahren mit Containment (container-type: inline-size) oder transform und erscheint mitten in der Karte, am iPad
+    // unter dem Fold. host = Element, an dem das Overlay bisher hing (Kartenstile, Theme-Variablen und Container-
+    // Abfragen greifen weiter, weil der Dialog dort im Baum steht); ov = das Overlay der Karte (Klasse, Stile und
+    // Vollbild bleiben, es füllt den Dialog); onCancel = der gewohnte Schließen-Weg der Karte. Er läuft bei Escape (und
+    // der Zurück-Taste am Android-Gerät) und wenn die Karte abgehängt wird, während der Dialog offen ist. Ohne onCancel
+    // schließt Escape nichts. Aufgeräumt wird, sobald ov aus dem Dialog verschwindet, egal wie die Karte es entfernt
+    // (ov.remove(), removeChild, innerHTML): ein modaler Dialog ohne Inhalt bleibt so nie stehen.
+    // Gibt den Dialog zurück, im Rückfall (kein <dialog>/showModal, Host nicht angehängt) null: dann hängt ov wie
+    // früher direkt an host.
+    lightbox: (host, ov, onCancel) => {
+      const rueckfall = () => { host.appendChild(ov); return null; };
+      const D = window.HTMLDialogElement;
+      if (!D || typeof D.prototype.showModal !== "function" || !host.isConnected) return rueckfall();
+      // Frühere Dialoge dieser Stelle zuerst wegräumen: hat die Karte ihr altes Overlay gerade entfernt, ist der Dialog dazu
+      // noch da (der Beobachter unten läuft erst nach dem Aufruf) und stünde kurz doppelt im Baum. Ein noch offener Dialog
+      // mit derselben Overlay-Klasse (zweimal schnell geöffnet) wird vom neuen abgelöst; verschiedene Klassen stapeln sich
+      // (Foto in Vollbild über dem Blatt der Meilensteinkarte).
+      for (const c of [...host.children]) if (c.localName === "dialog" && c._fpEnd && (c._fpOv.parentNode !== c || c._fpOv.className === ov.className)) c._fpEnd();
+      const dlg = document.createElement("dialog");
+      dlg.className = "fp-lb";
+      dlg.setAttribute("tabindex", "-1");
+      // Inline, damit keine Kartenregel nötig ist; überstimmt die Vorgaben des Browsers für Dialoge (Rahmen, Rand,
+      // Hintergrund, Höchstgröße, Scrollen). Das Overlay darin ist selbst position:fixed und dunkelt selbst ab.
+      // Breite 100 % statt 100vw: vw schließt eine sichtbare Scrollleiste ein und verschöbe das Overlay um deren halbe Breite.
+      dlg.style.cssText = "position:fixed;inset:0;width:100%;height:100vh;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;overflow:visible;color:inherit;outline:none;";
+      const st = document.createElement("style");
+      st.textContent = "dialog.fp-lb::backdrop{background:transparent}";
+      dlg.append(st, ov);
+      host.appendChild(dlg);
+      try { dlg.showModal(); }
+      catch (e) { dlg.remove(); return rueckfall(); }
+      let fertig = false, mo = null, io = null, raf = 0;
+      // showModal() fokussiert das erste Feld; am Handy öffnete das die Tastatur. Dort bleibt der Fokus auf dem Dialog.
+      const fokus = () => { try { if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) dlg.focus({ preventScroll: true }); } catch (e) {} };
+      const ende = () => {
+        if (fertig) return; fertig = true;
+        if (mo) mo.disconnect();
+        if (io) io.disconnect();
+        cancelAnimationFrame(raf);
+        try { if (dlg.open) dlg.close(); } catch (e) {}
+        dlg.remove();
+      };
+      const abbruch = () => { if (!fertig && ov.parentNode === dlg && onCancel) { try { onCancel(); } catch (e) { console.warn("[fp-lightbox] Schließen fehlgeschlagen:", e); } } };
+      dlg._fpOv = ov; dlg._fpEnd = ende;
+      // Escape: die Karte schließt auf ihrem gewohnten Weg. Der Browser soll den Dialog nicht selbst schließen.
+      dlg.addEventListener("cancel", ev => { ev.preventDefault(); abbruch(); });
+      // Hat der Browser ihn doch geschlossen (Escape ohne vorherige Nutzeraktion ist nicht abbrechbar), die Karte das
+      // Overlay aber behalten will, steht er wieder auf.
+      dlg.addEventListener("close", () => { if (!fertig && ov.parentNode === dlg && dlg.isConnected) { try { dlg.showModal(); } catch (e) {} } });
+      mo = new MutationObserver(() => { if (ov.parentNode !== dlg) ende(); });
+      mo.observe(dlg, { childList: true });
+      // Wird die Karte abgehängt, verliert der Dialog den modalen Zustand von selbst. Beim nächsten Bild räumt das hier
+      // ihn ganz weg und sagt der Karte Bescheid (sonst bliebe ihr Zustand „Dialog offen“ stehen).
+      if (window.IntersectionObserver) {
+        io = new IntersectionObserver(() => { if (!fertig && !dlg.isConnected) { abbruch(); ende(); } });
+        io.observe(dlg);
+      }
+      // Hängt Home Assistant die Karte beim Neuaufbau im selben Takt ab und wieder an (Drehen des iPads, Raster ändert sich),
+      // ist der Dialog danach zwar angehängt und offen, aber nicht mehr modal und stünde wieder im Rahmen der Karte. Ein
+      // Wächter pro Bild stellt das wieder her; solange der Dialog offen ist, kostet er eine Abfrage je Bild.
+      const wacht = () => {
+        if (fertig) return;
+        try { if (dlg.isConnected && dlg.open && !dlg.matches(":modal")) { dlg.close(); dlg.showModal(); fokus(); } }
+        catch (e) { return; }   // ":modal" unbekannt oder showModal geht nicht: kein Wächter mehr
+        raf = requestAnimationFrame(wacht);
+      };
+      raf = requestAnimationFrame(wacht);
+      fokus();
+      return dlg;
     },
   };
   // In dasselbe Objekt hineinschreiben, nicht ersetzen: Karten der anderen
@@ -280,7 +352,7 @@
   for (const ms of [0, 500, 2000]) setTimeout(nachfassen, ms);
 })();
 
-/* ===== meal-grid-card-beta v33 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Heute groß: oben so viel Luft wie seitlich, Nächste Tage enger; davor: Kopf mit „📖 Kochbuch“, wenn cookbook_path gesetzt ist; davor: am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
+/* ===== meal-grid-card-beta v34 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Heute groß: oben so viel Luft wie seitlich, Nächste Tage enger; davor: Kopf mit „📖 Kochbuch“, wenn cookbook_path gesetzt ist; davor: am Tablet als Tabelle: Tage als Zeilen, Mahlzeiten als Spalten mit Punkt nur im Kopf, leer als leises ＋; davor: Nächste Tage zeigen alles Geplante je Tag; davor: Liste nach Tagen als Vorgabe, layout: today für „Heute groß, Woche kurz“ mit days_ahead, layout: grid für die alte Tabelle, schlichter Kopf mit ‹ Woche ›, Mahlzeiten nur als Punkt (fp-meal0–2), feste Farben im Dialog durch Theme-Werte ersetzt; davor: auf schmalen Karten gedreht, Heute als Ring, Feldfarbe je Mahlzeit, meal_labels und empty_text, hide_header, „Zum Rezept“ springt ins eigene Kochbuch, sonst Web-Suche) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -654,10 +726,10 @@ class MealGridCard extends HTMLElement {
     this._mgAiSet = ""; // getippter/vorhandener Text zählt als Wunsch; nur KI-Vorschläge werden ignoriert
     const delBtn = box.querySelector(".mg-del");
     if (!ev) delBtn.style.display = "none";
-    ov.appendChild(box); this.appendChild(ov);
+    const close = () => { this._editing = false; if (ov.parentNode) ov.parentNode.removeChild(ov); this._render(); };
+    ov.appendChild(box); U.lightbox(this, ov, close);
     this._editing = true; // blockiert Re-Renders, solange der Dialog offen ist
     setTimeout(() => { input.focus(); input.select(); }, 30);
-    const close = () => { this._editing = false; if (ov.parentNode) ov.parentNode.removeChild(ov); this._render(); };
     const save = async () => { const t = input.value.trim(); close(); await this._saveCell(meal, date, ev, t); };
     ov.addEventListener("click", e => { if (e.target === ov) close(); });
     box.querySelector(".mg-cancel").addEventListener("click", close);
@@ -1043,7 +1115,7 @@ if (!customElements.get("meal-grid-card-beta")) {
 }
 })();
 
-/* ===== family-calendar-card-beta v2.13 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
+/* ===== family-calendar-card-beta v2.14 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1681,7 +1753,8 @@ class FamilyCalendarCard extends HTMLElement {
       <label class="fcc-check"><input type="checkbox" class="fcc-allday"${allDay ? " checked" : ""}> Ganztags</label>
       <div class="fcc-row2 fcc-times"><div><label class="fcc-lab">Von</label><input class="fcc-in fcc-von" type="time" value="${von}"></div><div><label class="fcc-lab">Bis</label><input class="fcc-in fcc-bis" type="time" value="${bis}"></div></div>
       <div class="fcc-modal-btns"><button class="fcc-btn2 fcc-cancel">Abbrechen</button>${edit ? '<button class="fcc-btn2 fcc-del">Löschen</button>' : ''}<button class="fcc-btn2 fcc-save">Speichern</button></div>`;
-    ov.appendChild(box); this.appendChild(ov);
+    const close = () => { this._editing = false; if (ov.parentNode) ov.parentNode.removeChild(ov); };
+    ov.appendChild(box); U.lightbox(this, ov, close);
     this._editing = true; // blockiert Re-Renders, solange der Dialog offen ist
     const ti = box.querySelector(".fcc-title");
     const adCb = box.querySelector(".fcc-allday");
@@ -1689,7 +1762,6 @@ class FamilyCalendarCard extends HTMLElement {
     const syncTimes = () => { timesEl.style.display = adCb.checked ? "none" : "flex"; };
     syncTimes(); adCb.addEventListener("change", syncTimes);
     setTimeout(() => { ti.focus(); }, 30);
-    const close = () => { this._editing = false; if (ov.parentNode) ov.parentNode.removeChild(ov); };
     ov.addEventListener("click", e => { if (e.target === ov) close(); });
     box.querySelector(".fcc-cancel").addEventListener("click", close);
     const delBtn = box.querySelector(".fcc-del");
@@ -2316,7 +2388,7 @@ if (!customElements.get("kids-routine-card-beta")) {
 }
 })();
 
-/* ===== shopping-fav-card-beta v25 (Liste kurz nicht erreichbar: Eintrag wartet und wird nachgeschickt statt still verloren, wartende Favoriten bleiben mit ✓ markiert; davor: embedded: true ohne eigenen Rahmen, kompakter, für die Aufgabenkarte; davor: großer Knopf unter der Schnellauswahl, wenn beides sichtbar ist; davor: Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
+/* ===== shopping-fav-card-beta v26 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Liste kurz nicht erreichbar: Eintrag wartet und wird nachgeschickt statt still verloren, wartende Favoriten bleiben mit ✓ markiert; davor: embedded: true ohne eigenen Rahmen, kompakter, für die Aufgabenkarte; davor: großer Knopf unter der Schnellauswahl, wenn beides sichtbar ist; davor: Favoriten als gleich breite Chips mit Emoji oben, schon auf der Liste mit ✓ und ohne Doppel, ✏️ im Kopf, großer Knopf in Akzent, Farben nur aus dem Theme; davor: Datumsfeld passt aufs iPhone, Datumsfeld als vierter Knopf in der Bis-wann-Reihe, Wiederholung mit eigenen Intervallen wie „alle 2 Wochen") ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -2366,8 +2438,8 @@ class ShoppingFavCard extends HTMLElement {
     const t = setTimeout(() => { this._timers.delete(t); fn(); }, ms);
     this._timers.add(t);
   }
-  // Dialoge hängen an der Karte selbst. Eingebettet in die Aufgabenkarte (container-type) wäre
-  // position:fixed an deren Rahmen gebunden statt am Fenster; dann hängen sie am Element der Aufgabenkarte.
+  // Dialoge öffnen über U.lightbox als nativer <dialog> in der obersten Ebene (immer mittig im Bildschirm) und hängen im
+  // Baum an der Karte selbst; eingebettet in die Aufgabenkarte am Element der Aufgabenkarte.
   _ovRoot() { return this.config.embedded && this._ovHost && this._ovHost.isConnected ? this._ovHost : this; }
 
   // ---------- „Schon auf der Liste“ (Abo auf list_entity) ----------
@@ -2668,7 +2740,7 @@ class ShoppingFavCard extends HTMLElement {
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
     const tbtns = targets.map(t => `<button class="sf-tgt${t.entity === def ? " sf-tgt-on" : ""}" data-e="${this._esc(t.entity)}">${this._esc(t.label)}</button>`).join("");
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${this._emoji(name)} ${this._esc(name)}</div><div class="sf-sub">Wer?</div><div class="sf-tgts">${tbtns}</div>${this._dueHtml()}${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">OK</button></div></div>`;
-    this._ovRoot().appendChild(ov);
+    U.lightbox(this._ovRoot(), ov, () => this._closeAssign());
     const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
     ov.querySelectorAll(".sf-tgt").forEach(b => b.addEventListener("click", () => {
@@ -2697,7 +2769,7 @@ class ShoppingFavCard extends HTMLElement {
     const dueHtml = this.config.show_due ? this._dueHtml() : "";
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._aov = ov;
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">${CP(0x2795)} ${this._esc(this.config.add_label || "Hinzufügen")}</div><input class="sf-addtext" type="text" placeholder="Eingeben..."/>${favChips ? `<div class="sf-sub">Favoriten</div><div class="sf-favs">${favChips}</div>` : ""}${tbtns ? `<div class="sf-sub">${this._esc(this.config.target_label || "Wer?")}</div><div class="sf-tgts">${tbtns}</div>` : ""}${dueHtml}${this._repeatHtml()}<div class="sf-foot"><button class="sf-cancel">Abbrechen</button><button class="sf-ok">Hinzufügen</button></div></div>`;
-    this._ovRoot().appendChild(ov);
+    U.lightbox(this._ovRoot(), ov, () => this._closeAssign());
     const txt = ov.querySelector(".sf-addtext");
     const syncRep = this._wireRepeat(ov);
     ov.addEventListener("click", e => { if (e.target === ov) this._closeAssign(); });
@@ -2766,7 +2838,7 @@ class ShoppingFavCard extends HTMLElement {
     this._draft = this._items();
     const ov = document.createElement("div"); ov.className = "sf-ov"; this._ov = ov;
     ov.innerHTML = `<div class="sf-modal"><div class="sf-mhead">Favoriten bearbeiten</div><div class="sf-list"></div><div class="sf-addrow"><input class="sf-new" type="text" placeholder="Neuer Favorit..."><button class="sf-addbtn">${CP(0x2795)} Hinzufügen</button></div><div class="sf-foot"><button class="sf-done">Fertig</button></div></div>`;
-    this._ovRoot().appendChild(ov);
+    U.lightbox(this._ovRoot(), ov, () => this._closeEditor());
     ov.addEventListener("click", e => { if (e.target === ov) this._closeEditor(); });
     const inp = ov.querySelector(".sf-new");
     ov.querySelector(".sf-addbtn").addEventListener("click", () => { this._add(inp.value); inp.value = ""; inp.focus(); });
@@ -2978,7 +3050,7 @@ if (!customElements.get("nav-card-beta")) {
 }
 })();
 
-/* ===== fp-todo-card-beta v21 (Änderungsdialog richtet sich nach den Fähigkeiten der Liste: „Bis wann?“ und due_date nur bei Listen mit Datum (Bring! hat keins), optionales Feld für die Beschreibung/Menge (description_label, description_placeholder), eigener Kopf und eigene Beschriftung für „Wer?“ (edit_title, targets_label), Enter speichert, Escape schließt; davor: Liste kurz nicht erreichbar: neue Einträge bleiben ausgegraut mit Hinweis stehen und werden nachgeschickt, Verschieben bricht ab statt den Eintrag zu verlieren; davor: Einkauf in einer Karte: add_placeholder, create_position: top, header_actions, eingebettete Favoriten, empty_style: compact; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
+/* ===== fp-todo-card-beta v22 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Änderungsdialog richtet sich nach den Fähigkeiten der Liste: „Bis wann?“ und due_date nur bei Listen mit Datum (Bring! hat keins), optionales Feld für die Beschreibung/Menge (description_label, description_placeholder), eigener Kopf und eigene Beschriftung für „Wer?“ (edit_title, targets_label), Enter speichert, Escape schließt; davor: Liste kurz nicht erreichbar: neue Einträge bleiben ausgegraut mit Hinweis stehen und werden nachgeschickt, Verschieben bricht ab statt den Eintrag zu verlieren; davor: Einkauf in einer Karte: add_placeholder, create_position: top, header_actions, eingebettete Favoriten, empty_style: compact; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Aufgaben ohne Datum bleiben auch mit due_date_period sichtbar, hide_undated blendet sie aus; davor: Beschreibung als zweite Zeile (show_description); schmale Karten: Chip unter dem Text; davor: zeichnet die Liste selbst statt die HA-Liste einzubetten: Gruppen nach Fälligkeit, Chips, großer Kreis zum Abhaken mit „Rückgängig“, Personenfarbe, empty_text, Liste ohne Kachelflächen; Datumsfeld passt aufs iPhone, Namens-Pille als Kartenkopf, Farben über Theme-Variablen, eigene Wiederholungs-Intervalle im Änderungsdialog) ===== */
 // Die Liste kommt live aus dem Abo todo/item/subscribe und wird im Stil der Baby-Übersicht
 // selbst gezeichnet. Der eigene Änderungsdialog (edit_dialog) und das optimistische
 // Hinzufügen über das Ereignis fp-todo-add bleiben.
@@ -3005,7 +3077,7 @@ class FpTodoCard extends HTMLElement {
     // Warteschlange (U.addItem) hat sich bewegt: wartende Zeilen neu zeichnen, zugestellte nach 20 s aufräumen
     this._onQueue = () => { this._paint(); this._after(() => this._paint(), 20100); };
     // Escape schließt den Änderungsdialog, auch wenn der Fokus nicht im Dialog liegt (nur solange er offen ist)
-    this._onKey = e => { if (e.key === "Escape" && this._ov) { e.stopPropagation(); this._closeEdit(); } };
+    this._onKey = e => { if (e.key === "Escape" && this._ov) { e.stopPropagation(); e.preventDefault(); this._closeEdit(); } };
   }
   setConfig(config) {
     if (!config || !config.entity) throw new Error("entity erforderlich");
@@ -3557,7 +3629,7 @@ class FpTodoCard extends HTMLElement {
         + `<div class="ft-cust" style="display:none"><span class="ft-cust-lbl">alle</span><input class="ft-cust-n" type="number" min="1" max="99" value="2"><div class="ft-cus">${ubtns}</div></div>` : ""}
       <div class="ft-foot"><button class="ft-btn ft-save">Speichern</button><button class="ft-btn ft-cancel">Abbrechen</button><button class="ft-btn ft-del">🗑</button></div>
     </div>${this._editStyles()}`;
-    this.appendChild(ov);
+    U.lightbox(this, ov, () => this._closeEdit());
     document.addEventListener("keydown", this._onKey);
 
     const nameInp = ov.querySelector(".ft-name:not(.ft-desc)");
@@ -4046,7 +4118,7 @@ if (!customElements.get("fp-glance-card-beta")) {
 }
 })();
 
-/* ===== fp-cookbook-card-beta v25 (Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: KI-Bild kann über ai_image_entity eine eigene KI nutzen, z. B. Gemini, während der Rest auf einer anderen läuft; davor: Zutaten → Einkauf übersteht einen Ausfall der Einkaufsliste: wird nachgeschickt; davor: ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
+/* ===== fp-cookbook-card-beta v26 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: KI-Bild kann über ai_image_entity eine eigene KI nutzen, z. B. Gemini, während der Rest auf einer anderen läuft; davor: Zutaten → Einkauf übersteht einen Ausfall der Einkaufsliste: wird nachgeschickt; davor: ruhige Bildkacheln mit Name, Zeit und kcal, Suche und Hinweise als Pillen im Kopf, Filter als wischbare Chips, feste Farben durch Theme ersetzt, Mahlzeit und zuletzt gekocht auf der Rezeptseite; davor: Bilder zu den Rezepten (eigenes Foto, Openverse, KI-Bild, Bildadresse); Zutaten → Einkauf fasst Mengen mit offenen Einträgen zusammen; Import per Link; Rezepte bearbeiten; Filter „schnell“ und „proteinreich“ aus Zeit und Eiweißwert) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -4685,7 +4757,7 @@ ${this._tileHTML(d)}`).join("") : `<div class="cb-empty">Keine Treffer.</div>`;
     this._closeOv();
     const ov = document.createElement("div"); ov.className = "cb-ov"; ov.innerHTML = `<div class="cb-modal">${html}</div>` + this._styles();
     ov.addEventListener("click", e => { if (e.target === ov) this._closeOv(); });
-    this.appendChild(ov); this._ov = ov; return ov;
+    U.lightbox(this, ov, () => this._closeOv()); this._ov = ov; return ov;
   }
 
   _openDetail(d) {
@@ -5353,7 +5425,7 @@ if (!customElements.get("dobby-clock-card-beta")) {
   window.customCards.push({ type: "dobby-clock-card-beta", name: "Dobby Clock Card", description: "Schachuhr, die hochzaehlt — fuer Versteckspiele zu zweit" });
 }
 
-/* ===== fp-feeding-card-beta v13 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
+/* ===== fp-feeding-card-beta v14 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; 7-Tage-Ansicht mit Spalte Stillzeit je Tag, gleichmaessige Spalten, Zahlen rechtsbuendig; Auswahl Tag/Seite im Dialog bleibt stehen; Fläschchen-Zeit ist das Ende: Beginn wird bottle_minutes früher geschätzt, Feld „Fertig um“; Mahlzeit = Einträge mit höchstens meal_pause_minutes Pause dazwischen, Erinnerungsgrenze tags/nachts aus Helfern; Fläschchen: 40 ml vorausgewählt, Schnellwahl 40/60/90/120; Uhrzeitfelder passen aufs iPhone; auf schmalen Karten Start/Stopp in eigener Zeile, Tabelle ohne Umbrüche; Bericht neu gegliedert: Kennzahlen, Mahlzeiten und Windeln getrennt, nur Tage mit Daten, am Handy als Karten; Bericht im Fenster ueber der Karte statt Pop-up, Drucken nur des Berichts, Teilen als Datei; Zeit seit der letzten Mahlzeit gross mit Balken bis zur Erinnerung, Rueckblick ueber 7 Tage, Bericht der letzten 7 Tage zum Drucken oder als PDF, auf Wunsch mit Windeln und Gewicht; Akzentfarbe auch im Dialog, vorher im hellen Modus unsichtbare Knoepfe; Stillprotokoll je Kind: Start/Stopp mit laufender Uhr, Seite mit Vorschlag, Flaeschchen in ml, Heute/Gestern mit Tagessummen, Zeilen bearbeiten und loeschen) ===== */
 // Die Karte schreibt Stillen nie selbst: sie schaltet nur den input_boolean, den
 // auch Alexa schaltet. Den Termin legt die Protokoll-Automation an. So gibt es
 // genau einen Schreiber, egal ob per Knopf, per Stimme oder per Auto-Ende.
@@ -5753,7 +5825,7 @@ class FpFeedingCard extends HTMLElement {
       <iframe class="ff-rep-frame" title="Bericht"></iframe>
     </div>`;
     ov.addEventListener("click", e => { if (e.target === ov) this._closeOv(); });
-    this.appendChild(ov); this._ov = ov;
+    U.lightbox(this, ov, () => this._closeOv()); this._ov = ov;
     const fr = ov.querySelector(".ff-rep-frame");
     fr.srcdoc = this._berichtHTML(gewichte, false);
     ov.querySelector(".ff-rep-close").addEventListener("click", () => this._closeOv());
@@ -5913,7 +5985,7 @@ ${tage.length ? `<div class="kacheln">${kacheln}</div>
     ov.className = "ff-ov";
     ov.innerHTML = `<div class="ff-modal">${html}</div>`;
     ov.addEventListener("click", e => { if (e.target === ov) this._closeOv(); });
-    this.appendChild(ov); this._ov = ov;
+    U.lightbox(this, ov, () => this._closeOv()); this._ov = ov;
     return ov;
   }
   _closeOv() { if (this._ov) { this._ov.remove(); this._ov = null; } }
@@ -6188,7 +6260,7 @@ if (!customElements.get("fp-feeding-card-beta")) {
 }
 })();
 
-/* ===== fp-weight-card-beta v8 (Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert und beim Korrigieren behalten; davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Datumsfeld passt aufs iPhone, Kopfzeile bricht nur ganze Werte um; Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
+/* ===== fp-weight-card-beta v9 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert und beim Korrigieren behalten; davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Datumsfeld passt aufs iPhone, Kopfzeile bricht nur ganze Werte um; Perzentilkurven aus lokaler Datei growth_data: Fruehgeborene nach Alter ab Beginn der Schwangerschaft, danach WHO nach korrigiertem Alter, Perzentile des letzten Werts; Eintragen-Knopf mit Theme-Textfarbe; neutrale Vorgabe-Kinder; Gewicht mit drei Nachkommastellen; Gewichtsverlauf mehrerer Kinder auf einer Zeitachse, Eintragen per Dialog: Kind, Datum, Gewicht; Punkt antippen zum Bearbeiten/Loeschen) ===== */
 // Ein Eintrag = ein Ganztagstermin im Kalender: Titel "Kind A 3450 g",
 // Beschreibung {"typ":"gewicht","kind":"kind_a","g":3450}. Pro Kind und Tag gibt
 // es höchstens einen Wert — wer denselben Tag nochmal einträgt, korrigiert ihn.
@@ -6508,7 +6580,7 @@ class FpWeightCard extends HTMLElement {
         <button class="fw-btn fw-cancel">Abbrechen</button><button class="fw-btn fw-ok">Speichern</button>
       </div></div>`;
     ov.addEventListener("click", ev => { if (ev.target === ov) this._closeOv(); });
-    this.appendChild(ov); this._ov = ov;
+    U.lightbox(this, ov, () => this._closeOv()); this._ov = ov;
     const mark = () => ov.querySelectorAll(".fw-seg button").forEach(b => b.classList.toggle("fw-on", b.dataset.k === kind));
     ov.querySelectorAll(".fw-seg button").forEach(b => b.addEventListener("click", () => { kind = b.dataset.k; mark(); }));
     mark();
@@ -6603,7 +6675,7 @@ if (!customElements.get("fp-weight-card-beta")) {
 }
 })();
 
-/* ===== fp-diaper-card-beta v6 (Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
+/* ===== fp-diaper-card-beta v7 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; liest den Kalender alle 20 s statt jede Minute, Einträge von außen erscheinen schneller; Uhrzeitfeld passt aufs iPhone, Knöpfe auf schmalen Karten kleiner; Windelprotokoll je Kind: nass/voll/beides per Tipp, Zeit seit der letzten Windel und dem letzten Stuhl, Heute/Gestern mit Summen, Rueckblick ueber 7 Tage) ===== */
 // Ein Eintrag = ein kurzer Termin im eigenen Kalender: Titel "Windel nass",
 // Beschreibung {"typ":"windel","art":"nass|voll|beides"}. Nicht in den
 // Stillkalender schreiben: die 3-h-Erinnerung zählt dort jeden Eintrag als Mahlzeit.
@@ -6796,7 +6868,7 @@ class FpDiaperCard extends HTMLElement {
         <button class="fd-mbtn fd-cancel">Abbrechen</button><button class="fd-mbtn fd-ok">Speichern</button>
       </div></div>`;
     ov.addEventListener("click", x => { if (x.target === ov) this._closeOv(); });
-    this.appendChild(ov); this._ov = ov;
+    U.lightbox(this, ov, () => this._closeOv()); this._ov = ov;
     const mark = () => ov.querySelectorAll(".fd-seg button").forEach(b => b.classList.toggle("fd-on", b.dataset.a === art));
     ov.querySelectorAll(".fd-seg button").forEach(b => b.addEventListener("click", () => { art = b.dataset.a; mark(); }));
     mark();
@@ -6884,7 +6956,7 @@ if (!customElements.get("fp-diaper-card-beta")) {
 }
 })();
 
-/* ===== fp-milestone-card-beta v4 (Foto je Meilenstein: hochladen beim Festhalten und später, rund im Album statt des Symbols, klein in Entwicklung und Bewegung, groß in der Erinnerung; davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
+/* ===== fp-milestone-card-beta v5 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Foto je Meilenstein: hochladen beim Festhalten und später, rund im Album statt des Symbols, klein in Entwicklung und Bewegung, groß in der Erinnerung; davor: Farben und Radien aus dem Theme, Kinderfarbe im Dunkeln lesbar; Heute-Linie in der Bewegung immer sichtbar, auch vor dem errechneten Termin, kräftiger und mit „heute“ an der Achse; Meilensteine je Kind zum Abhaken: Erste Male als Sticker-Album, Entwicklung nach Alter nach den CDC-Checklisten 2022, Bewegung mit den Zeitfenstern der WHO; Abhaken mit Konfetti, Datum und Notiz, auch nachträglich und für mehrere Kinder auf einmal; eigene Momente; Frühgeborene nach korrigiertem Alter) ===== */
 // Ein erreichter Meilenstein = ein Ganztagstermin im eigenen Kalender an dem Tag,
 // an dem es passiert ist: Titel "🐢 Kind A: Krabbelt", Beschreibung
 // {"typ":"meilenstein","kind":"kind_a","id":"krabbeln"}, dazu optional notiz,
@@ -7356,9 +7428,9 @@ class FpMilestoneCard extends HTMLElement {
     f.className = "fm-full";
     f.innerHTML = `${this._foto(src, "fm-full-img")}<button class="fm-full-x" aria-label="Schließen">✕</button>`;
     f.addEventListener("click", () => this._closeFull());
-    this.appendChild(f); this._full = f;
+    U.lightbox(this, f, () => this._closeFull()); this._full = f;   // eigener Dialog über dem Blatt (das Blatt ist selbst modal)
     this._fillImgs(f);
-    this._fullKey = ev => { if (ev.key === "Escape") { ev.stopPropagation(); this._closeFull(); } };
+    this._fullKey = ev => { if (ev.key === "Escape") { ev.stopPropagation(); ev.preventDefault(); this._closeFull(); } };
     document.addEventListener("keydown", this._fullKey, true);
   }
   _closeFull() {
@@ -7613,7 +7685,7 @@ class FpMilestoneCard extends HTMLElement {
         <button class="fm-btn fm-cancel">${e ? "Schließen" : "Abbrechen"}</button><button class="fm-btn fm-ok">${e ? "Speichern" : "Festhalten ✨"}</button></div>
     </div>`;
     ov.addEventListener("click", ev => { if (ev.target === ov) this._closeOv(); });
-    this.appendChild(ov); this._ov = ov;
+    U.lightbox(this, ov, () => this._closeOv()); this._ov = ov;
     const datum = ov.querySelector(".fm-datum"), ageEl = ov.querySelector(".fm-age");
     const zeig = () => {
       ov.querySelectorAll(".fm-when button").forEach(b => b.classList.toggle("fm-sel", b.dataset.d === datum.value));
@@ -7876,7 +7948,7 @@ if (!customElements.get("fp-milestone-card-beta")) {
 })();
 
 
-/* ===== fp-baby-overview-card-beta v30 (Handy: der Platz für den Sprachassistenten (.fo-pipslot) nimmt dessen Figur als Kind auf (display: flex, overflow: visible) und gibt sie beim Neuzeichnen der Leiste an den neuen Platz weiter; davor: dock_gap setzt in die Kinder-Leiste einen echten Platz für den Sprachassistenten (.fo-pipslot, gemeldet in window.__fpPipSlots), Pip setzt sich darauf; swipe_views – die Randfläche ist eine kurze Lasche auf Bildschirmmitte statt eines Streifens über die ganze Höhe, die Tageszeile zeigt heute das Datum statt „Heute“; davor: Handy: kids_dock – mit mindestens zwei Kindern mit Schlafschalter sitzt ganz rechts in der Leiste ein Mond-Knopf, der ein Schlaf-Blatt für alle öffnet (eine Zeile je Kind zum Umschalten, darunter „Beide schlafen“ bzw. „Beide aufwecken“); davor: Handy: kids_dock – unten eine Leiste mit einer Pille je Kind, ein Tipp öffnet ein Blatt mit Schlafen und Stillen; swipe_views – Ansichten per Wischen mit Namenszeile unter der Kinderwahl statt Ansichtsleiste; dock_gap – Platz links für den Sprachassistenten; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
+/* ===== fp-baby-overview-card-beta v31 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Handy: der Platz für den Sprachassistenten (.fo-pipslot) nimmt dessen Figur als Kind auf (display: flex, overflow: visible) und gibt sie beim Neuzeichnen der Leiste an den neuen Platz weiter; davor: dock_gap setzt in die Kinder-Leiste einen echten Platz für den Sprachassistenten (.fo-pipslot, gemeldet in window.__fpPipSlots), Pip setzt sich darauf; swipe_views – die Randfläche ist eine kurze Lasche auf Bildschirmmitte statt eines Streifens über die ganze Höhe, die Tageszeile zeigt heute das Datum statt „Heute“; davor: Handy: kids_dock – mit mindestens zwei Kindern mit Schlafschalter sitzt ganz rechts in der Leiste ein Mond-Knopf, der ein Schlaf-Blatt für alle öffnet (eine Zeile je Kind zum Umschalten, darunter „Beide schlafen“ bzw. „Beide aufwecken“); davor: Handy: kids_dock – unten eine Leiste mit einer Pille je Kind, ein Tipp öffnet ein Blatt mit Schlafen und Stillen; swipe_views – Ansichten per Wischen mit Namenszeile unter der Kinderwahl statt Ansichtsleiste; dock_gap – Platz links für den Sprachassistenten; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: action_bar: false blendet die Aktionsleiste am Handy aus; davor: Wiegezeit: die Uhrzeit der Eingabe wird als Wiegezeit mitgespeichert, beim Korrigieren behalten, in Wachstum und „Frag nach“ gezeigt; davor: „Frag nach“ bleibt am Gerät gespeichert und überlebt Tab-Wechsel und Neuladen, bis „Neues Gespräch“ getippt wird; davor: Leiste unten fehlte am Tablet manchmal: die Ansichtsleiste steht schon beim Aufbau da und hängt an keiner :has()-Regel mehr, die Safari nach dem Laden nicht immer neu auswertet; davor: bar_style: inline für die Begrüßung – die Leiste ohne Pille, eine Zeile je Kind in Farbe und Größe des Behälters; davor: layout: bar – schmale Baby-Leiste für die Startseite mit letzter und nächster Mahlzeit je Kind, Tipp öffnet den Baby-Tab bei diesem Kind; davor: ein Tipp auf „Nächste Mahlzeit“, Stillen, Fläschchen oder Windel öffnet das Protokoll dieses Kindes an der passenden Stelle; davor: am Handy klebt der Kopf mit der Kinderwahl beim Scrollen oben, mit Fläche und Schatten; „Beide“ in der Aktionsleiste statt Schlafblock oben; davor: startet beim Öffnen des Tabs immer auf „Heute“ und dem heutigen Tag; davor: „Muster“ und „Wachstum“ in der Listen-Sprache wie „Heute“; davor: „Heute“ ruhiger mit „Jetzt“ als Liste, Tagesstreifen mit Zahlen als Textzeile, Einträgen ohne Kachelflächen und „wach seit“ im Schlaf; davor: am Handy Aktionsleiste unten für das gewählte Kind, Schnellknöpfe dort entfallen, oben nur „Beide schlafen“; weniger Doppeltes in „Heute“; Farben und Radien aus dem Theme; Kindwechsel als Segment-Schalter und per Wischen; Leiste unten mit Heute, Protokoll, Muster, Wachstum und Momente; jeder Eintrag antippbar zum Ändern und Löschen, „Rückgängig“, „＋ Nachtragen“; ⚙ Einstellungen für Erinnerung und Pause; Schlaf per Knopf mit Prognose aus den eigenen Wachphasen; Wachstum mit Perzentilkurven aus growth_data; im Stil von Buma: Karte „Nächste Mahlzeit“, Tagesstreifen, ✦ „Frag nach“) ===== */
 // Liest, was die anderen Karten schreiben: Stillprotokoll (fp-feeding-card-beta), Windeln
 // (fp-diaper-card-beta), Gewicht (fp-weight-card-beta) und Meilensteine (fp-milestone-card-beta), dazu den
 // eigenen Schlafkalender je Kind (sleep_calendar, geschrieben von der Protokoll-Automation).
@@ -9456,7 +9528,7 @@ class FpBabyOverviewCard extends HTMLElement {
     ov.className = "fo-ov";
     ov.innerHTML = `<div class="fo-sheet ${cls || ""}" role="dialog">${inner}</div>`;
     ov.addEventListener("click", ev => { if (ev.target === ov || ev.target.closest(".fo-x")) this._closeSheet(); });
-    this._card.appendChild(ov); this._ov = ov;
+    U.lightbox(this._card, ov, () => this._closeSheet()); this._ov = ov;
     return ov;
   }
   // kids_dock (Handy): die Pillen unten, eine je Kind. Keine Zustandsanzeige, nur Avatar und Name in der Kinderfarbe.
