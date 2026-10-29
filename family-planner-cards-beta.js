@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.8.2 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
+/* Family Planner custom cards v3.8.3 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt; lightbox: Dialoge als nativer Dialog in der obersten Ebene; Hinweise erscheinen bei offenem Dialog auch im Dialog) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10692,7 +10692,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v19 (Klingeln per Stimme abstellen: solange es klingelt (Timer, Wecker, Erinnerung), bleibt das Weckwort-Mikrofon auch mit mic_pause offen, auch während der Ansage; das Aktivierungswort stellt das Klingeln sofort ab (auf allen Geräten, wie der Stopp-Knopf) und Pip hört danach wie gewohnt zu; davor: Rückfragen: das Weckwort-Mikrofon geht bei mic_pause kurz vor dem Ende des Vorlesens wieder auf (PRE_OPEN_MS), Pip hört nach dem Vorlesen sofort zu statt erst nach knapp 3 Sekunden; sobald nach einer Rückfrage zugehört wird, spielt ein kurzer Ton, ab dem man sprechen kann (er geht nicht an Home Assistant); davor: Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-beta-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v20 (verpasste Rufe aufzeichnen: mit wake_clip_min gehen über wake_clip auch Episoden unter der Schwelle ab dieser Untergrenze als Aufnahme hinaus (art knapp), mit eigener Drosselung, nicht während Pip beschäftigt ist; davor: Klingeln per Stimme abstellen: solange es klingelt (Timer, Wecker, Erinnerung), bleibt das Weckwort-Mikrofon auch mit mic_pause offen, auch während der Ansage; das Aktivierungswort stellt das Klingeln sofort ab (auf allen Geräten, wie der Stopp-Knopf) und Pip hört danach wie gewohnt zu; davor: Rückfragen: das Weckwort-Mikrofon geht bei mic_pause kurz vor dem Ende des Vorlesens wieder auf (PRE_OPEN_MS), Pip hört nach dem Vorlesen sofort zu statt erst nach knapp 3 Sekunden; sobald nach einer Rückfrage zugehört wird, spielt ein kurzer Ton, ab dem man sprechen kann (er geht nicht an Home Assistant); davor: Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-beta-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -10774,6 +10774,8 @@ const WAKE_CLIP_PRE = 3;    // wake_clip: so viele Sekunden Ton vor der Reaktion
 const WAKE_CLIP_POST = 1;   // wake_clip: ... und so viele Sekunden danach
 const WAKE_CLIP_GAP = 10;   // wake_clip: höchstens ein Clip in so vielen Sekunden
 const WAKE_CLIP_HOUR = 30;  // wake_clip: höchstens so viele Clips pro Stunde (gleitend)
+const WAKE_CLIP_NEAR_GAP = 10;  // wake_clip_min: höchstens ein knapper Clip (art "knapp") in so vielen Sekunden, eigene Zählung neben WAKE_CLIP_GAP
+const WAKE_CLIP_NEAR_HOUR = 20; // wake_clip_min: höchstens so viele knappe Clips pro Stunde (gleitend), eigene Zählung neben WAKE_CLIP_HOUR
 const WAKE_CLIP_HZ = 16000; // wake_clip: Abtastrate des Mikrofontons an der Erkennung
 const WAKE_CLIP_SAFE = 5000; // wake_clip: so lange darf ein Clip ohne angenommene Erkennung offen bleiben (Notausstieg), dann geht er mit dem, was da ist
 const RING_AGE = 180;       // ein Klingel-Signal ist höchstens so viele Sekunden alt (danach nimmt Home Assistant es selbst zurück)
@@ -11123,6 +11125,11 @@ function normCfg(c) {
   // wake_clip: Skript, das bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) den Mikrofon-Ton davor und danach als WAV (Base64) bekommt,
   // um Fehlauslöser als Trainingsdaten zu sammeln; ohne gültige Angabe (oder ohne wake_word) keine Funktion
   const wc = String(c.wake_clip || "").trim();
+  const wcOk = /^script\.[a-z0-9_]+$/.test(wc);
+  // wake_clip_min: Untergrenze für verpasste Rufe. Mit wake_clip gehen auch Episoden als Clip hinaus (art "knapp"), deren Höchstwert unter der
+  // Schwelle bleibt, aber diese Untergrenze erreicht. Gültig nur mit wake_clip (und wake_word) und 0,3 <= Wert < Schwelle, sonst 0 = aus.
+  const wcm = Number(c.wake_clip_min);
+  const wcmOk = wcOk && !!wake && isFinite(wcm) && wcm >= 0.3 && wcm < wake.threshold;
   return {
     name,
     pipeline_id: String(c.pipeline_id || "").trim(),
@@ -11141,7 +11148,8 @@ function normCfg(c) {
     mic_pause: c.mic_pause !== false,
     wake_screen: /^(button|input_button|script)\.[a-z0-9_]+$/.test(ws) ? ws : "",
     wake_log: /^script\.[a-z0-9_]+$/.test(wl) ? wl : "",
-    wake_clip: /^script\.[a-z0-9_]+$/.test(wc) ? wc : "",
+    wake_clip: wcOk ? wc : "",
+    wake_clip_min: wcmOk ? wcm : 0,
     // stage (Bühne): bei Gesprächen per Aktivierungswort und per Tipp auf die Figur, ab 700 px Breite, wird das Dashboard abgedunkelt, die Figur groß, das Gespräch darunter; Vorgabe aus
     stage: c.stage === true,
   };
@@ -11604,8 +11612,9 @@ class FpPipDock extends HTMLElement {
     this._wlEp = null;         // wake_log: laufende Episode mit Werten ab WAKE_LOG_MIN { max, n, t, skip }
     this._wlKn = [];           // wake_log: Zeiten der letzten Knapp-Einträge (Drosselung)
     this._clBuf = null;        // wake_clip: Ringpuffer der letzten WAKE_CLIP_PRE Sekunden { b: Int16Array, w: Schreibzeiger, n: gefüllt }; nur mit wake_clip, nur bei offenem Mikrofon
-    this._cl = null;           // wake_clip: offener Clip { pre, post, pn, wert, bloecke, ep, t, art, folge, acc, rej, run, timer }, bis er geschickt ist
+    this._cl = null;           // wake_clip: offener Clip { pre, post, pn, wert, bloecke, ep, t, art, folge, acc, rej, run, timer, near }, bis er geschickt ist
     this._clKn = [];           // wake_clip: Zeiten der letzten Clips (Drosselung)
+    this._clKnN = [];          // wake_clip_min: Zeiten der letzten knappen Clips (eigene Drosselung)
     // Timer, Wecker, Erinnerungen und Klingeln (alarms)
     this._alT = null;          // Takt für Countdown und Vorschau (setTimeout)
     this._alIds = [];          // alle Entitäten aus alarms
@@ -13226,6 +13235,12 @@ class FpPipDock extends HTMLElement {
   // - art "ausgeloest": das Modell hat die Geduld erreicht. folge = wie bei wake_log das Ende (text, leer, fehler, abbruch), geschickt, wenn es feststeht;
   //   wurde die Erkennung abgewiesen (Pip beschäftigt, Fenster unsichtbar): folge "abgewiesen", geschickt, sobald die Nach-Sekunde voll ist.
   // - art "schwelle": Wert über der Schwelle, Geduld nicht erreicht. folge "keine", geschickt, sobald die Nach-Sekunde voll und die Episode vorbei ist.
+  // - art "knapp" (nur mit wake_clip_min): verpasste Rufe, also Episoden, deren Höchstwert unter der Schwelle bleibt, aber die Untergrenze wake_clip_min
+  //   erreicht (0,3 <= Untergrenze < Schwelle). Die Episode läuft, solange der Wert bei oder über der Untergrenze bleibt; folge "keine", geschickt wie
+  //   "schwelle". Sie entsteht nur, wenn Pip nicht beschäftigt ist (_wakeBusy), und hat eine eigene Drosselung (_clKnN: WAKE_CLIP_NEAR_GAP s,
+  //   WAKE_CLIP_NEAR_HOUR pro Stunde), damit ein knapper Clip einen echten, der kurz danach kommt (zweiter Ruf), nicht wegdrosselt. Erreicht ein offener
+  //   knapper Clip die Schwelle, wird er zum normalen Clip (art "schwelle" bzw. "ausgeloest"), zählt dann zusätzlich in _clKn und gilt ab da mit der
+  //   Schwelle als Episodengrenze wie bisher. Ohne wake_clip_min ändert sich nichts.
   // Höchstens ein offener Clip; ein gedrosselter Clip (alle WAKE_CLIP_GAP s, WAKE_CLIP_HOUR pro Stunde) wird gar nicht erst angelegt.
   // Ist die Nach-Sekunde beim Ende noch nicht voll (Mikrofon zu, Fenster sofort geschlossen), geht der Clip mit dem, was da ist.
   _clOn() { return !!(this._cfg.wake_clip && this._cfg.wake_word); }
@@ -13252,28 +13267,42 @@ class FpPipDock extends HTMLElement {
     }
     this._clCheck();
   }
-  // Jeder Block der Erkennung (80 ms): der erste ab der Schwelle legt den Clip an, weitere zählen nur Höchstwert und Blöcke mit
+  // Jeder Block der Erkennung (80 ms): der erste ab der Schwelle legt den Clip an, weitere zählen nur Höchstwert und Blöcke mit.
+  // Mit wake_clip_min legt auch der erste Block ab der Untergrenze (unter der Schwelle) einen knappen Clip an, wenn Pip nicht beschäftigt ist.
+  // Bei einem knappen Clip läuft die Episode, solange der Wert bei oder über der Untergrenze bleibt, "bloecke" zählt aber nur Blöcke ab der Schwelle.
   _clScore(s) {
     if (!this._clOn()) return;
-    const w = this._cfg.wake_word, now = Date.now();
+    const w = this._cfg.wake_word, mn = this._cfg.wake_clip_min, now = Date.now();
     let c = this._cl;
-    if (s >= w.threshold) {
-      if (!c) c = this._clOpen(now);
+    if (!c) {
+      if (s >= w.threshold) c = this._clOpen(now, false);
+      else if (mn && s >= mn && !this._wakeBusy()) c = this._clOpen(now, true);
       if (!c) return;
+    } else if (c.near && s >= w.threshold) this._clUp(c, now);   // der knappe Clip hat die Schwelle erreicht: ab hier ein normaler Clip
+    if (s >= (c.near && mn ? mn : w.threshold)) {
       if (s > c.wert) c.wert = s;
-      c.bloecke++;
+      if (s >= w.threshold) c.bloecke++;
       c.ep = true;
       c.t = now;
-    } else if (c && c.ep) {
+    } else if (c.ep) {
       c.ep = false;
       this._clCheck();
     }
   }
-  // Clip anlegen (null, wenn gedrosselt): Momentaufnahme des Ringpuffers, ältester Wert zuerst
-  _clOpen(now) {
+  // Knapper Clip wird zum normalen Clip (Schwelle erreicht, Erkennung angenommen oder abgewiesen): zählt zusätzlich in der Drosselung der echten
+  // Clips (_clKn), ohne selbst gedrosselt zu werden; der Eintrag in _clKnN bleibt
+  _clUp(c, now) {
+    if (!c.near) return;
+    c.near = false;
     const l = this._clKn;
     while (l.length && now - l[0] >= 3600000) l.shift();
-    if (l.length >= WAKE_CLIP_HOUR || (l.length && now - l[l.length - 1] < WAKE_CLIP_GAP * 1000)) return null;
+    l.push(now);
+  }
+  // Clip anlegen (null, wenn gedrosselt): Momentaufnahme des Ringpuffers, ältester Wert zuerst. near = knapper Clip mit eigener Drosselung.
+  _clOpen(now, near) {
+    const l = near ? this._clKnN : this._clKn, gap = near ? WAKE_CLIP_NEAR_GAP : WAKE_CLIP_GAP, hour = near ? WAKE_CLIP_NEAR_HOUR : WAKE_CLIP_HOUR;
+    while (l.length && now - l[0] >= 3600000) l.shift();
+    if (l.length >= hour || (l.length && now - l[l.length - 1] < gap * 1000)) return null;
     l.push(now);
     const r = this._clBuf, n = r ? r.n : 0, pre = new Int16Array(n);
     if (n) {
@@ -13281,7 +13310,7 @@ class FpPipDock extends HTMLElement {
       pre.set(r.b.subarray(a, a + k), 0);
       if (k < n) pre.set(r.b.subarray(0, n - k), k);
     }
-    const c = this._cl = { pre, post: new Int16Array(WAKE_CLIP_POST * WAKE_CLIP_HZ), pn: 0, wert: 0, bloecke: 0, ep: true, t: now, art: "schwelle", folge: "keine", acc: false, rej: false, run: null, timer: null };
+    const c = this._cl = { pre, post: new Int16Array(WAKE_CLIP_POST * WAKE_CLIP_HZ), pn: 0, wert: 0, bloecke: 0, ep: true, t: now, art: "schwelle", folge: "keine", acc: false, rej: false, run: null, timer: null, near: !!near };
     c.timer = setTimeout(() => { if (this._cl === c) this._clSend(); }, WAKE_CLIP_SAFE);
     return c;
   }
@@ -13290,8 +13319,9 @@ class FpPipDock extends HTMLElement {
     if (!this._clOn()) return;
     let c = this._cl;
     if (c && c.acc) { this._clEnd("abbruch"); c = null; }   // die Erkennung davor ist nicht zu Ende gekommen
-    if (!c) c = this._clOpen(Date.now());
+    if (!c) c = this._clOpen(Date.now(), false);
     if (!c) return;
+    this._clUp(c, Date.now());   // ein offener knapper Clip wird zum normalen
     const v = Number(score) || 0;
     if (v > c.wert) c.wert = v;
     if (!c.bloecke) c.bloecke = 1;
@@ -13306,6 +13336,7 @@ class FpPipDock extends HTMLElement {
   _clReject() {
     const c = this._cl;
     if (!c || c.acc) return;
+    this._clUp(c, Date.now());   // ein offener knapper Clip wird zum normalen
     c.art = "ausgeloest";
     c.folge = "abgewiesen";
     c.rej = true;
@@ -13349,7 +13380,9 @@ class FpPipDock extends HTMLElement {
     const id = this._cfg.wake_clip, hass = getHass();
     if (!id || !hass || typeof hass.callService !== "function") return;
     try {
-      const data = { art: c.art, wert: Math.round(c.wert * 1000) / 1000, bloecke: c.bloecke, folge: c.folge, geraet: clipDevice(), audio: clipWav(c.pre, c.post.subarray(0, c.pn)) };
+      // Nicht angenommener (und nicht abgewiesener) Clip, dessen Höchstwert unter der Schwelle blieb: ein verpasster Ruf
+      const w = this._cfg.wake_word, knapp = !c.acc && !c.rej && !!w && c.wert < w.threshold;
+      const data = { art: knapp ? "knapp" : c.art, wert: Math.round(c.wert * 1000) / 1000, bloecke: c.bloecke, folge: knapp ? "keine" : c.folge, geraet: clipDevice(), audio: clipWav(c.pre, c.post.subarray(0, c.pn)) };
       // notifyOnError = false (5. Parameter von hass.callService): sonst zeigt das HA-Frontend bei einem Fehler selbst einen Hinweis
       const p = hass.callService("script", id.slice(7), data, undefined, false);
       if (p && p.catch) p.catch(() => {});
