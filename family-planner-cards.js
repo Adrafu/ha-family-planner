@@ -10692,7 +10692,7 @@ if (!customElements.get("fp-baby-overview-card")) {
 }
 })();
 
-/* ===== fp-assistant-card v20 (verpasste Rufe aufzeichnen: mit wake_clip_min gehen über wake_clip auch Episoden unter der Schwelle ab dieser Untergrenze als Aufnahme hinaus (art knapp), mit eigener Drosselung, nicht während Pip beschäftigt ist; davor: Klingeln per Stimme abstellen: solange es klingelt (Timer, Wecker, Erinnerung), bleibt das Weckwort-Mikrofon auch mit mic_pause offen, auch während der Ansage; das Aktivierungswort stellt das Klingeln sofort ab (auf allen Geräten, wie der Stopp-Knopf) und Pip hört danach wie gewohnt zu; davor: Rückfragen: das Weckwort-Mikrofon geht bei mic_pause kurz vor dem Ende des Vorlesens wieder auf (PRE_OPEN_MS), Pip hört nach dem Vorlesen sofort zu statt erst nach knapp 3 Sekunden; sobald nach einer Rückfrage zugehört wird, spielt ein kurzer Ton, ab dem man sprechen kann (er geht nicht an Home Assistant); davor: Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card v21 (Bühne: Zahnrad neben dem ✕ klappt die Schalter „Auf … hören“ und „An diesem Gerät klingeln“ auf, sie waren in der Bühne nicht erreichbar; ist das Zuhören aus, zeigt das die Figur (Augen zu); davor: verpasste Rufe aufzeichnen: mit wake_clip_min gehen über wake_clip auch Episoden unter der Schwelle ab dieser Untergrenze als Aufnahme hinaus (art knapp), mit eigener Drosselung, nicht während Pip beschäftigt ist; davor: Klingeln per Stimme abstellen: solange es klingelt (Timer, Wecker, Erinnerung), bleibt das Weckwort-Mikrofon auch mit mic_pause offen, auch während der Ansage; das Aktivierungswort stellt das Klingeln sofort ab (auf allen Geräten, wie der Stopp-Knopf) und Pip hört danach wie gewohnt zu; davor: Rückfragen: das Weckwort-Mikrofon geht bei mic_pause kurz vor dem Ende des Vorlesens wieder auf (PRE_OPEN_MS), Pip hört nach dem Vorlesen sofort zu statt erst nach knapp 3 Sekunden; sobald nach einer Rückfrage zugehört wird, spielt ein kurzer Ton, ab dem man sprechen kann (er geht nicht an Home Assistant); davor: Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -11344,6 +11344,8 @@ button{font:inherit;color:inherit;}
 .ear{position:absolute;right:3px;bottom:3px;width:13px;height:13px;border-radius:50%;background:var(--pip);border:2px solid var(--bg);opacity:0;transform:scale(.5);transition:opacity .25s ease,transform .25s ease;pointer-events:none;}
 .fig.wk-on .ear{opacity:1;transform:none;animation:pp-ear 3.4s ease-in-out infinite;}
 .fig.wk-wait .ear{opacity:1;transform:none;background:var(--bg);border-color:var(--pip);}
+/* Zuhören aus (wake_word eingerichtet, Schalter aus): Pip schläft, die Augen sind zu. Nur in der Ruhe der Ecke bzw. des Platzes; auf der Bühne, beim Klingeln und in jedem anderen Zustand ist er wach. */
+.fig.wk-off:not(.stage):not(.ringing) .pip.st-idle .eye{animation:none;scale:1 .12;}
 .pip{position:relative;display:block;width:100%;height:100%;--rs:1.9;}
 .pip.mini{width:44px;height:44px;flex:none;--rs:1.45;}
 .ball{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:17%;border-radius:50%;background:radial-gradient(circle at 34% 28%,color-mix(in srgb,var(--pip) 30%,var(--hl)) 0,color-mix(in srgb,var(--pip) 65%,var(--hl)) 48%,var(--pip) 100%);box-shadow:0 6px 18px color-mix(in srgb,var(--pip) 45%,transparent);}
@@ -11415,8 +11417,18 @@ ${FIG_CSS}
   .panel.stage:not(.open),.panel.left.stage:not(.open){transform:translateY(calc(100% + 60px));transition:transform .45s cubic-bezier(.4,0,.8,.4),visibility 0s linear .45s;}
   .panel.stage.open,.panel.left.stage.open{transform:none;transition:transform .5s cubic-bezier(.2,.9,.3,1) .3s,visibility 0s;}
   .panel.stage .head,.panel.stage .wk{display:none;}
-  .panel.stage .ib.sx{display:flex;}
+  .panel.stage .ib.sx,.panel.stage .ib.sg:not([hidden]){display:flex;}
+  /* Zahnrad geöffnet: die Schalterzeilen stehen unter ✕ und Zahnrad (darum oben 46 px Platz im Fenster) und über dem Verlauf, in der größeren Schrift der Bühne */
+  .panel.stage.sets{padding-top:46px;}
+  .panel.stage.sets .wk:not([hidden]){display:flex;gap:16px;padding:12px 24px;}
+  .panel.stage .wk-l{font-size:1.1rem;}
+  .panel.stage .wk-h{font-size:.92rem;}
   .panel.stage .log{padding:46px 20px 6px;gap:12px;}
+  .panel.stage.sets .log{padding-top:14px;}
+  @media (max-height:700px){   /* niedrige Fenster: Zeilen enger, die Vorschläge machen bei offenen Einstellungen Platz für den Verlauf */
+    .panel.stage.sets .wk:not([hidden]){padding:6px 24px;}
+    .panel.stage.sets .chips{display:none;}
+  }
   .panel.stage .hello,.panel.stage .ai{font-size:1.25rem;}
   .panel.stage .me{font-size:1.2rem;}
   .panel.stage .note{font-size:1.03rem;}
@@ -11432,6 +11444,9 @@ ${FIG_CSS}
 .ib{flex:none;display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:50%;background:var(--s1);color:var(--tx);font-size:1.15rem;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent;}
 @media (hover:hover){.ib:hover{background:var(--s2);}}
 .ib.sx{display:none;position:absolute;top:8px;right:10px;z-index:2;width:38px;height:38px;font-size:1rem;}
+.ib.sg{display:none;position:absolute;top:8px;right:56px;z-index:2;width:38px;height:38px;}
+.ib.sg svg{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round;pointer-events:none;}
+.ib.sg[aria-expanded="true"]{background:var(--s2);}
 .ib:focus-visible,.chip:focus-visible,.go:focus-visible,.in:focus-visible,.ac button:focus-visible,.pl:focus-visible,.pm button:focus-visible,.al-b:focus-visible{outline:2px solid var(--a);outline-offset:2px;}
 
 /* Schalter "Aktivierungswort" */
@@ -11681,6 +11696,7 @@ class FpPipDock extends HTMLElement {
   <div class="pls"></div>
 </div>
 <section class="panel" role="dialog" aria-label="Pip">
+  <button class="ib sg" type="button" aria-label="Einstellungen" title="Einstellungen" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.74 4.4L11.04 1.85L12.96 1.85L13.26 4.4L16.48 5.74L18.5 4.14L19.86 5.5L18.26 7.52L19.6 10.74L22.15 11.04L22.15 12.96L19.6 13.26L18.26 16.48L19.86 18.5L18.5 19.86L16.48 18.26L13.26 19.6L12.96 22.15L11.04 22.15L10.74 19.6L7.52 18.26L5.5 19.86L4.14 18.5L5.74 16.48L4.4 13.26L1.85 12.96L1.85 11.04L4.4 10.74L5.74 7.52L4.14 5.5L5.5 4.14L7.52 5.74Z"/><circle cx="12" cy="12" r="3"/></svg></button>
   <button class="ib sx" type="button" aria-label="Schließen" title="Schließen">✕</button>
   <header class="head">${PIP.replace('class="pip st-idle"', 'class="pip mini st-idle"')}
     <div class="who"><b class="nm">Pip</b><span class="stt" role="status">Bereit</span></div>
@@ -11718,8 +11734,10 @@ class FpPipDock extends HTMLElement {
     this._rgRow = r.querySelector(".rg");
     this._rgHint = r.querySelector(".rg .wk-h");
     this._rgSw = r.querySelector(".rg .sw");
+    this._sg = r.querySelector(".sg");
     this._fig.addEventListener("click", () => this._figTap());
     r.querySelector(".sx").addEventListener("click", () => this._close());
+    this._sg.addEventListener("click", () => this._setsToggle());
     this._veil.addEventListener("click", () => this._close());
     this._stk.addEventListener("click", e => this._onStk(e));
     r.querySelector(".head").addEventListener("click", e => {
@@ -11745,6 +11763,8 @@ class FpPipDock extends HTMLElement {
     // STAGE_IDLE stehen. Ein begonnener Text hält sie, solange er im Feld steht (siehe _stageArm).
     this._panel.addEventListener("pointerdown", () => { this._wakeTouched(); this._stageArm(STAGE_IDLE); });
     this._in.addEventListener("input", () => { this._wakeTouched(); this._stageArm(STAGE_IDLE); });
+    // Auch das Bedienen der Schalter per Tastatur (kein pointerdown) zählt als Berührung
+    this._panel.addEventListener("click", e => { if (e.target.closest && e.target.closest(".wk")) this._stageArm(STAGE_IDLE); });
     this._renderChips();
     this._renderLog();
     this._syncBtn();
@@ -12823,6 +12843,8 @@ class FpPipDock extends HTMLElement {
     this._wkSw.disabled = !ok;
     this._fig.classList.toggle("wk-on", on && k.st === "on");
     this._fig.classList.toggle("wk-wait", on && k.st === "wait");
+    this._fig.classList.toggle("wk-off", !!w && !on);   // Zuhören aus: die Figur schläft (FIG_CSS), auch am Handy in der Kopie im Platz (_copySync)
+    this._setsSync();
   }
   _wakeToggle() {
     if (!this._cfg.wake_word || !this._micOk()) return;
@@ -13438,6 +13460,7 @@ class FpPipDock extends HTMLElement {
   // wird abgedunkelt, die Figur rollt (ein einziges transform: verschieben und vergrößern) in die Mitte oben, das Fenster steht darunter.
   // Ende: STAGE_LINGER nach der Antwort, außer es folgt eine Nachfrage oder im Eingabefeld steht ein Entwurf; per Tipp geöffnet ohne weiteres Tun
   // nach STAGE_IDLE; eine Berührung des Fensters hält die Bühne STAGE_IDLE. ✕, Tipp auf die Fläche, _close und _reset beenden sofort.
+  // In der Bühne fehlen Kopfzeile und Schalterzeilen; das Zahnrad neben dem ✕ klappt die Schalter auf und zu (_setsToggle), die Bedienung zählt als Berührung.
   _stageOk() {
     try { return !!(window.matchMedia && window.matchMedia("(min-width:700px)").matches); } catch (e) { return false; }
   }
@@ -13446,6 +13469,7 @@ class FpPipDock extends HTMLElement {
     clearTimeout(this._stgOut);
     this._stgOut = null;
     this._stg = { t: null };
+    this._setsSet(false);   // die Bühne beginnt immer zugeklappt
     this._stageLay();
     const h = getHass();
     this._veil.classList.toggle("dk", !!(h && h.themes && h.themes.darkMode));
@@ -13481,6 +13505,7 @@ class FpPipDock extends HTMLElement {
     clearTimeout(g.t);
     g.t = null;
     if (this._cur || this._speaking || this._in.value.trim()) return;
+    if (this._sets && ms < STAGE_IDLE) ms = STAGE_IDLE;   // Wer gerade an den Schaltern ist, dem schließt sich die Bühne nicht nach 5 Sekunden unter dem Finger
     g.t = setTimeout(() => {
       g.t = null;
       if (this._stg === g && !this._cur && !this._speaking && !this._in.value.trim()) this._close();
@@ -13497,6 +13522,7 @@ class FpPipDock extends HTMLElement {
     if (!g) return;
     this._stg = null;
     clearTimeout(g.t);
+    this._setsSet(false);   // Aufgeklapptes ist beim Schließen wieder zu (die Klasse sets geht mit stage, damit das Fenster beim Abfahren nicht umspringt)
     window.removeEventListener("resize", this._stgRz);
     window.removeEventListener("orientationchange", this._stgRz);
     this.classList.remove("stage");
@@ -13505,7 +13531,7 @@ class FpPipDock extends HTMLElement {
     if (this._isOpen) {
       this._fig.classList.remove("stg");
       this._fig.classList.add("gone");
-      this._panel.classList.remove("stage");
+      this._panel.classList.remove("stage", "sets");
       return;
     }
     clearTimeout(this._stgOut);
@@ -13513,8 +13539,28 @@ class FpPipDock extends HTMLElement {
       this._stgOut = null;
       if (this._stg) return;
       this._fig.classList.remove("stg");
-      this._panel.classList.remove("stage");
+      this._panel.classList.remove("stage", "sets");
     }, STAGE_OUT);
+  }
+  // Zahnrad neben dem ✕: In der Bühne sind Kopfzeile und Schalterzeilen weg, damit wären "Auf … hören" und "An diesem Gerät klingeln" dort nicht erreichbar.
+  // Ein Tipp klappt die vorhandenen Zeilen (wake_word, alarms.klingel) unter dem Zahnrad auf und zu (Klasse sets am Fenster). Gibt es keine Zeile, gibt es
+  // auch kein Zahnrad. Zuklappen: Tipp aufs Zahnrad, jedes Ende der Bühne (_stageEnd) und der Beginn einer neuen (_stageBegin).
+  _setsSync() {
+    if (!this._sg || !this._wkRow || !this._rgRow) return;
+    const any = !this._wkRow.hidden || !this._rgRow.hidden;
+    this._sg.hidden = !any;
+    if (!any && this._sets) this._setsSet(false);
+  }
+  _setsSet(on) {
+    on = !!on && !!this._stg;
+    this._sets = on;
+    this._sg.setAttribute("aria-expanded", on ? "true" : "false");
+    if (this._stg) this._panel.classList.toggle("sets", on);   // nach dem Ende der Bühne räumt _stageEnd die Klasse erst, wenn das Fenster weg ist
+  }
+  _setsToggle() {
+    if (!this._stg) return;
+    this._setsSet(!this._sets);
+    this._stageArm(STAGE_IDLE);   // die Bedienung zählt als Berührung
   }
 
   // ---------- Timer, Wecker, Erinnerungen und Klingeln (alarms) ----------
@@ -13732,6 +13778,7 @@ class FpPipDock extends HTMLElement {
     this._rgRow.hidden = !k;
     this._rgSw.setAttribute("aria-checked", k && this._ringOn ? "true" : "false");
     this._rgHint.textContent = !k ? "" : this._ringOn ? "Timer, Wecker und Erinnerungen läuten hier." : "Nur ein Hinweis auf dem Bildschirm, kein Ton.";
+    this._setsSync();
   }
   _ringToggle() {
     if (!this._cfg.alarms || !this._cfg.alarms.klingel) return;
