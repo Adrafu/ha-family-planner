@@ -3903,7 +3903,7 @@ if (!customElements.get("fp-todo-card")) {
 }
 })();
 
-/* ===== fp-glance-card v9 (Baby-Zeilen unter dem Gruß über die Option baby; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
+/* ===== fp-glance-card v10 (Wetter für clock-weather-card v3: die Vorgabe der eingebetteten Karte steht in sections (Kopf, kein Stundenstreifen, Liste mit forecast_rows Zeilen); eine eigene weather_card ohne sections wird aus den v2-Optionen übersetzt (hide_today_section, hide_forecast_section, forecast_rows, hourly_forecast, hide_clock, hide_date …), die v2-Optionen bleiben stehen, damit v2 sie weiter versteht; davor: Baby-Zeilen unter dem Gruß über die Option baby; davor: in horizontal-stack wieder nebeneinander statt zusammengedrückt (füllt die Rasterzelle, ohne HAs Stapel-Aufteilung zu überschreiben); davor: Farben aus dem Theme: Hintergrund je Tageszeit, Schrift, Rand und Schatten über --fp-glance-*; Schriftfarben der Wetterkarte kommen von der Glance-Karte; fuellt die Rasterzelle aus, forecast_rows statt forecast_days, hide_today_section fuer flaches Banner; Wetter-Klick via transparentes Overlay; Pro-Element-Navigation Datum/Termin->Kalender, Essen->Essensplan, Wetter->Wetter-Tab; Wetter via eingebettete clock-weather-card) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -3914,10 +3914,10 @@ class FpGlanceCard extends HTMLElement {
       weather_entity: "weather.home",
       sun_entity: "sun.sun",
       show_weather: true,
-      weather_card: null,                   // eigene clock-weather-card-Config (optional); sonst Default unten
+      weather_card: null,                   // eigene clock-weather-card-Config (optional, v3 mit sections oder v2); sonst Default unten
       shadow: "",                           // eigener Schlagschatten, z. B. "0 4px 14px rgba(0,0,0,.16)" oder "none"
-      forecast_rows: 4,                     // Anzahl Prognosezeilen (hiess in clock-weather-card v1 noch forecast_days)
-      hide_today_section: false,            // grossen Uhr-/Icon-Block ausblenden -> flaches Banner
+      forecast_rows: 4,                     // Anzahl Prognosezeilen (in clock-weather-card v3: sections.forecast_list.count)
+      hide_today_section: false,            // grossen Uhr-/Icon-Block ausblenden -> flaches Banner (v3: sections.header.hide)
       persons: [],                          // wie family-calendar-card: {name,color,calendar,prefix,match}
       essensplan_entity: "calendar.essensplan",
       dinner: { start: 15, end: 24 },       // Stunden-Fenster fuers Abendessen
@@ -3935,19 +3935,52 @@ class FpGlanceCard extends HTMLElement {
     this._built = false; this._wc = null; this._baby = null; this._curBg = ""; this._curMode = ""; this._curFg = null;
     // Eingebettete Wetterkarte (transparent aufs Banner geblendet); volle Config ueberschreibbar via weather_card
     if (this.config.show_weather) {
-      // Kopie: eine aus der Dashboard-Konfiguration gereichte weather_card ist eingefroren
-      const base = Object.assign({}, this.config.weather_card || {
+      // Kopie: eine aus der Dashboard-Konfiguration gereichte weather_card ist eingefroren.
+      // Die Vorgabe steht in v2-Form und wird wie eine eigene Config ohne sections übersetzt.
+      const base = this._cwcV3(Object.assign({}, this.config.weather_card || {
         type: "custom:clock-weather-card",
         entity: this.config.weather_entity,
         sun_entity: this.config.sun_entity,
         locale: "de-DE", time_format: "24",
         hide_today_section: !!this.config.hide_today_section, hide_forecast_section: false,
         forecast_rows: this.config.forecast_rows,
-      });
+      }));
       // Schriftfarben kommen nicht mehr von hier, sondern von .fpg-wc der Glance-Karte (erben hinein)
       if (!base.card_mod) base.card_mod = { style: "ha-card{background:transparent!important;box-shadow:none!important;border:none!important;} img{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));} svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));}" };
       this._wcConfig = base;
     }
+  }
+  // clock-weather-card v3 liest nur noch sections (Kopf, Stundenstreifen, Tagesliste) und übergeht v2-Optionen still,
+  // dann stünde die volle v3-Vorgabe mit großer Uhr und 24-Stunden-Streifen im Banner. Ohne sections werden die
+  // v2-Optionen deshalb hierher übersetzt; sie bleiben stehen, weil v2 sections nicht kennt. card_mod bleibt, wie es ist.
+  _cwcV3(c) {
+    if (c.sections) return c;
+    const header = {}, list = {};
+    if (c.hide_today_section) header.hide = true;
+    if (c.animated_icon === false) header.animated_icons = false;
+    if (c.show_decimal) header.round_temperatures = false;
+    if (!header.hide && (c.hide_clock || c.hide_date || c.show_humidity || c.time_pattern || c.date_pattern)) {
+      // Zeilen wie v3s Vorgabe (Temperatur und Zustand, Uhr, Datum), abgewandelt wie in v2
+      const hum = c.show_humidity
+        ? [{ type: "icon", icon: "mdi:water-percent" }, c.humidity_sensor ? { type: "entity", entity_id: c.humidity_sensor } : { type: "weather", attribute: "humidity" }]
+        : [];
+      const rows = c.hide_clock
+        // v2 ohne Uhr: die Temperatur steht groß an ihrer Stelle
+        ? [{ alignment: "center", segments: [{ type: "weather" }, ...hum] },
+           { font_size: "4rem", alignment: "center", segments: [{ type: "weather", attribute: "temperature" }] }]
+        : [{ segments: [{ type: "icon", icon: "mdi:thermometer" }, { type: "weather", attribute: "temperature" }, ...hum, { type: "spacer" }, { type: "weather" }] },
+           { font_size: "4rem", alignment: "center", segments: [Object.assign({ type: "time" }, c.time_pattern ? { time_pattern: c.time_pattern } : {})] }];
+      if (!c.hide_date) rows.push({ alignment: "center", segments: [{ type: "icon", icon: "mdi:calendar" }, Object.assign({ type: "date" }, c.date_pattern ? { date_pattern: c.date_pattern } : {})] });
+      header.rows = rows;
+    }
+    if (c.hide_forecast_section) list.hide = true;
+    const n = parseInt(c.forecast_rows, 10);
+    if (n > 0) list.count = n;
+    if (c.hourly_forecast) list.forecast_type = "hourly";
+    // v2 kannte keinen Stundenstreifen
+    const out = Object.assign({}, c, { sections: { header, forecast_strip: { hide: true }, forecast_list: list } });
+    if (c.temperature_sensor && !c.additional_sensors) out.additional_sensors = { temperature: c.temperature_sensor };
+    return out;
   }
   set hass(hass) {
     this._hass = hass;

@@ -322,6 +322,19 @@ baby:                                       # optional: je Kind eine Zeile unter
 
 Ohne `backgrounds` nimmt die Karte Hintergrund, Schrift, Rand und Schatten aus den Theme-Variablen `--fp-glance-*` (siehe „Design-Variablen“), ohne diese die bisherigen Blauverläufe mit weißer Schrift. Das Wetter kann über `weather_card` mit einer vollständigen `clock-weather-card`-Config überschrieben werden; ansonsten wird eine sinnvolle Default-Config verwendet. Benötigt die HACS-Karte `clock-weather-card`.
 
+**Wetter und `clock-weather-card` v3:** Die eingebettete Karte ist auf `clock-weather-card` ab v3.0.0 ausgelegt, die ihre Optionen unter `sections` (`header`, `forecast_strip`, `forecast_list`) erwartet und die alten v2-Optionen still übergeht. Die Vorgabe zeigt den Kopf (großes Icon, Temperatur, Uhr, Datum; mit `hide_today_section: true` ausgeblendet), keinen Stundenstreifen und `forecast_rows` Tage in der Liste. Eine eigene `weather_card` mit `sections` wird unverändert übernommen. Eine ältere ohne `sections` übersetzt die Karte selbst (`hide_today_section`, `hide_forecast_section`, `forecast_rows`, `hourly_forecast`, `hide_clock`, `hide_date`, `show_humidity`, `time_pattern`, `date_pattern`, `animated_icon`, `show_decimal`, `temperature_sensor`) und lässt die v2-Optionen stehen, so läuft sie mit v2 und v3. `card_mod`-Regeln für die v2-Bausteine (`clock-weather-card-today` …) greifen in v3 nicht mehr: Dort heißen sie `clock-weather-card-header` (darin `clock-weather-card-icon` und `clock-weather-card-header-details`), `clock-weather-card-forecast-strip` und `clock-weather-card-forecast-list`.
+
+```yaml
+# Beispiel: nur drei Tage, ohne Kopf und Stundenstreifen
+weather_card:
+  type: custom:clock-weather-card
+  entity: weather.home
+  sections:
+    header: { hide: true }
+    forecast_strip: { hide: true }
+    forecast_list: { count: 3 }
+```
+
 **Baby-Zeilen (`baby`):** Mit `baby` legt die Begrüßung eine eingebettete `fp-baby-overview-card` im Layout `bar` mit `bar_style: inline` an (siehe „Baby-Leiste“). Unter dem Gruß und der Trennlinie steht je Kind eine Zeile („Kind A · satt seit 1:56 h · 02:23–03:29“, „Fällig“-Chip, „stillt · 12 Min“ mit Puls), danach folgt die Zeile mit Termin und Abendessen. Schrift, Farbe und Größe erben von der Begrüßung. Ein Tipp auf ein Kind öffnet `nav_path` bei diesem Kind. `baby` nimmt alle Optionen der Baby-Leiste (`kids`, `nav_path`, `meal_pause_entity` …), `layout` und `bar_style` setzt die Begrüßung selbst. Ohne `baby` bleibt die Karte, wie sie ist.
 
 ### Beispiel: fp-cookbook-card
