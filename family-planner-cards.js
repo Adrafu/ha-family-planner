@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.8.7 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
+/* Family Planner custom cards v3.8.7 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card + fp-voice-train-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt; lightbox: Dialoge als nativer Dialog in der obersten Ebene; Hinweise erscheinen bei offenem Dialog auch im Dialog) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -14163,4 +14163,609 @@ window.addEventListener("location-changed", nav);
 window.addEventListener("popstate", nav);
 window.addEventListener("resize", () => { try { if (dock && typeof dock.applyLift === "function") { dock.applyLift(); dock.applyPos(); } } catch (e) {} });
 if (document.body) nav(); else document.addEventListener("DOMContentLoaded", nav, { once: true });
+})();
+/* ===== fp-voice-train-card v1 (Stimmtraining für Pipo, Schritt 0: eigene Karte, getrennt von der Pipo-Karte; prüft am Gerät, ob das Stimmmodell (WeSpeaker CAM++ über onnxruntime-web 1.18, nur WASM, 1 Thread) schnell genug läuft – Laden mit Zwischenspeicher (Cache Storage), Start, Rechenzeit für 3 s Testton – und vergleicht kurze Mikrofon-Aufnahmen miteinander; an Home Assistant (report) gehen nur Messwerte, nie Ton oder Stimmvektoren) ===== */
+(() => {
+const U = window.__fpUtils;
+
+// ---------- Stimm-Kern (window.__fpVoice): Fbank, Modell, Stimmabdruck ----------
+// Für Trainings-Karte und später Pipo. Prod- und Beta-Datei laden beide; es gilt die höhere Version (v).
+// onnxruntime-web kommt wie beim Aktivierungswort aus window.ort / window.__fpOrtLoad: dieselbe Version 1.18.0, dieselben
+// Globalen, also nie zwei Laufzeiten nebeneinander.
+const VOICE_V = 1;
+if (!window.__fpVoice || (window.__fpVoice.v || 0) < VOICE_V) window.__fpVoice = (() => {
+  const ORT_VER = "1.18.0";
+  const ORT_DIR = "https://cdn.jsdelivr.net/npm/onnxruntime-web@" + ORT_VER + "/dist/";
+  function loadOrt() {
+    if (window.ort && window.ort.InferenceSession) return Promise.resolve(window.ort);
+    if (!window.__fpOrtLoad) {
+      const p = window.__fpOrtLoad = new Promise((res, rej) => {
+        const s = document.createElement("script");
+        s.src = ORT_DIR + "ort.wasm.min.js";
+        s.onload = () => (window.ort && window.ort.InferenceSession ? res(window.ort) : rej(new Error("ort")));
+        s.onerror = () => { s.remove(); rej(new Error("ort laden: " + s.src.replace(/^https?:\/\//, ""))); };
+        document.head.appendChild(s);
+      }).then(ort => {
+        try { ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false; ort.env.wasm.wasmPaths = ORT_DIR; ort.env.logLevel = "error"; } catch (e) {}
+        return ort;
+      });
+      p.catch(() => { if (window.__fpOrtLoad === p) window.__fpOrtLoad = null; });
+    }
+    return window.__fpOrtLoad;
+  }
+
+  // Kaldi-Fbank wie torchaudio.compliance.kaldi.fbank (WeSpeaker): 16 kHz, 80 Mel, 25 ms Fenster, 10 ms Schritt, snip_edges,
+  // dither 0, DC-Abzug, Preemphase 0,97, Hamming, FFT 512, Leistungsspektrum, Mel 20 Hz bis 8 kHz, log mit Untergrenze
+  // FLT_EPSILON, danach Mittelwertabzug je Kanal (ohne Varianz). Eingabe im Int16-Maßstab. Gegen kaldi-native-fbank
+  // geprüft: höchstens 2,4e-4 Abweichung, derselbe Stimmvektor (Kosinus 1,000000).
+  const fbank = (() => {
+    const SR = 16000, N = 400, S = 160, NFFT = 512, NB = 80, PRE = 0.97, EPS = 1.1920928955078125e-7;
+    const win = new Float64Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (N - 1));
+    const mel = f => 1127 * Math.log(1 + f / 700);
+    const lo = mel(20), hi = mel(SR / 2), dm = (hi - lo) / (NB + 1);
+    const banks = [];
+    for (let m = 0; m < NB; m++) {
+      const l = lo + m * dm, c = l + dm, r = c + dm, w = [];
+      let st = -1;
+      for (let i = 0; i < NFFT / 2; i++) {
+        const v = mel(SR * i / NFFT);
+        if (v > l && v < r) { if (st < 0) st = i; w.push(v <= c ? (v - l) / (c - l) : (r - v) / (r - c)); }
+        else if (st >= 0) break;
+      }
+      banks.push({ st, w: Float64Array.from(w) });
+    }
+    const LOG = 9, rev = new Uint16Array(NFFT), cs = new Float64Array(NFFT / 2), sn = new Float64Array(NFFT / 2);
+    for (let i = 0; i < NFFT; i++) { let x = i, y = 0; for (let b = 0; b < LOG; b++) { y = (y << 1) | (x & 1); x >>= 1; } rev[i] = y; }
+    for (let i = 0; i < NFFT / 2; i++) { cs[i] = Math.cos(-2 * Math.PI * i / NFFT); sn[i] = Math.sin(-2 * Math.PI * i / NFFT); }
+    const re = new Float64Array(NFFT), im = new Float64Array(NFFT), fr = new Float64Array(N), pw = new Float64Array(NFFT / 2 + 1);
+    const fft = () => {
+      for (let i = 0; i < NFFT; i++) { const j = rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+      for (let size = 2; size <= NFFT; size <<= 1) {
+        const half = size >> 1, step = NFFT / size;
+        for (let s = 0; s < NFFT; s += size) {
+          for (let k = 0; k < half; k++) {
+            const a = s + k, b = a + half, wr = cs[k * step], wi = sn[k * step];
+            const tr = re[b] * wr - im[b] * wi, ti = re[b] * wi + im[b] * wr;
+            re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+          }
+        }
+      }
+    };
+    return x => {
+      const T = x.length >= N ? Math.floor((x.length - N) / S) + 1 : 0;
+      const out = new Float32Array(T * NB);
+      for (let t = 0; t < T; t++) {
+        const o = t * S;
+        let mean = 0;
+        for (let i = 0; i < N; i++) { fr[i] = x[o + i]; mean += fr[i]; }
+        mean /= N;
+        for (let i = 0; i < N; i++) fr[i] -= mean;
+        for (let i = N - 1; i > 0; i--) fr[i] -= PRE * fr[i - 1];
+        fr[0] -= PRE * fr[0];
+        for (let i = 0; i < N; i++) { re[i] = fr[i] * win[i]; im[i] = 0; }
+        for (let i = N; i < NFFT; i++) { re[i] = 0; im[i] = 0; }
+        fft();
+        for (let i = 0; i <= NFFT / 2; i++) pw[i] = re[i] * re[i] + im[i] * im[i];
+        for (let m = 0; m < NB; m++) {
+          const bk = banks[m];
+          let e = 0;
+          for (let k = 0; k < bk.w.length; k++) e += bk.w[k] * pw[bk.st + k];
+          out[t * NB + m] = Math.log(e > EPS ? e : EPS);
+        }
+      }
+      if (T > 0) for (let m = 0; m < NB; m++) {
+        let s = 0;
+        for (let t = 0; t < T; t++) s += out[t * NB + m];
+        s /= T;
+        for (let t = 0; t < T; t++) out[t * NB + m] -= s;
+      }
+      return { data: out, frames: T };
+    };
+  })();
+
+  // Modelldatei holen: zuerst aus dem Zwischenspeicher des Browsers (Cache Storage), sonst aus dem Netz (mit Fortschritt)
+  // und dann dort ablegen. Schlägt der Zwischenspeicher fehl (privater Modus, kein sicherer Kontext), geht es ohne.
+  const CACHE = "fp-voice-v1";
+  async function getBytes(url, onProg) {
+    let cache = null;
+    try { if (window.caches && window.isSecureContext) cache = await caches.open(CACHE); } catch (e) { cache = null; }
+    if (cache) {
+      try {
+        const hit = await cache.match(url);
+        if (hit) { const b = new Uint8Array(await hit.arrayBuffer()); if (b.length > 1e6) return { b, src: "cache" }; }
+      } catch (e) {}
+    }
+    const same = url.charAt(0) === "/" || url.indexOf(location.origin) === 0;
+    const r = await fetch(url, same ? { credentials: "same-origin" } : { mode: "cors", credentials: "omit" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const total = +(r.headers.get("content-length") || 0);
+    let b;
+    if (r.body && r.body.getReader) {
+      const rd = r.body.getReader(), parts = [];
+      let n = 0;
+      for (;;) {
+        const { done, value } = await rd.read();
+        if (done) break;
+        parts.push(value);
+        n += value.length;
+        if (onProg) { try { onProg(n, total); } catch (e) {} }
+      }
+      b = new Uint8Array(n);
+      let o = 0;
+      for (const p of parts) { b.set(p, o); o += p.length; }
+    } else b = new Uint8Array(await r.arrayBuffer());
+    if (cache && b.length > 1e6) { try { await cache.put(url, new Response(b, { headers: { "content-type": "application/octet-stream" } })); } catch (e) {} }
+    return { b, src: "netz" };
+  }
+
+  // Modell laden (einmal pro Seite und Adresse). urls: eine oder mehrere Adressen, die erste, die geht, gewinnt.
+  // Ergebnis: { sess, info: { url, src, mb, ms_ort, ms_load, ms_init, dim } }
+  const models = {};
+  function model(urls, onProg) {
+    const list = (Array.isArray(urls) ? urls : [urls]).map(String).filter(Boolean);
+    const key = list.join("|");
+    if (!models[key]) {
+      const p = models[key] = (async () => {
+        let t = performance.now();
+        const ort = await loadOrt();
+        const ms_ort = performance.now() - t;
+        let last = null;
+        for (const url of list) {
+          try {
+            t = performance.now();
+            const got = await getBytes(url, onProg);
+            const ms_load = performance.now() - t;
+            t = performance.now();
+            const sess = await ort.InferenceSession.create(got.b, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
+            const ms_init = performance.now() - t;
+            return { sess, info: { url, src: got.src, mb: Math.round(got.b.length / 1e5) / 10, ms_ort, ms_load, ms_init } };
+          } catch (e) { last = e; }
+        }
+        throw last || new Error("modell");
+      })();
+      p.catch(() => { if (models[key] === p) delete models[key]; });
+    }
+    return models[key];
+  }
+
+  // Stimmabdruck: 16-kHz-Ton (Int16-Maßstab) -> Fbank -> Modell -> normierter Vektor (Länge 1).
+  async function embed(sess, pcm) {
+    const ort = window.ort;
+    let t = performance.now();
+    const f = fbank(pcm);
+    const ms_fb = performance.now() - t;
+    if (f.frames < 50) throw new Error("kurz");
+    t = performance.now();
+    const o = await sess.run({ [sess.inputNames[0]]: new ort.Tensor("float32", f.data, [1, f.frames, 80]) });
+    const ms_run = performance.now() - t;
+    const e = o[sess.outputNames[0]].data;
+    let s = 0;
+    for (let i = 0; i < e.length; i++) s += e[i] * e[i];
+    s = Math.sqrt(s) || 1;
+    const vec = new Float32Array(e.length);
+    for (let i = 0; i < e.length; i++) vec[i] = e[i] / s;
+    return { vec, frames: f.frames, ms_fb, ms_run };
+  }
+  const cos = (a, b) => { let s = 0; const n = Math.min(a.length, b.length); for (let i = 0; i < n; i++) s += a[i] * b[i]; return s; };
+
+  // Auf 16 kHz herunterrechnen (Flächenmittel) und in 16-Bit-Zahlen wandeln, wie die Pipo-Karte (downsample),
+  // damit Training und Erkennung denselben Ton sehen. st = { ratio, acc, need } wird fortgeschrieben.
+  const toI16 = x => { const s = x > 1 ? 1 : x < -1 ? -1 : x; return s < 0 ? Math.round(s * 32768) : Math.round(s * 32767); };
+  function downsample(st, f) {
+    const r = st.ratio;
+    if (r <= 1.0001) { const out = new Int16Array(f.length); for (let i = 0; i < f.length; i++) out[i] = toI16(f[i]); return out; }
+    const buf = new Int16Array(Math.ceil(f.length / r) + 2);
+    let n = 0, acc = st.acc || 0, need = st.need > 0 ? st.need : r;
+    for (let i = 0; i < f.length; i++) {
+      const x = f[i];
+      let w = 1;
+      while (w > 1e-9) {
+        const t = w < need ? w : need;
+        acc += x * t; need -= t; w -= t;
+        if (need <= 1e-9) { buf[n++] = toI16(acc / r); acc = 0; need += r; }
+      }
+    }
+    st.acc = acc; st.need = need;
+    return buf.subarray(0, n);
+  }
+
+  return { v: VOICE_V, ORT_VER, loadOrt, fbank, model, embed, cos, downsample };
+})();
+
+const V = window.__fpVoice;
+const DEF_MODELS = [
+  "https://huggingface.co/Wespeaker/wespeaker-voxceleb-campplus/resolve/main/voxceleb_CAM%2B%2B.onnx",
+  "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_CAM%2B%2B.onnx",
+];
+const MIC = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };   // wie die Pipo-Karte
+const REC_SEC = 4;            // so lange dauert eine Probe-Aufnahme
+const TEST_SEC = 3;           // so lang ist der Testton für die Rechenzeit
+const GOOD_MS = 500, OK_MS = 800;   // Ampel für die Rechenzeit (Plan: höchstens 500 ms pro Anfrage)
+const MAX_REC = 8;            // so viele Aufnahmen bleiben zum Vergleichen
+const WORKLET = 'class P extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(2048);this.n=0;}'
+  + 'process(i){var c=i[0]&&i[0][0];if(c){for(var k=0;k<c.length;k++){this.b[this.n++]=c[k];if(this.n===2048){this.port.postMessage(this.b.slice(0));this.n=0;}}}return true;}}'
+  + 'registerProcessor("fp-voice-rec",P);';
+
+// Testton: 3 s „Stimme“ aus Obertönen mit wandernder Grundfrequenz, etwas Rauschen und Pausen (immer derselbe, nur für die Rechenzeit).
+let TEST_PCM = null;
+function testPcm() {
+  if (TEST_PCM) return TEST_PCM;
+  const n = TEST_SEC * 16000, x = new Int16Array(n);
+  let seed = 12345, ph = 0;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff - 0.5; };
+  for (let i = 0; i < n; i++) {
+    const t = i / 16000, f0 = 130 + 25 * Math.sin(2 * Math.PI * 0.7 * t);
+    ph += 2 * Math.PI * f0 / 16000;
+    let v = 0;
+    for (let k = 1; k <= 30; k++) {
+      const fk = k * f0;
+      v += (Math.exp(-((fk - 700) ** 2) / 180000) + 0.6 * Math.exp(-((fk - 1200) ** 2) / 320000) + 0.05) * Math.sin(k * ph) / k;
+    }
+    const env = Math.sin(2 * Math.PI * 3.1 * t) > -0.3 ? 1 : 0.2;
+    x[i] = Math.max(-32768, Math.min(32767, Math.round((v * env * 0.9 + 0.02 * rnd()) * 9000)));
+  }
+  return (TEST_PCM = x);
+}
+// Grobe Gerätekennung ohne Personendaten, z. B. "iPad 1180x820" (wie wake_clip)
+function device() {
+  let k = "Sonst";
+  try {
+    const ua = navigator.userAgent || "", pf = navigator.platform || "";
+    if (/iPad/.test(ua) || (/Mac/.test(pf) && navigator.maxTouchPoints > 1)) k = "iPad";
+    else if (/iPhone|iPod/.test(ua)) k = "iPhone";
+    else if (/Android/.test(ua)) k = "Android";
+    else if (/Mac/.test(pf + ua)) k = "Mac";
+  } catch (e) {}
+  return `${k} ${window.innerWidth}x${window.innerHeight}`;
+}
+// Sprache in einer Aufnahme finden: 20-ms-Stücke, Schwelle aus dem Grundrauschen. Gibt Dauer und den Ausschnitt mit
+// 0,15 s Rand zurück; Stille vorne und hinten soll den Stimmabdruck nicht verwässern.
+function speech(pcm) {
+  const L = 320, n = Math.floor(pcm.length / L), rms = new Float32Array(n);
+  let peak = 0;
+  for (let j = 0; j < n; j++) {
+    let s = 0;
+    for (let i = j * L; i < (j + 1) * L; i++) { const v = pcm[i]; s += v * v; if (Math.abs(v) > peak) peak = Math.abs(v); }
+    rms[j] = Math.sqrt(s / L);
+  }
+  const sorted = Array.from(rms).sort((a, b) => a - b), floor = sorted[Math.floor(n * 0.1)] || 0;
+  const thr = Math.max(250, floor * 3);
+  let first = -1, last = -1, cnt = 0;
+  for (let j = 0; j < n; j++) if (rms[j] > thr) { cnt++; if (first < 0) first = j; last = j; }
+  if (first < 0) return { sec: 0, peak, pcm };
+  const a = Math.max(0, (first - 8) * L), b = Math.min(pcm.length, (last + 9) * L);
+  return { sec: cnt * L / 16000, peak, pcm: pcm.subarray(a, b) };
+}
+const fmtS = ms => (ms / 1000).toLocaleString("de-AT", { minimumFractionDigits: ms < 10000 ? 2 : 1, maximumFractionDigits: ms < 10000 ? 2 : 1 }) + " s";
+const fmtN = (v, d) => Number(v).toLocaleString("de-AT", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+class FpVoiceTrainCard extends HTMLElement {
+  setConfig(config) {
+    const c = config || {};
+    const models = Array.isArray(c.model) ? c.model : (c.model ? [c.model] : DEF_MODELS);
+    const people = Array.isArray(c.people) && c.people.length ? c.people.map(p => String(p).trim()).filter(Boolean) : ["Tobi", "Verena"];
+    this._cfg = { title: String(c.title || "Stimmtraining"), models: models.map(String), report: String(c.report || "").trim(), people };
+    if (!this._st) this._st = { m: "idle", prog: null, res: null, err: "" };
+    if (!this._recs) this._recs = [];
+    if (!this._wer || people.indexOf(this._wer) < 0) this._wer = people[0];
+    this._render();
+  }
+  set hass(h) { this._hass = h; }
+  connectedCallback() { U.fillZelle(this); this._render(); }
+  disconnectedCallback() { this._recStop(true); }
+  getCardSize() { return 6; }
+  getGridOptions() { return { columns: 12, rows: "auto", min_rows: 0 }; }
+  static getStubConfig() { return { report: "" }; }
+
+  // ---------- Messwerte an Home Assistant (nur Zahlen, kein Ton, keine Vektoren) ----------
+  _report(art, obj) {
+    const e = this._cfg.report, h = this._hass;
+    if (!e || !h || e.indexOf("script.") !== 0) return;
+    const o = Object.assign({ v: 1, geraet: device(), konto: (h.user && h.user.name) || "", ort: V.ORT_VER }, obj);
+    try {
+      const p = h.callService("script", e.slice(7), { art, bericht: JSON.stringify(o) });
+      if (p && p.catch) p.catch(() => { if (!this._repErr) { this._repErr = true; U.toast(this, "Messwerte konnten nicht an Home Assistant gehen."); } });
+    } catch (err) {}
+  }
+
+  // ---------- 1 · Modell prüfen ----------
+  // Modell einmal pro Karte holen; der Kern hält es pro Seite (zweite Karte oder Neuaufbau laden nicht noch einmal).
+  async _ensureModel() {
+    if (this._mdl) return this._mdl;
+    const st = this._st, prev = st.m;
+    st.m = "lade"; st.prog = null; st.err = ""; this._render();
+    try { this._mdl = await V.model(this._cfg.models, (n, total) => { st.prog = [n, total]; this._renderProg(); }); }
+    finally { if (st.m === "lade") st.m = prev === "fehler" ? "idle" : prev; }
+    return this._mdl;
+  }
+  async _check() {
+    if (this._busy) return;
+    this._busy = true;
+    const st = this._st;
+    try {
+      const { sess, info } = await this._ensureModel();
+      st.m = "rechne"; this._render();
+      await new Promise(r => setTimeout(r, 30));   // Anzeige zuerst zeichnen lassen
+      const pcm = testPcm(), runs = [];
+      let fb = 0, dim = 0;
+      for (let i = 0; i < 3; i++) {
+        const e = await V.embed(sess, pcm);
+        runs.push(e.ms_run); fb = e.ms_fb; dim = e.vec.length;
+      }
+      const ms = Math.min(runs[1], runs[2]);
+      st.res = Object.assign({}, info, { fb, first: runs[0], ms, dim, again: !!st.res });
+      st.m = "ok";
+      this._report("modell", {
+        quelle: info.src, adresse: info.url.indexOf("huggingface") >= 0 ? "huggingface" : (info.url.indexOf("github") >= 0 ? "github" : "eigene"),
+        mb: info.mb, ort_ms: Math.round(info.ms_ort), laden_ms: Math.round(info.ms_load), start_ms: Math.round(info.ms_init),
+        fbank_ms: Math.round(fb), lauf1_ms: Math.round(runs[0]), lauf_ms: Math.round(ms), ton_s: TEST_SEC, dim,
+      });
+    } catch (e) {
+      st.m = "fehler";
+      st.err = this._errText(e);
+      this._report("fehler", { schritt: "modell", grund: String((e && e.message) || e).slice(0, 120) });
+    } finally {
+      this._busy = false;
+      this._render();
+    }
+  }
+  _errText(e) {
+    const m = String((e && e.message) || e || "");
+    if (/^ort/.test(m)) return "Die Rechen-Laufzeit (onnxruntime) ließ sich nicht laden.";
+    if (/HTTP|fetch|Load failed|NetworkError|Failed to fetch/i.test(m)) return "Das Modell ist gerade nicht erreichbar (" + m.slice(0, 60) + ").";
+    if (/kurz/.test(m)) return "Die Aufnahme war zu kurz.";
+    return "Fehler: " + m.slice(0, 80);
+  }
+
+  // ---------- 2 · Mikrofon prüfen ----------
+  // Der AudioContext entsteht noch im Tipp (iOS), erst danach kommt das Mikrofon.
+  _recStart() {
+    if (this._busy || this._rec) return;
+    if (!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { U.toast(this, "Dieses Gerät gibt hier kein Mikrofon frei."); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!this._ctx || this._ctx.state === "closed") { try { this._ctx = new AC(); } catch (e) { this._ctx = null; } }
+    const ctx = this._ctx;
+    if (!ctx) { U.toast(this, "Audio lässt sich hier nicht starten."); return; }
+    try { ctx.resume(); } catch (e) {}
+    this._busy = true;
+    const wer = this._wer;
+    const rec = this._rec = { ctx, stream: null, src: null, node: null, sink: null, mute: null, st: { ratio: ctx.sampleRate / 16000, acc: 0, need: 0 }, parts: [], n: 0, lvl: 0, got: false, done: false, t0: 0, timer: null, wd: null, res: null, rej: null };
+    this._render();
+    (async () => {
+      try {
+        const pcm = await this._capture(rec);
+        const sp = speech(pcm);
+        this._recState = "rechne"; this._render();
+        const { sess } = await this._ensureModel();
+        this._recState = "rechne"; this._render();
+        await new Promise(r => setTimeout(r, 30));
+        const e = await V.embed(sess, sp.sec >= 0.4 ? sp.pcm : pcm);
+        const nr = (this._recs.length ? this._recs[this._recs.length - 1].nr : 0) + 1;
+        const cmp = this._recs.map(r => ({ nr: r.nr, wer: r.wer, cos: V.cos(e.vec, r.vec) }));
+        this._recs.push({ nr, wer, vec: e.vec, sec: sp.sec, peak: sp.peak, ms: e.ms_run, cmp });
+        if (this._recs.length > MAX_REC) this._recs.shift();
+        this._report("mikro", {
+          nr, wer, sprache_s: Math.round(sp.sec * 10) / 10, spitze: sp.peak, rate: ctx.sampleRate,
+          fbank_ms: Math.round(e.ms_fb), lauf_ms: Math.round(e.ms_run), frames: e.frames,
+          vergleich: cmp.map(c => ({ nr: c.nr, wer: c.wer, cos: Math.round(c.cos * 1000) / 1000 })),
+        });
+      } catch (err) {
+        U.toast(this, err && err.message === "unterbrochen" ? "Das Mikrofon wurde unterbrochen, bitte noch einmal." : this._errText(err));
+        if (this._st.m === "lade") this._st.m = "idle";
+        this._report("fehler", { schritt: "mikro", grund: String((err && err.message) || err).slice(0, 120) });
+      } finally {
+        this._recStop(false);
+        this._recState = "";
+        this._busy = false;
+        this._render();
+      }
+    })();
+  }
+  // Nimmt REC_SEC Sekunden auf. AudioWorklet am MediaStream-Ziel wie die Pipo-Karte (kein Knacken am Lautsprecher);
+  // kommt in 600 ms kein Ton, rechnet der Browser den Worklet dort nicht: dann stummer Gain am Ausgang. Ohne Worklet
+  // ScriptProcessor. Endet die Mikrofon-Spur unterwegs, gilt die Aufnahme als unterbrochen.
+  _capture(rec) {
+    return new Promise(async (res, rej) => {
+      rec.res = res; rec.rej = rej;
+      const ctx = rec.ctx, want = REC_SEC * 16000;
+      const finish = () => {
+        if (rec.done) return;
+        rec.done = true;
+        const out = new Int16Array(Math.min(rec.n, want));
+        let o = 0;
+        for (const p of rec.parts) { const k = Math.min(p.length, out.length - o); if (k <= 0) break; out.set(p.subarray(0, k), o); o += k; }
+        res(out);
+      };
+      const on = f => {
+        if (rec.done) return;
+        rec.got = true;
+        const o = V.downsample(rec.st, f);
+        rec.parts.push(o); rec.n += o.length;
+        let pk = 0;
+        for (let i = 0; i < o.length; i += 4) { const v = Math.abs(o[i]); if (v > pk) pk = v; }
+        rec.lvl = Math.max(pk / 32768, rec.lvl * 0.8);
+        this._renderLvl();
+        if (rec.n >= want) finish();
+      };
+      try {
+        rec.stream = await navigator.mediaDevices.getUserMedia(MIC);
+        if (rec.done) return;
+        rec.stream.getAudioTracks().forEach(t => t.addEventListener("ended", () => { if (!rec.done) { rec.done = true; rej(new Error("unterbrochen")); } }));
+        try { await ctx.resume(); } catch (e) {}
+        rec.src = ctx.createMediaStreamSource(rec.stream);
+        let ok = false;
+        if (ctx.audioWorklet && typeof AudioWorkletNode === "function") {
+          const url = ctx.__fpVoiceRec ? "" : URL.createObjectURL(new Blob([WORKLET], { type: "application/javascript" }));
+          try {
+            if (url) { await ctx.audioWorklet.addModule(url); ctx.__fpVoiceRec = true; }
+            const node = new AudioWorkletNode(ctx, "fp-voice-rec", { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
+            node.port.onmessage = e => on(e.data);
+            rec.src.connect(node);
+            rec.node = node;
+            ok = true;
+          } catch (e) { ok = false; }
+          finally { if (url) URL.revokeObjectURL(url); }
+        }
+        if (!ok) {
+          const node = ctx.createScriptProcessor(4096, 1, 1);
+          node.onaudioprocess = e => on(new Float32Array(e.inputBuffer.getChannelData(0)));
+          rec.src.connect(node);
+          rec.node = node;
+        }
+        const muteOut = () => { rec.mute = ctx.createGain(); rec.mute.gain.value = 0; rec.mute.connect(ctx.destination); rec.node.connect(rec.mute); };
+        if (ok && typeof ctx.createMediaStreamDestination === "function") {
+          try { rec.sink = ctx.createMediaStreamDestination(); rec.node.connect(rec.sink); } catch (e) { rec.sink = null; muteOut(); }
+          if (rec.sink) rec.wd = setTimeout(() => { if (!rec.got && !rec.done) { try { rec.node.disconnect(rec.sink); } catch (e) {} rec.sink = null; muteOut(); } }, 600);
+        } else muteOut();
+        rec.t0 = Date.now();
+        this._recState = "hoert"; this._render();
+        rec.timer = setTimeout(() => { if (!rec.done) { if (rec.n > 16000) finish(); else { rec.done = true; rej(new Error("kein Ton vom Mikrofon")); } } }, REC_SEC * 1000 + 2500);
+      } catch (e) { if (!rec.done) { rec.done = true; rej(e); } }
+    });
+  }
+  _recStop(closeCtx) {
+    const rec = this._rec;
+    if (rec) {
+      this._rec = null;
+      rec.done = true;
+      clearTimeout(rec.timer); clearTimeout(rec.wd);
+      try { if (rec.node) { rec.node.port && (rec.node.port.onmessage = null); rec.node.onaudioprocess = null; rec.node.disconnect(); } } catch (e) {}
+      try { if (rec.src) rec.src.disconnect(); } catch (e) {}
+      try { if (rec.mute) rec.mute.disconnect(); } catch (e) {}
+      try { if (rec.stream) rec.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    }
+    const ctx = this._ctx;
+    if (ctx) {
+      if (closeCtx) { this._ctx = null; try { ctx.close(); } catch (e) {} }
+      else { try { ctx.suspend(); } catch (e) {} }
+    }
+  }
+
+  // ---------- Anzeige ----------
+  _onClick(ev) {
+    const b = ev.target.closest("[data-act]");
+    if (!b || b.disabled) return;
+    const a = b.dataset.act;
+    if (a === "check") this._check();
+    else if (a === "rec") this._recStart();
+    else if (a === "wer") { this._wer = b.dataset.wer; this._render(); }
+    else if (a === "clear") { this._recs = []; this._render(); }
+  }
+  _renderProg() {
+    const el = this.querySelector(".vt-prog");
+    const p = this._st.prog;
+    if (!el || !p) return;
+    el.textContent = p[1] ? `Lädt … ${fmtN(p[0] / 1e6, 0)} von ${fmtN(p[1] / 1e6, 0)} MB` : `Lädt … ${fmtN(p[0] / 1e6, 0)} MB`;
+  }
+  _renderLvl() {
+    const el = this.querySelector(".vt-lvl > i"), rec = this._rec;
+    if (el && rec) el.style.width = Math.min(100, Math.round(Math.sqrt(rec.lvl) * 100)) + "%";
+    const t = this.querySelector(".vt-left");
+    if (t && rec && rec.t0) t.textContent = `Hört zu … noch ${Math.max(0, Math.ceil(REC_SEC - (Date.now() - rec.t0) / 1000))} s`;
+  }
+  _render() {
+    if (!this._cfg) return;
+    if (!this._built) {
+      this._built = true;
+      this.innerHTML = `<style>${this._css()}</style><ha-card class="vt-card"><div class="vt-body"></div></ha-card>`;
+      this.querySelector("ha-card").addEventListener("click", e => this._onClick(e));
+    }
+    const esc = U.esc, st = this._st, r = st.res, busy = !!this._busy;
+    let m1 = "";
+    if (st.m === "lade") m1 = `<div class="vt-stat vt-prog">Lädt das Modell …</div>`;
+    else if (st.m === "rechne") m1 = `<div class="vt-stat">Rechnet …</div>`;
+    else if (st.m === "fehler") m1 = `<div class="vt-stat vt-bad">${esc(st.err)}</div>`;
+    if (r && st.m !== "lade" && st.m !== "rechne") {
+      const cls = r.ms <= GOOD_MS ? "vt-g" : r.ms <= OK_MS ? "vt-y" : "vt-r";
+      const verdict = r.ms <= GOOD_MS ? "Schnell genug" : r.ms <= OK_MS ? "Knapp, aber machbar" : "Zu langsam";
+      m1 += `<div class="vt-res">
+        <div class="vt-pill ${cls}">${verdict}</div>
+        <div class="vt-row"><span>Rechnen für ${TEST_SEC} s Ton</span><b>${fmtS(r.ms)}</b></div>
+        <div class="vt-row vt-dim"><span>Erster Durchlauf</span><span>${fmtS(r.first)}</span></div>
+        <div class="vt-row vt-dim"><span>Modell laden (${r.src === "cache" ? "aus dem Zwischenspeicher" : "aus dem Netz"}, ${fmtN(r.mb, 1)} MB)</span><span>${fmtS(r.ms_load)}</span></div>
+        <div class="vt-row vt-dim"><span>Modell starten</span><span>${fmtS(r.ms_init)}</span></div>
+      </div>`;
+    }
+    const recState = this._recState || "";
+    const ppl = this._cfg.people.map(p => `<button class="vt-chip${p === this._wer ? " vt-sel" : ""}" data-act="wer" data-wer="${esc(p)}"${busy ? " disabled" : ""}>${esc(p)}</button>`).join("");
+    let recBox = "";
+    if (this._rec || recState) {
+      recBox = recState === "rechne" ? `<div class="vt-stat">Rechnet …</div>`
+        : `<div class="vt-stat vt-left">Mikrofon geht auf …</div><div class="vt-lvl"><i></i></div>`;
+    }
+    const recs = this._recs.slice().reverse().map(x => {
+      const cmp = x.cmp.length ? `<div class="vt-cmp">${x.cmp.map(c => {
+        const k = c.cos >= 0.5 ? "ähnlich" : c.cos < 0.35 ? "anders" : "unklar";
+        return `<span class="vt-c${c.cos >= 0.5 ? " vt-same" : ""}">zu #${c.nr} ${esc(c.wer)}: <b>${fmtN(c.cos, 2)}</b> · ${k}</span>`;
+      }).join("")}</div>` : "";
+      const leise = x.sec < 1 ? ` · <span class="vt-warn">zu wenig Sprache</span>` : "";
+      return `<div class="vt-rec"><div class="vt-row"><span><b>#${x.nr} ${esc(x.wer)}</b> · ${fmtN(x.sec, 1)} s Sprache${leise}</span><span class="vt-dim">${fmtS(x.ms)}</span></div>${cmp}</div>`;
+    }).join("");
+    this.querySelector(".vt-body").innerHTML = `
+      <div class="vt-head"><span class="vt-t">${esc(this._cfg.title)}</span><span class="vt-badge">Test</span></div>
+      <p class="vt-sub">Hier lernt Pipo später, wer von euch spricht. Zuerst prüfen wir, ob dieses Gerät das schnell genug kann.</p>
+      <div class="vt-step">
+        <div class="vt-st"><span class="vt-n">1</span>Modell prüfen</div>
+        <p class="vt-d">Lädt das Stimmmodell (rund 29 MB, nur beim ersten Mal aus dem Netz) und rechnet ${TEST_SEC} Sekunden Testton durch.</p>
+        ${m1}
+        <button class="vt-btn" data-act="check"${busy ? " disabled" : ""}>${r ? "Noch einmal prüfen" : "Prüfen"}</button>
+      </div>
+      <div class="vt-step">
+        <div class="vt-st"><span class="vt-n">2</span>Mikrofon prüfen</div>
+        <p class="vt-d">Wer spricht? Dann auf Aufnehmen tippen und ${REC_SEC} Sekunden lang einen ganzen Satz sagen, ohne „Pipo“, zum Beispiel: „Heute ist Sonntag und wir probieren das Stimmtraining aus.“</p>
+        <div class="vt-chips">${ppl}</div>
+        ${recBox}
+        <button class="vt-btn" data-act="rec"${busy ? " disabled" : ""}>Aufnehmen</button>
+        ${recs ? `<div class="vt-recs">${recs}</div><p class="vt-d">Gut wäre: jeder zweimal. Zwei Aufnahmen derselben Person sollten deutlich höher liegen als zwei verschiedene Personen. „ähnlich“ und „anders“ sind nur eine grobe Richtung, die echten Grenzen kommen mit dem Einlernen.</p><button class="vt-link" data-act="clear"${busy ? " disabled" : ""}>Aufnahmen verwerfen</button>` : ""}
+      </div>
+      <p class="vt-foot">Der Ton bleibt auf diesem Gerät. An Home Assistant gehen nur Messwerte.</p>`;
+    this._renderProg();
+    this._renderLvl();
+  }
+  _css() {
+    return `
+    fp-voice-train-card{display:block;}
+    .vt-card{padding:16px;box-sizing:border-box;height:100%;}
+    .vt-head{display:flex;align-items:center;gap:8px;}
+    .vt-t{font-size:1.15rem;font-weight:700;color:var(--primary-text-color);}
+    .vt-badge{padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--fp-accent,var(--primary-color));background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 14%,transparent);}
+    .vt-sub{margin:6px 0 12px;font-size:.92rem;color:var(--secondary-text-color);line-height:1.4;}
+    .vt-step{padding:12px;margin-bottom:10px;border-radius:var(--fp-radius-sm,12px);background:var(--fp-surface,var(--secondary-background-color));}
+    .vt-st{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--primary-text-color);}
+    .vt-n{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:.8rem;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));}
+    .vt-d{margin:6px 0 10px;font-size:.88rem;color:var(--secondary-text-color);line-height:1.4;}
+    .vt-btn{min-height:44px;padding:10px 18px;border:none;border-radius:999px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-size:.95rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .vt-btn:disabled,.vt-chip:disabled,.vt-link:disabled{opacity:.5;cursor:default;}
+    .vt-link{margin-top:8px;padding:6px 0;border:none;background:none;color:var(--secondary-text-color);font-size:.85rem;text-decoration:underline;cursor:pointer;}
+    .vt-chips{display:flex;gap:8px;margin-bottom:10px;}
+    .vt-chip{min-height:38px;padding:6px 16px;border:none;border-radius:999px;background:var(--card-background-color);color:var(--primary-text-color);font-size:.9rem;font-weight:600;cursor:pointer;box-shadow:inset 0 0 0 1px var(--divider-color);}
+    .vt-chip.vt-sel{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));box-shadow:none;}
+    .vt-stat{margin-bottom:10px;font-size:.92rem;color:var(--primary-text-color);}
+    .vt-bad{color:var(--error-color,#db4437);}
+    .vt-lvl{height:8px;margin:-4px 0 12px;border-radius:999px;overflow:hidden;background:var(--divider-color);}
+    .vt-lvl>i{display:block;height:100%;width:0;background:var(--fp-accent,var(--primary-color));transition:width .08s linear;}
+    .vt-res,.vt-recs{margin-bottom:10px;}
+    .vt-row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:.9rem;color:var(--primary-text-color);}
+    .vt-dim,.vt-row.vt-dim{color:var(--secondary-text-color);font-size:.85rem;}
+    .vt-pill{display:inline-block;margin-bottom:6px;padding:3px 10px;border-radius:999px;font-size:.82rem;font-weight:700;}
+    .vt-g{color:var(--success-color,#43a047);background:color-mix(in srgb,var(--success-color,#43a047) 14%,transparent);}
+    .vt-y{color:var(--warning-color,#ffa600);background:color-mix(in srgb,var(--warning-color,#ffa600) 16%,transparent);}
+    .vt-r{color:var(--error-color,#db4437);background:color-mix(in srgb,var(--error-color,#db4437) 14%,transparent);}
+    .vt-rec{padding:8px 0;border-top:1px solid var(--divider-color);}
+    .vt-rec:first-child{border-top:none;}
+    .vt-cmp{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+    .vt-c{padding:2px 8px;border-radius:999px;font-size:.8rem;color:var(--primary-text-color);box-shadow:inset 0 0 0 1px var(--divider-color);}
+    .vt-c.vt-same{box-shadow:none;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);}
+    .vt-warn{color:var(--warning-color,#ffa600);}
+    .vt-foot{margin:4px 0 0;font-size:.8rem;color:var(--secondary-text-color);}
+    .vt-btn:focus-visible,.vt-chip:focus-visible{outline:2px solid var(--fp-accent,var(--primary-color));outline-offset:2px;}
+    `;
+  }
+}
+if (!customElements.get("fp-voice-train-card")) {
+  customElements.define("fp-voice-train-card", FpVoiceTrainCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "fp-voice-train-card", name: "FP Stimmtraining (Pipo)", description: "Eigene Karte fürs Stimmtraining von Pipo; Schritt 0: prüft am Gerät, ob das Stimmmodell schnell genug läuft, und vergleicht Probe-Aufnahmen", preview: false });
+}
 })();
