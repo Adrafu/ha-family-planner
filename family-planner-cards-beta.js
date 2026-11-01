@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.8.7 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta + fp-voice-train-card-beta */
+/* Family Planner custom cards v3.8.8 - meal-grid-card-beta + family-calendar-card-beta + kids-routine-card-beta + shopping-fav-card-beta + nav-card-beta + fp-todo-card-beta + fp-glance-card-beta + fp-cookbook-card-beta + dobby-clock-card-beta + fp-feeding-card-beta + fp-weight-card-beta + fp-diaper-card-beta + fp-milestone-card-beta + fp-baby-overview-card-beta + fp-assistant-card-beta + fp-voice-train-card-beta */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt; lightbox: Dialoge als nativer Dialog in der obersten Ebene; Hinweise erscheinen bei offenem Dialog auch im Dialog) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -10725,7 +10725,7 @@ if (!customElements.get("fp-baby-overview-card-beta")) {
 }
 })();
 
-/* ===== fp-assistant-card-beta v22 (Aktivierungswort nach dem Vorlesen nicht doppelt taub: mit mic_pause war die Erkennung nach dem Wiederöffnen des Mikrofons noch einmal WAKE_QUIET (1,2 s) taub, obwohl der Ton längst zu Ende war und das Mikrofon die ganze Zeit zu; jetzt zählt nur noch die Wartezeit vor dem Öffnen; bleibt das Mikrofon offen (mic_pause aus, Vor-Öffnen bei Rückfragen, Klingeln), gilt die Ruhezeit wie bisher; davor: Bühne: Zahnrad neben dem ✕ klappt die Schalter „Auf … hören“ und „An diesem Gerät klingeln“ auf, sie waren in der Bühne nicht erreichbar; ist das Zuhören aus, zeigt das die Figur (Augen zu); davor: verpasste Rufe aufzeichnen: mit wake_clip_min gehen über wake_clip auch Episoden unter der Schwelle ab dieser Untergrenze als Aufnahme hinaus (art knapp), mit eigener Drosselung, nicht während Pip beschäftigt ist; davor: Klingeln per Stimme abstellen: solange es klingelt (Timer, Wecker, Erinnerung), bleibt das Weckwort-Mikrofon auch mit mic_pause offen, auch während der Ansage; das Aktivierungswort stellt das Klingeln sofort ab (auf allen Geräten, wie der Stopp-Knopf) und Pip hört danach wie gewohnt zu; davor: Rückfragen: das Weckwort-Mikrofon geht bei mic_pause kurz vor dem Ende des Vorlesens wieder auf (PRE_OPEN_MS), Pip hört nach dem Vorlesen sofort zu statt erst nach knapp 3 Sekunden; sobald nach einer Rückfrage zugehört wird, spielt ein kurzer Ton, ab dem man sprechen kann (er geht nicht an Home Assistant); davor: Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-beta-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
+/* ===== fp-assistant-card-beta v23 (Pause von außen: das Fenster-Ereignis fp-pip-hold legt das Aktivierungswort für eine Weile still (etwa beim Stimmtraining, damit nicht jedes geübte „Hey Pipo“ ein Gespräch öffnet); in der Pause geht kein Ton an wake_log oder wake_clip, ein laufendes Gespräch bleibt unberührt; Antwort fp-pip-hold-ack, solange das Aktivierungswort läuft; window.__fpWake.scoreClip rechnet eine ganze Aufnahme durch dieselbe Kette wie im Betrieb (Werte je 80 ms); davor: Aktivierungswort nach dem Vorlesen nicht doppelt taub: mit mic_pause war die Erkennung nach dem Wiederöffnen des Mikrofons noch einmal WAKE_QUIET (1,2 s) taub, obwohl der Ton längst zu Ende war und das Mikrofon die ganze Zeit zu; jetzt zählt nur noch die Wartezeit vor dem Öffnen; bleibt das Mikrofon offen (mic_pause aus, Vor-Öffnen bei Rückfragen, Klingeln), gilt die Ruhezeit wie bisher; davor: Bühne: Zahnrad neben dem ✕ klappt die Schalter „Auf … hören“ und „An diesem Gerät klingeln“ auf, sie waren in der Bühne nicht erreichbar; ist das Zuhören aus, zeigt das die Figur (Augen zu); davor: verpasste Rufe aufzeichnen: mit wake_clip_min gehen über wake_clip auch Episoden unter der Schwelle ab dieser Untergrenze als Aufnahme hinaus (art knapp), mit eigener Drosselung, nicht während Pip beschäftigt ist; davor: Klingeln per Stimme abstellen: solange es klingelt (Timer, Wecker, Erinnerung), bleibt das Weckwort-Mikrofon auch mit mic_pause offen, auch während der Ansage; das Aktivierungswort stellt das Klingeln sofort ab (auf allen Geräten, wie der Stopp-Knopf) und Pip hört danach wie gewohnt zu; davor: Rückfragen: das Weckwort-Mikrofon geht bei mic_pause kurz vor dem Ende des Vorlesens wieder auf (PRE_OPEN_MS), Pip hört nach dem Vorlesen sofort zu statt erst nach knapp 3 Sekunden; sobald nach einer Rückfrage zugehört wird, spielt ein kurzer Ton, ab dem man sprechen kann (er geht nicht an Home Assistant); davor: Handy: baut Home Assistant die Karten neu auf (Herunterziehen zum Aktualisieren) und ist der Platz in der Kinder-Leiste kurz weg, bleibt die feste Figur bis zu 1 Sekunde unsichtbar und wartet auf den neuen Platz, statt kurz in der Ecke aufzutauchen und zurückzuspringen, auch wenn dabei die unsichtbare Karte neu angelegt wird und das Dock kurz aus- und wieder eingeblendet wird (setVisible); bei Seitenwechsel, ab 700 px Breite oder wenn der Platz nicht wiederkommt steht sie wie bisher sofort bzw. nach der Wartezeit in der Ecke; davor: Handy: die Figur steckt als echte Kopie (fp-pip-dock-beta-slotfig) im Platz der Kinder-Leiste und läuft deshalb mit der klebenden Leiste mit, auch beim Ausrollen und Nachfedern am iPhone, wo kein scroll-Ereignis kommt; die feste Figur ist dann unsichtbar und steht beim Verschwinden des Platzes sofort wieder in der Ecke; Pillen und Anker folgen weiter dem Platz; davor: setzt sich auf der Seite selbst in den Platz der Kinder-Leiste der Baby-Karte (window.__fpPipSlots, dock_gap), ohne lift; im Dunkelmodus kräftiger: Theme-Variable --fp-pip, Aufhellung mit der Schriftfarbe statt mit dem dunklen Hintergrund, dunkle Augen; davor: Fehlauslöser aufzeichnen über wake_clip: bei jeder Reaktion des Weckwort-Modells (Schwelle erreicht) gehen die letzten 3 Sekunden Mikrofon-Ton plus 1 Sekunde danach als WAV an ein Skript, mit Art, Höchstwert, Blöcken, Folge und Gerät, gedrosselt; davor: Bühne auch beim Tipp auf die Figur, Ende 5 s nach der Antwort oder nach 30 s ohne Eingabe, Berührung hält 30 s, begonnener Text hält bis zum Löschen; davor: Bühne (stage): beim Aktivierungswort wird das Dashboard abgedunkelt, die Figur rollt groß in die Mitte und das Gespräch steht darunter, Ende kurz nach der Antwort; davor: Protokoll der Aktivierungswort-Werte über wake_log: Erkennungen mit dem danach verstandenen Text, knappe Werte unter der Schwelle; davor: Bildschirmschoner weg bei Aktivierungswort (wake_screen), bleibt bis zum Ende des Gesprächs weg; davor: Mikrofon zu, solange Pip spricht oder es klingelt (mic_pause), kein Ton nach Aufnahme-Ende an HA, keine Ereignis-Abos für Nicht-Admins; davor: früheres Vorlesen nur noch mit early_tts: true, Vorgabe aus, weil es am iPad rauschte; davor: lernt mit: protokolliert Bitten, die an den Gesprächsagenten gingen, über learn; davor: liest früher vor: spielt die Sprachausgabe schon während des Erzeugens, wenn Home Assistant sie streamt; davor: Timer, Wecker und Erinnerungen: Pillen mit Countdown neben der Figur, Klingeln mit Ansage und Stopp (alarms); davor: kein Knacken am iPad bei offenem Mikrofon: Audio mit der Rate des Geräts, Aufnahme nicht mehr am Lautsprecher-Ausgang; davor: Aktivierungswort auch auf iOS 17: onnxruntime-web 1.18 ohne geteilten Speicher, Fehlerursache am Schalter; davor: position: left, Aktivierungswort im Browser (wake_word, openWakeWord über onnxruntime-web); davor: Pip: Sprachassistent mit Figur, Gespräch, Mikrofon, Vorlesen, Karten mit Rückgängig und Bestätigen; hebt sich über Aktionsleisten) ===== */
 (() => {
 const U = window.__fpUtils;
 // Die Karte selbst bleibt unsichtbar. Sie legt ihre Konfiguration im Browser ab und sorgt dafür,
@@ -11086,6 +11086,23 @@ class WakeEngine {
   }
 }
 // wake-engine:end
+// Für das Stimmtraining (fp-voice-train-card-beta): eine ganze Aufnahme (16 kHz, Int16) durch dieselbe Kette rechnen wie das Aktivierungswort
+// im Betrieb, Block für Block (nicht über push, das bei Rückstand Blöcke verwirft). Ergebnis: ein Wert je 80-ms-Block, scores[i] gehört zum
+// Block, der bei (i + 1) * 1280 Werten endet; die ersten WAKE_SKIP Blöcke zählen wie im Betrieb 0. Prod und Beta laden beide: die höhere
+// Version gilt, bei gleicher die zuerst geladene (sie teilt sich dann die Modell-Sitzungen mit dem laufenden Aktivierungswort).
+const WAKE_API_V = 1;
+if (!window.__fpWake || (window.__fpWake.v || 0) < WAKE_API_V) window.__fpWake = {
+  v: WAKE_API_V,
+  async scoreClip(w, pcm) {
+    const eng = new WakeEngine({ model: w.model, base: w.base, threshold: 2, patience: 1 });
+    await eng.load();
+    const scores = [], g = eng.gen;
+    eng.onscore = s => scores.push(s);
+    try { for (let o = 0; o + WK_CHUNK <= pcm.length; o += WK_CHUNK) await eng._step(pcm.slice(o, o + WK_CHUNK), g); }
+    finally { eng.dispose(); }
+    return scores;
+  },
+};
 const MIC = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
 // AudioContext immer mit der Rate des Geräts: Eine fremde Rate (z. B. 16 kHz) zwingt iOS, die Hardware umzuschalten bzw. schlecht
 // zu resampeln, das knackt und rauscht im Lautsprecher, solange der Kontext läuft (beim Aktivierungswort also dauernd).
@@ -11637,6 +11654,7 @@ class FpPipDock extends HTMLElement {
     this._wkTok = 0;
     this._wkLoading = false;
     this._wkHold = false;      // zwischen Erkennung und Start der Aufnahme
+    this._pause = 0;           // Pause von außen (fp-pip-hold) bis zu diesem Zeitpunkt (ms), 0 = keine
     this._wkWas = false;
     this._wkQuiet = 0;
     this._wkArmed = false;
@@ -11704,6 +11722,7 @@ class FpPipDock extends HTMLElement {
     // Nachführen: Platz gemeldet oder weg, Fenster gedreht oder verändert, Inhalt gescrollt (HA scrollt in einem inneren Element, daher capture).
     // Die Handler kehren sofort zurück, solange kein Platz gemeldet ist.
     window.addEventListener("fp-pip-slot", this._slotCb);
+    window.addEventListener("fp-pip-hold", e => this._onPause(e));
     window.addEventListener("resize", this._slotCb);
     window.addEventListener("orientationchange", this._slotCb);
     window.addEventListener("scroll", this._slotCb, { passive: true, capture: true });
@@ -12847,6 +12866,16 @@ class FpPipDock extends HTMLElement {
   // Taub: Gespräch läuft, Erkennung gerade angenommen oder Pip liest eine Antwort vor. Klingelton und Ansage des Klingelns zählen nicht:
   // Dort soll das Aktivierungswort gerade das Klingeln abstellen (_onWake). Ob das Mikrofon dabei offen ist, regelt _micHold.
   _wakeBusy() { return this._wkHold || !!this._cur || (this._speaking && !this._ringSpk()); }
+  // Pause von außen: window.dispatchEvent(new CustomEvent("fp-pip-hold", { detail: { on: true, ms: 15000 } })). Das Aktivierungswort hört
+  // so lange nicht zu (Vorgabe 15 s, 1 s bis 2 min, jedes neue Ereignis setzt die Zeit neu); on: false beendet die Pause sofort. Danach gilt
+  // dieselbe kurze Ruhezeit wie nach einer Antwort. Läuft das Aktivierungswort, kommt fp-pip-hold-ack { held } zurück, sonst nichts:
+  // so sieht die Gegenseite, ob es hier jemanden gibt, der mithört.
+  _onPause(e) {
+    const d = (e && e.detail) || {};
+    this._pause = d.on ? Date.now() + Math.min(120000, Math.max(1000, +d.ms || 15000)) : 0;
+    if (d.on && this._eng) this._eng.reset();
+    if (this._wm && this._wm.live) { try { window.dispatchEvent(new CustomEvent("fp-pip-hold-ack", { detail: { held: !!d.on } })); } catch (err) {} }
+  }
   // Läuft gerade die Ansage des aktuellen Klingelns (kein gewöhnliches Vorlesen)?
   _ringSpk() { return !!(this._annc && this._annc.ring && this._annc.ring === this._ring); }
   // Klingelt es laut (Klingelton oder Ansage)? Dann schließt sich ein per Aktivierungswort geöffnetes Fenster nicht von selbst.
@@ -13153,9 +13182,12 @@ class FpPipDock extends HTMLElement {
   _wakeFrames(out) {
     const m = this._wm, eng = this._eng;
     if (!m || !eng) return;
+    const run = m.run, rec = run && !run.ended && run.rec && !run.rec.stopped;
+    // Pause von außen (fp-pip-hold): nichts erkennen und nichts an wake_clip; ein laufendes Gespräch hört weiter zu
+    if (this._pause && Date.now() >= this._pause) this._pause = 0;
+    if (this._pause && !rec) { this._wkWas = true; return; }
     if (this._cfg.wake_clip) this._clFeed(out);   // wake_clip: Ringpuffer und Nach-Teil, auch während Ton-Signal und Gespräch
-    const run = m.run;
-    if (run && !run.ended && run.rec && !run.rec.stopped) { this._queue(run, out); return; }
+    if (rec) { this._queue(run, out); return; }
     if (this._wakeBusy()) { this._wkWas = true; return; }
     const now = Date.now();
     if (this._wkWas) {
@@ -14164,15 +14196,15 @@ window.addEventListener("popstate", nav);
 window.addEventListener("resize", () => { try { if (dock && typeof dock.applyLift === "function") { dock.applyLift(); dock.applyPos(); } } catch (e) {} });
 if (document.body) nav(); else document.addEventListener("DOMContentLoaded", nav, { once: true });
 })();
-/* ===== fp-voice-train-card-beta v1 (Stimmtraining für Pipo, Schritt 0: eigene Karte, getrennt von der Pipo-Karte; prüft am Gerät, ob das Stimmmodell (WeSpeaker CAM++ über onnxruntime-web 1.18, nur WASM, 1 Thread) schnell genug läuft – Laden mit Zwischenspeicher (Cache Storage), Start, Rechenzeit für 3 s Testton – und vergleicht kurze Mikrofon-Aufnahmen miteinander; an Home Assistant (report) gehen nur Messwerte, nie Ton oder Stimmvektoren) ===== */
+/* ===== fp-voice-train-card-beta v2 (gemeinsames Üben: je Probe „Hey Pipo, …“ plus kurzer Satz aus einer Liste harmloser Fragen; die Karte rechnet das Weckwort mit derselben Kette wie Pipo (window.__fpWake.scoreClip, ab fp-assistant-card-beta v23) und schickt den Ausschnitt um den Höchstwert (2 s davor, 0,3 s danach; ohne klaren Wert ab dem Sprachbeginn) als WAV an das clip-Skript fürs Nachtraining; aus der ganzen Probe entsteht der Stimmabdruck, die Proben und das Profil je Person (ab 5 Proben, Ausreißer raus) liegen im Speicher des Kontos (frontend/user_data, Schlüssel fp-voice); Aufnahme endet bei Stille; Pipo wird je Aufnahme über fp-pip-hold pausiert, ohne Antwort ein Hinweis; Reiter Üben, „Wer bin ich?“ (Test, zählt nicht als Probe) und Gerät (Rechenzeit, Proben löschen); Stimm-Kern v2: toB64/fromB64, wav, profile, userData; davor: v1 Schritt 0, Prüfung von Rechenzeit und Mikrofon) ===== */
 (() => {
 const U = window.__fpUtils;
 
-// ---------- Stimm-Kern (window.__fpVoice): Fbank, Modell, Stimmabdruck ----------
+// ---------- Stimm-Kern (window.__fpVoice): Fbank, Modell, Stimmabdruck, Speicher ----------
 // Für Trainings-Karte und später Pipo. Prod- und Beta-Datei laden beide; es gilt die höhere Version (v).
 // onnxruntime-web kommt wie beim Aktivierungswort aus window.ort / window.__fpOrtLoad: dieselbe Version 1.18.0, dieselben
 // Globalen, also nie zwei Laufzeiten nebeneinander.
-const VOICE_V = 1;
+const VOICE_V = 2;
 if (!window.__fpVoice || (window.__fpVoice.v || 0) < VOICE_V) window.__fpVoice = (() => {
   const ORT_VER = "1.18.0";
   const ORT_DIR = "https://cdn.jsdelivr.net/npm/onnxruntime-web@" + ORT_VER + "/dist/";
@@ -14370,7 +14402,60 @@ if (!window.__fpVoice || (window.__fpVoice.v || 0) < VOICE_V) window.__fpVoice =
     return buf.subarray(0, n);
   }
 
-  return { v: VOICE_V, ORT_VER, loadOrt, fbank, model, embed, cos, downsample };
+  // Vektoren als Base64 (Float32, Little Endian), für den Speicher in Home Assistant
+  const toB64 = f32 => {
+    const u = new Uint8Array(f32.buffer, f32.byteOffset, f32.byteLength);
+    let s = "";
+    for (let i = 0; i < u.length; i += 6144) s += String.fromCharCode.apply(null, u.subarray(i, i + 6144));
+    return btoa(s);
+  };
+  const fromB64 = b => {
+    try {
+      const s = atob(String(b || "")), u = new Uint8Array(s.length);
+      for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+      return new Float32Array(u.buffer, 0, Math.floor(u.length / 4));
+    } catch (e) { return new Float32Array(0); }
+  };
+  // WAV (PCM 16 Bit, mono, 16 kHz) als Base64, stückweise umgewandelt (Vielfache von 3 Byte), damit btoa nicht an eine Grenze stößt
+  function wav(pcm) {
+    const n = pcm.length, u = new Uint8Array(44 + n * 2), dv = new DataView(u.buffer);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) u[o + i] = s.charCodeAt(i); };
+    w(0, "RIFF"); dv.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); dv.setUint32(16, 16, true);
+    dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, 16000, true); dv.setUint32(28, 32000, true);
+    dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); w(36, "data"); dv.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) dv.setInt16(44 + i * 2, pcm[i], true);
+    let s = "";
+    for (let i = 0; i < u.length; i += 6144) s += btoa(String.fromCharCode.apply(null, u.subarray(i, i + 6144)));
+    return s;
+  }
+  // Profil aus Proben: Mittelwert der Vektoren, Ausreißer (Kosinus zum Mittel unter 0,45 oder deutlich unter dem Median) raus, normiert
+  function profile(vecs) {
+    const mean = list => {
+      if (!list.length) return null;
+      const d = list[0].length, m = new Float32Array(d);
+      for (const v of list) for (let i = 0; i < d; i++) m[i] += v[i];
+      let s = 0;
+      for (let i = 0; i < d; i++) s += m[i] * m[i];
+      s = Math.sqrt(s) || 1;
+      for (let i = 0; i < d; i++) m[i] /= s;
+      return m;
+    };
+    const all = vecs.filter(v => v && v.length), m0 = mean(all);
+    if (!m0) return null;
+    const c = all.map(v => cos(v, m0)), med = c.slice().sort((a, b) => a - b)[Math.floor(c.length / 2)];
+    const keep = all.filter((v, i) => c[i] >= 0.45 && c[i] >= med - 0.15);
+    return { vec: mean(keep.length >= 2 ? keep : all), used: keep.length >= 2 ? keep.length : all.length };
+  }
+  // Speicher beim angemeldeten Konto in Home Assistant (frontend/user_data): bleibt über Neuladen und Neustart, nur dieses Konto sieht ihn
+  const userData = {
+    async get(hass, key) {
+      const r = await hass.connection.sendMessagePromise({ type: "frontend/get_user_data", key });
+      return r && r.value !== undefined ? r.value : null;
+    },
+    set(hass, key, value) { return hass.connection.sendMessagePromise({ type: "frontend/set_user_data", key, value }); },
+  };
+
+  return { v: VOICE_V, ORT_VER, loadOrt, fbank, model, embed, cos, downsample, toB64, fromB64, wav, profile, userData };
 })();
 
 const V = window.__fpVoice;
@@ -14378,16 +14463,38 @@ const DEF_MODELS = [
   "https://huggingface.co/Wespeaker/wespeaker-voxceleb-campplus/resolve/main/voxceleb_CAM%2B%2B.onnx",
   "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_CAM%2B%2B.onnx",
 ];
+const MODEL_ID = "wespeaker-voxceleb-campplus";   // ändert sich das Modell, passen alte Proben nicht mehr
+const STORE_KEY = "fp-voice";                       // Schlüssel im Speicher des Kontos (frontend/user_data)
 const MIC = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };   // wie die Pipo-Karte
-const REC_SEC = 4;            // so lange dauert eine Probe-Aufnahme
-const TEST_SEC = 3;           // so lang ist der Testton für die Rechenzeit
-const GOOD_MS = 500, OK_MS = 800;   // Ampel für die Rechenzeit (Plan: höchstens 500 ms pro Anfrage)
-const MAX_REC = 8;            // so viele Aufnahmen bleiben zum Vergleichen
+const LEAD_MS = 600;          // so lange läuft die Aufnahme vor „Jetzt sprechen“ (Raumton für das Weckwort-Modell)
+const MAX_SEC = 7;            // längste Aufnahme
+const END_SIL = 800;          // so viel Stille nach dem Sprechen beendet die Aufnahme
+const MIN_SPEECH = 700;       // erst ab so viel Sprache darf Stille die Aufnahme beenden
+const MAX_KEEP = 40;          // so viele Proben bleiben je Person (die ältesten fallen weg)
+const MIN_PROFILE = 5;        // ab so vielen Proben gibt es ein Stimmprofil
+const HOLD_MS = 20000;        // Pause für Pipo je Aufnahme
+const CLIP_PRE = 2.0, CLIP_POST = 0.3;   // Ausschnitt fürs Weckwort-Training: so viele Sekunden vor und nach dem Höchstwert
+const TEST_SEC = 3;           // Testton für die Rechenzeit
+const GOOD_MS = 500, OK_MS = 800;
 const WORKLET = 'class P extends AudioWorkletProcessor{constructor(){super();this.b=new Float32Array(2048);this.n=0;}'
   + 'process(i){var c=i[0]&&i[0][0];if(c){for(var k=0;k<c.length;k++){this.b[this.n++]=c[k];if(this.n===2048){this.port.postMessage(this.b.slice(0));this.n=0;}}}return true;}}'
   + 'registerProcessor("fp-voice-rec",P);';
+// Übungssätze: alles nur Fragen, damit nichts passiert, falls Pipo doch mithört (kein Schalten, Eintragen oder Starten)
+const SAETZE = [
+  "Hey Pipo, wie wird das Wetter morgen?", "Hey Pipo, wie spät ist es?", "Hey Pipo, was steht heute im Kalender?",
+  "Hey Pipo, wann hat Finn zuletzt getrunken?", "Hey Pipo, was gibt es heute zu essen?", "Hey Pipo, ist die Wohnungstür zugesperrt?",
+  "Hey Pipo, wie lange brauche ich nach Wien?", "Hey Pipo, was steht auf der Einkaufsliste?", "Hey Pipo, regnet es heute noch?",
+  "Hey Pipo, welcher Tag ist heute?", "Hey Pipo, wie viel wiegt Oskar?", "Hey Pipo, was kochen wir am Sonntag?",
+  "Hey Pipo, wer hat Dobby versteckt?", "Hey Pipo, wie warm ist es draußen?", "Hey Pipo, wann geht morgen die Sonne auf?",
+  "Hey Pipo, was haben wir morgen vor?", "Hey Pipo, wann war die letzte Windel bei Finn?", "Hey Pipo, wie viele Timer laufen gerade?",
+  "Hey Pipo, wie ist die Luft im Schlafzimmer?", "Hey Pipo, gibt es eine Wetterwarnung?", "Hey Pipo, wann hat Oskar zuletzt geschlafen?",
+  "Hey Pipo, was ist heute noch offen?", "Hey Pipo, wie voll ist das Auto?", "Hey Pipo, erzähl mir einen Witz.",
+];
+const hint = i => i % 5 === 2 ? "Diesmal aus 3 bis 4 Metern, zum Beispiel vom Esstisch."
+  : i % 5 === 4 ? "Diesmal etwas leiser, wie am Abend."
+  : i % 7 === 6 ? "Diesmal schnell und beiläufig."
+  : "Normal sprechen, wie im Alltag.";
 
-// Testton: 3 s „Stimme“ aus Obertönen mit wandernder Grundfrequenz, etwas Rauschen und Pausen (immer derselbe, nur für die Rechenzeit).
 let TEST_PCM = null;
 function testPcm() {
   if (TEST_PCM) return TEST_PCM;
@@ -14407,7 +14514,6 @@ function testPcm() {
   }
   return (TEST_PCM = x);
 }
-// Grobe Gerätekennung ohne Personendaten, z. B. "iPad 1180x820" (wie wake_clip)
 function device() {
   let k = "Sonst";
   try {
@@ -14419,8 +14525,8 @@ function device() {
   } catch (e) {}
   return `${k} ${window.innerWidth}x${window.innerHeight}`;
 }
-// Sprache in einer Aufnahme finden: 20-ms-Stücke, Schwelle aus dem Grundrauschen. Gibt Dauer und den Ausschnitt mit
-// 0,15 s Rand zurück; Stille vorne und hinten soll den Stimmabdruck nicht verwässern.
+// Sprache finden: 20-ms-Stücke, Schwelle aus dem Grundrauschen. Liefert Dauer, Beginn (Wert-Index), Spitze und den Ausschnitt mit
+// 0,15 s Rand; Stille vorne und hinten soll den Stimmabdruck nicht verwässern.
 function speech(pcm) {
   const L = 320, n = Math.floor(pcm.length / L), rms = new Float32Array(n);
   let peak = 0;
@@ -14433,9 +14539,9 @@ function speech(pcm) {
   const thr = Math.max(250, floor * 3);
   let first = -1, last = -1, cnt = 0;
   for (let j = 0; j < n; j++) if (rms[j] > thr) { cnt++; if (first < 0) first = j; last = j; }
-  if (first < 0) return { sec: 0, peak, pcm };
+  if (first < 0) return { sec: 0, peak, start: 0, pcm };
   const a = Math.max(0, (first - 8) * L), b = Math.min(pcm.length, (last + 9) * L);
-  return { sec: cnt * L / 16000, peak, pcm: pcm.subarray(a, b) };
+  return { sec: cnt * L / 16000, peak, start: first * L, pcm: pcm.subarray(a, b) };
 }
 const fmtS = ms => (ms / 1000).toLocaleString("de-AT", { minimumFractionDigits: ms < 10000 ? 2 : 1, maximumFractionDigits: ms < 10000 ? 2 : 1 }) + " s";
 const fmtN = (v, d) => Number(v).toLocaleString("de-AT", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -14445,38 +14551,103 @@ class FpVoiceTrainCard extends HTMLElement {
     const c = config || {};
     const models = Array.isArray(c.model) ? c.model : (c.model ? [c.model] : DEF_MODELS);
     const people = Array.isArray(c.people) && c.people.length ? c.people.map(p => String(p).trim()).filter(Boolean) : ["Tobi", "Verena"];
-    this._cfg = { title: String(c.title || "Stimmtraining"), models: models.map(String), report: String(c.report || "").trim(), people };
+    const w = c.wake && typeof c.wake === "object" ? c.wake : null;
+    const okScript = v => /^script\.[a-z0-9_]+$/.test(String(v || "").trim()) ? String(v).trim() : "";
+    this._cfg = {
+      title: String(c.title || "Stimmtraining"), models: models.map(String), people,
+      report: okScript(c.report), clip: okScript(c.clip),
+      target: Math.max(5, Math.min(60, parseInt(c.target, 10) || 20)),
+      wake: w && w.model ? { model: String(w.model), base: String(w.base || "/local/fp-wake/"), threshold: +w.threshold || 0.8 } : null,
+    };
     if (!this._st) this._st = { m: "idle", prog: null, res: null, err: "" };
-    if (!this._recs) this._recs = [];
     if (!this._wer || people.indexOf(this._wer) < 0) this._wer = people[0];
+    if (!this._mode) this._mode = "ueben";
     this._render();
   }
-  set hass(h) { this._hass = h; }
-  connectedCallback() { U.fillZelle(this); this._render(); }
-  disconnectedCallback() { this._recStop(true); }
-  getCardSize() { return 6; }
+  set hass(h) {
+    this._hass = h;
+    if (!this._loading && !this._data && h && h.connection) this._loadData();
+  }
+  connectedCallback() {
+    U.fillZelle(this);
+    this._ackCb = this._ackCb || (e => { if (e && e.detail && e.detail.held) this._ackSeen = true; });
+    window.addEventListener("fp-pip-hold-ack", this._ackCb);
+    this._render();
+  }
+  disconnectedCallback() {
+    window.removeEventListener("fp-pip-hold-ack", this._ackCb);
+    this._hold(false);
+    this._recStop(true);
+  }
+  getCardSize() { return 8; }
   getGridOptions() { return { columns: 12, rows: "auto", min_rows: 0 }; }
-  static getStubConfig() { return { report: "" }; }
+  static getStubConfig() { return { people: ["Tobi", "Verena"], report: "", clip: "", wake: { model: "/local/fp-wake/hey_pipo_v4.onnx", base: "/local/fp-wake/" } }; }
+
+  // ---------- Speicher beim Konto ----------
+  async _loadData() {
+    this._loading = true;
+    try {
+      const v = await V.userData.get(this._hass, STORE_KEY);
+      this._data = v && typeof v === "object" && v.modell === MODEL_ID ? v : { v: 1, modell: MODEL_ID, dim: 512, personen: {} };
+      if (!this._data.personen || typeof this._data.personen !== "object") this._data.personen = {};
+      this._dataErr = "";
+    } catch (e) {
+      this._dataErr = "Der Speicher in Home Assistant ist gerade nicht erreichbar.";
+      this._data = null;
+      setTimeout(() => { this._loading = false; if (this._hass && !this._data) this._loadData(); }, 15000);
+      this._render();
+      return;
+    }
+    this._loading = false;
+    this._render();
+  }
+  async _saveData() {
+    if (!this._data || !this._hass) return;
+    try { await V.userData.set(this._hass, STORE_KEY, this._data); }
+    catch (e) { U.toast(this, "Die Probe ließ sich nicht in Home Assistant speichern."); throw e; }
+  }
+  _person(wer) {
+    const P = this._data && this._data.personen;
+    if (!P) return null;
+    if (!P[wer]) P[wer] = { proben: [], profil: "", n: 0, stand: 0 };
+    return P[wer];
+  }
+  _profiles() {
+    const out = [], P = (this._data && this._data.personen) || {};
+    for (const wer of this._cfg.people) {
+      const p = P[wer];
+      if (p && p.profil && p.n >= MIN_PROFILE) { const v = V.fromB64(p.profil); if (v.length) out.push({ wer, vec: v }); }
+    }
+    return out;
+  }
 
   // ---------- Messwerte an Home Assistant (nur Zahlen, kein Ton, keine Vektoren) ----------
   _report(art, obj) {
     const e = this._cfg.report, h = this._hass;
-    if (!e || !h || e.indexOf("script.") !== 0) return;
-    const o = Object.assign({ v: 1, geraet: device(), konto: (h.user && h.user.name) || "", ort: V.ORT_VER }, obj);
+    if (!e || !h) return;
+    const o = Object.assign({ v: 2, geraet: device(), konto: (h.user && h.user.name) || "" }, obj);
     try {
       const p = h.callService("script", e.slice(7), { art, bericht: JSON.stringify(o) });
-      if (p && p.catch) p.catch(() => { if (!this._repErr) { this._repErr = true; U.toast(this, "Messwerte konnten nicht an Home Assistant gehen."); } });
+      if (p && p.catch) p.catch(() => {});
     } catch (err) {}
   }
 
-  // ---------- 1 · Modell prüfen ----------
-  // Modell einmal pro Karte holen; der Kern hält es pro Seite (zweite Karte oder Neuaufbau laden nicht noch einmal).
+  // ---------- Pipo pausieren ----------
+  // Pipo hört auf derselben Seite mit und würde bei jedem geübten „Hey Pipo“ ein Gespräch öffnen. Ab fp-assistant-card-beta v23 legt das
+  // Ereignis fp-pip-hold das Aktivierungswort still; ohne Antwort (fp-pip-hold-ack) hört entweder niemand mit oder eine ältere Pipo-Karte.
+  _hold(on) {
+    if (on) this._ackSeen = false;
+    try { window.dispatchEvent(new CustomEvent("fp-pip-hold", { detail: { on: !!on, ms: HOLD_MS } })); } catch (e) {}
+  }
+  _pipoThere() { return !!document.querySelector("fp-pip-dock-beta, fp-pip-dock-beta-beta"); }
+
+  // ---------- Modell ----------
   async _ensureModel() {
     if (this._mdl) return this._mdl;
     const st = this._st, prev = st.m;
     st.m = "lade"; st.prog = null; st.err = ""; this._render();
     try { this._mdl = await V.model(this._cfg.models, (n, total) => { st.prog = [n, total]; this._renderProg(); }); }
-    finally { if (st.m === "lade") st.m = prev === "fehler" ? "idle" : prev; }
+    finally { if (st.m === "lade") st.m = prev === "fehler" ? "idle" : prev; this._render(); }
     return this._mdl;
   }
   async _check() {
@@ -14486,42 +14657,34 @@ class FpVoiceTrainCard extends HTMLElement {
     try {
       const { sess, info } = await this._ensureModel();
       st.m = "rechne"; this._render();
-      await new Promise(r => setTimeout(r, 30));   // Anzeige zuerst zeichnen lassen
+      await new Promise(r => setTimeout(r, 30));
       const pcm = testPcm(), runs = [];
       let fb = 0, dim = 0;
-      for (let i = 0; i < 3; i++) {
-        const e = await V.embed(sess, pcm);
-        runs.push(e.ms_run); fb = e.ms_fb; dim = e.vec.length;
-      }
+      for (let i = 0; i < 3; i++) { const e = await V.embed(sess, pcm); runs.push(e.ms_run); fb = e.ms_fb; dim = e.vec.length; }
       const ms = Math.min(runs[1], runs[2]);
-      st.res = Object.assign({}, info, { fb, first: runs[0], ms, dim, again: !!st.res });
+      st.res = Object.assign({}, info, { fb, first: runs[0], ms, dim });
       st.m = "ok";
-      this._report("modell", {
-        quelle: info.src, adresse: info.url.indexOf("huggingface") >= 0 ? "huggingface" : (info.url.indexOf("github") >= 0 ? "github" : "eigene"),
-        mb: info.mb, ort_ms: Math.round(info.ms_ort), laden_ms: Math.round(info.ms_load), start_ms: Math.round(info.ms_init),
-        fbank_ms: Math.round(fb), lauf1_ms: Math.round(runs[0]), lauf_ms: Math.round(ms), ton_s: TEST_SEC, dim,
-      });
+      this._report("modell", { quelle: info.src, mb: info.mb, laden_ms: Math.round(info.ms_load), start_ms: Math.round(info.ms_init), lauf1_ms: Math.round(runs[0]), lauf_ms: Math.round(ms), ton_s: TEST_SEC, dim });
     } catch (e) {
-      st.m = "fehler";
-      st.err = this._errText(e);
+      st.m = "fehler"; st.err = this._errText(e);
       this._report("fehler", { schritt: "modell", grund: String((e && e.message) || e).slice(0, 120) });
-    } finally {
-      this._busy = false;
-      this._render();
-    }
+    } finally { this._busy = false; this._render(); }
   }
   _errText(e) {
     const m = String((e && e.message) || e || "");
     if (/^ort/.test(m)) return "Die Rechen-Laufzeit (onnxruntime) ließ sich nicht laden.";
     if (/HTTP|fetch|Load failed|NetworkError|Failed to fetch/i.test(m)) return "Das Modell ist gerade nicht erreichbar (" + m.slice(0, 60) + ").";
     if (/kurz/.test(m)) return "Die Aufnahme war zu kurz.";
+    if (/unterbrochen/.test(m)) return "Das Mikrofon wurde unterbrochen, bitte noch einmal.";
+    if (/Permission|NotAllowed/i.test(m)) return "Das Mikrofon ist für diese Seite nicht freigegeben.";
     return "Fehler: " + m.slice(0, 80);
   }
 
-  // ---------- 2 · Mikrofon prüfen ----------
+  // ---------- Aufnahme ----------
   // Der AudioContext entsteht noch im Tipp (iOS), erst danach kommt das Mikrofon.
-  _recStart() {
+  _recStart(kind) {
     if (this._busy || this._rec) return;
+    if (kind === "probe" && !this._data) { U.toast(this, this._dataErr || "Der Speicher wird noch geladen."); return; }
     if (!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { U.toast(this, "Dieses Gerät gibt hier kein Mikrofon frei."); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!this._ctx || this._ctx.state === "closed") { try { this._ctx = new AC(); } catch (e) { this._ctx = null; } }
@@ -14529,32 +14692,22 @@ class FpVoiceTrainCard extends HTMLElement {
     if (!ctx) { U.toast(this, "Audio lässt sich hier nicht starten."); return; }
     try { ctx.resume(); } catch (e) {}
     this._busy = true;
-    const wer = this._wer;
-    const rec = this._rec = { ctx, stream: null, src: null, node: null, sink: null, mute: null, st: { ratio: ctx.sampleRate / 16000, acc: 0, need: 0 }, parts: [], n: 0, lvl: 0, got: false, done: false, t0: 0, timer: null, wd: null, res: null, rej: null };
-    this._render();
+    this._hold(true);
+    const wer = this._wer, satzNr = this._nextIdx(wer), satz = kind === "probe" ? SAETZE[satzNr % SAETZE.length] : "";
+    const rec = this._rec = { kind, ctx, stream: null, src: null, node: null, sink: null, mute: null, st: { ratio: ctx.sampleRate / 16000, acc: 0, need: 0 }, parts: [], n: 0, lvl: 0, got: false, done: false, t0: 0, sp: 0, sil: 0, floor: [], timer: null, wd: null };
+    this._recState = "auf"; this._render();
     (async () => {
       try {
         const pcm = await this._capture(rec);
-        const sp = speech(pcm);
         this._recState = "rechne"; this._render();
-        const { sess } = await this._ensureModel();
-        this._recState = "rechne"; this._render();
-        await new Promise(r => setTimeout(r, 30));
-        const e = await V.embed(sess, sp.sec >= 0.4 ? sp.pcm : pcm);
-        const nr = (this._recs.length ? this._recs[this._recs.length - 1].nr : 0) + 1;
-        const cmp = this._recs.map(r => ({ nr: r.nr, wer: r.wer, cos: V.cos(e.vec, r.vec) }));
-        this._recs.push({ nr, wer, vec: e.vec, sec: sp.sec, peak: sp.peak, ms: e.ms_run, cmp });
-        if (this._recs.length > MAX_REC) this._recs.shift();
-        this._report("mikro", {
-          nr, wer, sprache_s: Math.round(sp.sec * 10) / 10, spitze: sp.peak, rate: ctx.sampleRate,
-          fbank_ms: Math.round(e.ms_fb), lauf_ms: Math.round(e.ms_run), frames: e.frames,
-          vergleich: cmp.map(c => ({ nr: c.nr, wer: c.wer, cos: Math.round(c.cos * 1000) / 1000 })),
-        });
+        this._hold(false);
+        if (kind === "probe") await this._probe(pcm, wer, satzNr, satz);
+        else await this._test(pcm, wer);
       } catch (err) {
-        U.toast(this, err && err.message === "unterbrochen" ? "Das Mikrofon wurde unterbrochen, bitte noch einmal." : this._errText(err));
-        if (this._st.m === "lade") this._st.m = "idle";
-        this._report("fehler", { schritt: "mikro", grund: String((err && err.message) || err).slice(0, 120) });
+        U.toast(this, this._errText(err));
+        this._report("fehler", { schritt: kind, grund: String((err && err.message) || err).slice(0, 120) });
       } finally {
+        this._hold(false);
         this._recStop(false);
         this._recState = "";
         this._busy = false;
@@ -14562,17 +14715,16 @@ class FpVoiceTrainCard extends HTMLElement {
       }
     })();
   }
-  // Nimmt REC_SEC Sekunden auf. AudioWorklet am MediaStream-Ziel wie die Pipo-Karte (kein Knacken am Lautsprecher);
-  // kommt in 600 ms kein Ton, rechnet der Browser den Worklet dort nicht: dann stummer Gain am Ausgang. Ohne Worklet
-  // ScriptProcessor. Endet die Mikrofon-Spur unterwegs, gilt die Aufnahme als unterbrochen.
+  _nextIdx(wer) { const p = this._data && this._data.personen && this._data.personen[wer]; return p && p.weiter ? p.weiter : 0; }
+  // Nimmt auf, bis nach mindestens MIN_SPEECH ms Sprache END_SIL ms Stille folgen (höchstens MAX_SEC). AudioWorklet am MediaStream-Ziel wie
+  // die Pipo-Karte; kommt in 600 ms kein Ton, stummer Gain am Ausgang; ohne Worklet ScriptProcessor.
   _capture(rec) {
     return new Promise(async (res, rej) => {
-      rec.res = res; rec.rej = rej;
-      const ctx = rec.ctx, want = REC_SEC * 16000;
+      const ctx = rec.ctx, maxN = MAX_SEC * 16000;
       const finish = () => {
         if (rec.done) return;
         rec.done = true;
-        const out = new Int16Array(Math.min(rec.n, want));
+        const out = new Int16Array(Math.min(rec.n, maxN));
         let o = 0;
         for (const p of rec.parts) { const k = Math.min(p.length, out.length - o); if (k <= 0) break; out.set(p.subarray(0, k), o); o += k; }
         res(out);
@@ -14582,11 +14734,18 @@ class FpVoiceTrainCard extends HTMLElement {
         rec.got = true;
         const o = V.downsample(rec.st, f);
         rec.parts.push(o); rec.n += o.length;
-        let pk = 0;
-        for (let i = 0; i < o.length; i += 4) { const v = Math.abs(o[i]); if (v > pk) pk = v; }
-        rec.lvl = Math.max(pk / 32768, rec.lvl * 0.8);
+        // Pegel und einfache Spracherkennung in 20-ms-Stücken; das Grundrauschen kommt aus der Vorlaufzeit
+        for (let j = 0; j + 320 <= o.length; j += 320) {
+          let s = 0;
+          for (let i = j; i < j + 320; i++) s += o[i] * o[i];
+          const r = Math.sqrt(s / 320);
+          rec.lvl = Math.max(r / 8000, rec.lvl * 0.85);
+          if (rec.n < LEAD_MS * 16) { rec.floor.push(r); continue; }
+          const fl = rec.floor.length ? rec.floor.slice().sort((a, b) => a - b)[Math.floor(rec.floor.length / 2)] : 0;
+          if (r > Math.max(300, fl * 3)) { rec.sp += 20; rec.sil = 0; } else if (rec.sp > 0) rec.sil += 20;
+        }
         this._renderLvl();
-        if (rec.n >= want) finish();
+        if (rec.n >= maxN || (rec.sp >= MIN_SPEECH && rec.sil >= END_SIL)) finish();
       };
       try {
         rec.stream = await navigator.mediaDevices.getUserMedia(MIC);
@@ -14619,8 +14778,7 @@ class FpVoiceTrainCard extends HTMLElement {
           if (rec.sink) rec.wd = setTimeout(() => { if (!rec.got && !rec.done) { try { rec.node.disconnect(rec.sink); } catch (e) {} rec.sink = null; muteOut(); } }, 600);
         } else muteOut();
         rec.t0 = Date.now();
-        this._recState = "hoert"; this._render();
-        rec.timer = setTimeout(() => { if (!rec.done) { if (rec.n > 16000) finish(); else { rec.done = true; rej(new Error("kein Ton vom Mikrofon")); } } }, REC_SEC * 1000 + 2500);
+        rec.timer = setTimeout(() => { if (!rec.done) { if (rec.n > 16000) finish(); else { rec.done = true; rej(new Error("kein Ton vom Mikrofon")); } } }, MAX_SEC * 1000 + 2500);
       } catch (e) { if (!rec.done) { rec.done = true; rej(e); } }
     });
   }
@@ -14630,7 +14788,7 @@ class FpVoiceTrainCard extends HTMLElement {
       this._rec = null;
       rec.done = true;
       clearTimeout(rec.timer); clearTimeout(rec.wd);
-      try { if (rec.node) { rec.node.port && (rec.node.port.onmessage = null); rec.node.onaudioprocess = null; rec.node.disconnect(); } } catch (e) {}
+      try { if (rec.node) { if (rec.node.port) rec.node.port.onmessage = null; rec.node.onaudioprocess = null; rec.node.disconnect(); } } catch (e) {}
       try { if (rec.src) rec.src.disconnect(); } catch (e) {}
       try { if (rec.mute) rec.mute.disconnect(); } catch (e) {}
       try { if (rec.stream) rec.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
@@ -14642,27 +14800,120 @@ class FpVoiceTrainCard extends HTMLElement {
     }
   }
 
+  // ---------- Auswerten ----------
+  // Weckwort: dieselbe Kette wie Pipo im Betrieb (window.__fpWake aus der Pipo-Karte ab v23). Bewertet werden nur die ersten Sekunden
+  // (dort steht „Hey Pipo“). Ergebnis: Höchstwert und Ende des besten Blocks (Wert-Index).
+  async _wakeScore(pcm, sp) {
+    const W = window.__fpWake, w = this._cfg.wake;
+    if (!W || typeof W.scoreClip !== "function" || !w) return null;
+    const lim = Math.min(pcm.length, (sp.sec > 0 ? sp.start : 0) + Math.round(2.6 * 16000));
+    const scores = await W.scoreClip(w, pcm.subarray(0, Math.max(lim, 16000)));
+    let best = 0, at = -1;
+    scores.forEach((s, i) => { if (s > best) { best = s; at = i; } });
+    return { best, end: at >= 0 ? (at + 1) * 1280 : 0 };
+  }
+  async _probe(pcm, wer, satzNr, satz) {
+    const sp = speech(pcm);
+    if (sp.sec < 0.6) throw new Error("kurz");
+    const { sess } = await this._ensureModel();
+    const e = await V.embed(sess, sp.pcm);
+    let wk = null;
+    try { wk = await this._wakeScore(pcm, sp); } catch (err) { wk = null; }
+    // Ausschnitt fürs Weckwort-Training: am Höchstwert (deutlich erkannt) oder sonst ab dem Sprachbeginn
+    let a, b, lage;
+    if (wk && wk.best >= 0.3) { b = Math.min(pcm.length, wk.end + Math.round(CLIP_POST * 16000)); a = Math.max(0, b - Math.round((CLIP_PRE + CLIP_POST) * 16000)); lage = "wert"; }
+    else { a = Math.max(0, sp.start - 8000); b = Math.min(pcm.length, sp.start + 25600); lage = "beginn"; }
+    const person = this._person(wer);
+    const eigene = person.proben.map(p => V.cos(e.vec, V.fromB64(p.vec))).filter(x => !isNaN(x));
+    const cosEigen = eigene.length ? eigene.reduce((x, y) => x + y, 0) / eigene.length : null;
+    const andere = this._profiles().filter(p => p.wer !== wer).map(p => ({ wer: p.wer, cos: V.cos(e.vec, p.vec) }));
+    const nr = (person.nr_max || 0) + 1;
+    person.nr_max = nr;
+    person.proben.push({ nr, t: Math.round(Date.now() / 1000), vec: V.toB64(e.vec), wake: wk ? Math.round(wk.best * 1000) / 1000 : null, sek: Math.round(sp.sec * 10) / 10, satz: satzNr });
+    if (person.proben.length > MAX_KEEP) person.proben.splice(0, person.proben.length - MAX_KEEP);
+    person.weiter = satzNr + 1;
+    this._reprofile(wer);
+    await this._saveData();
+    // Ton fürs Weckwort-Training (nur der Ausschnitt) an Home Assistant
+    if (this._cfg.clip && this._hass) {
+      try {
+        const p = this._hass.callService("script", this._cfg.clip.slice(7), { wer, nr, wert: wk ? Math.round(wk.best * 1000) / 1000 : 0, satz, lage, geraet: device(), audio: V.wav(pcm.subarray(a, b)) });
+        if (p && p.catch) p.catch(() => U.toast(this, "Der Weckwort-Ausschnitt ging nicht an Home Assistant."));
+      } catch (err) {}
+    }
+    this._last = { kind: "probe", wer, nr, wake: wk ? wk.best : null, cosEigen, andere, sec: sp.sec, ms: e.ms_run };
+    this._report("probe", {
+      wer, nr, satz: satzNr, sprache_s: Math.round(sp.sec * 10) / 10, wake: wk ? Math.round(wk.best * 1000) / 1000 : null, lage, lauf_ms: Math.round(e.ms_run),
+      cos_eigen: cosEigen === null ? null : Math.round(cosEigen * 1000) / 1000, cos_andere: andere.map(x => ({ wer: x.wer, cos: Math.round(x.cos * 1000) / 1000 })),
+    });
+  }
+  _reprofile(wer) {
+    const p = this._person(wer);
+    const vecs = p.proben.map(x => V.fromB64(x.vec)).filter(v => v.length);
+    p.n = vecs.length;
+    p.stand = Math.round(Date.now() / 1000);
+    const pr = vecs.length >= MIN_PROFILE ? V.profile(vecs) : null;
+    p.profil = pr ? V.toB64(pr.vec) : "";
+    p.genutzt = pr ? pr.used : 0;
+  }
+  async _test(pcm, wer) {
+    const sp = speech(pcm);
+    if (sp.sec < 0.6) throw new Error("kurz");
+    const { sess } = await this._ensureModel();
+    const e = await V.embed(sess, sp.pcm);
+    const pr = this._profiles().map(p => ({ wer: p.wer, cos: V.cos(e.vec, p.vec) })).sort((x, y) => y.cos - x.cos);
+    const best = pr[0], second = pr[1];
+    const margin = best ? best.cos - (second ? second.cos : 0) : 0;
+    const erkannt = best && best.cos >= 0.45 && margin >= 0.1 ? best.wer : "unbekannt";
+    this._last = { kind: "test", wer, erkannt, werte: pr, sec: sp.sec };
+    this._report("test", { wer, erkannt, sprache_s: Math.round(sp.sec * 10) / 10, werte: pr.map(x => ({ wer: x.wer, cos: Math.round(x.cos * 1000) / 1000 })) });
+  }
+  async _drop(what) {
+    if (!this._data || this._busy) return;
+    const wer = this._wer, p = this._person(wer);
+    if (what === "letzte") {
+      p.proben.pop();
+      p.weiter = Math.max(0, (p.weiter || 0) - 1);
+      this._last = null;
+    } else if (what === "alle") {
+      delete this._data.personen[wer];
+      this._last = null;
+      this._confirm = "";
+    }
+    if (this._data.personen[wer]) this._reprofile(wer);
+    this._busy = true;
+    try { await this._saveData(); } catch (e) {} finally { this._busy = false; this._render(); }
+  }
+
   // ---------- Anzeige ----------
   _onClick(ev) {
     const b = ev.target.closest("[data-act]");
     if (!b || b.disabled) return;
     const a = b.dataset.act;
     if (a === "check") this._check();
-    else if (a === "rec") this._recStart();
-    else if (a === "wer") { this._wer = b.dataset.wer; this._render(); }
-    else if (a === "clear") { this._recs = []; this._render(); }
+    else if (a === "rec") this._recStart("probe");
+    else if (a === "test") this._recStart("test");
+    else if (a === "wer") { this._wer = b.dataset.wer; this._last = null; this._confirm = ""; this._render(); }
+    else if (a === "mode") { this._mode = b.dataset.mode; this._last = null; this._confirm = ""; this._render(); }
+    else if (a === "drop") this._drop("letzte");
+    else if (a === "dropall") { if (this._confirm === this._wer) this._drop("alle"); else { this._confirm = this._wer; this._render(); } }
   }
   _renderProg() {
-    const el = this.querySelector(".vt-prog");
-    const p = this._st.prog;
+    const el = this.querySelector(".vt-prog"), p = this._st.prog;
     if (!el || !p) return;
-    el.textContent = p[1] ? `Lädt … ${fmtN(p[0] / 1e6, 0)} von ${fmtN(p[1] / 1e6, 0)} MB` : `Lädt … ${fmtN(p[0] / 1e6, 0)} MB`;
+    el.textContent = p[1] ? `Lädt das Stimmmodell … ${fmtN(p[0] / 1e6, 0)} von ${fmtN(p[1] / 1e6, 0)} MB` : `Lädt das Stimmmodell … ${fmtN(p[0] / 1e6, 0)} MB`;
   }
   _renderLvl() {
-    const el = this.querySelector(".vt-lvl > i"), rec = this._rec;
+    const rec = this._rec;
+    const el = this.querySelector(".vt-lvl > i");
     if (el && rec) el.style.width = Math.min(100, Math.round(Math.sqrt(rec.lvl) * 100)) + "%";
-    const t = this.querySelector(".vt-left");
-    if (t && rec && rec.t0) t.textContent = `Hört zu … noch ${Math.max(0, Math.ceil(REC_SEC - (Date.now() - rec.t0) / 1000))} s`;
+    const t = this.querySelector(".vt-live");
+    if (t && rec) t.textContent = !rec.t0 ? "Mikrofon geht auf …" : rec.n < LEAD_MS * 16 ? "Gleich …" : "Jetzt sprechen";
+  }
+  _pipoNote() {
+    // Hinweis nur, wenn eine Pipo-Figur da ist und auf die letzte Pause nicht geantwortet hat (ältere Pipo-Karte oder Zuhören aus)
+    if (!this._pipoThere() || this._ackSeen || !this._triedHold) return "";
+    return `<div class="vt-note">Falls Pipo beim Üben anspringt: im Pipo-Fenster am Zahnrad „Auf Hey Pipo hören“ kurz ausschalten und danach wieder ein. Mit der nächsten Pipo-Version passiert das von selbst.</div>`;
   }
   _render() {
     if (!this._cfg) return;
@@ -14671,55 +14922,87 @@ class FpVoiceTrainCard extends HTMLElement {
       this.innerHTML = `<style>${this._css()}</style><ha-card class="vt-card"><div class="vt-body"></div></ha-card>`;
       this.querySelector("ha-card").addEventListener("click", e => this._onClick(e));
     }
-    const esc = U.esc, st = this._st, r = st.res, busy = !!this._busy;
-    let m1 = "";
-    if (st.m === "lade") m1 = `<div class="vt-stat vt-prog">Lädt das Modell …</div>`;
-    else if (st.m === "rechne") m1 = `<div class="vt-stat">Rechnet …</div>`;
-    else if (st.m === "fehler") m1 = `<div class="vt-stat vt-bad">${esc(st.err)}</div>`;
-    if (r && st.m !== "lade" && st.m !== "rechne") {
-      const cls = r.ms <= GOOD_MS ? "vt-g" : r.ms <= OK_MS ? "vt-y" : "vt-r";
-      const verdict = r.ms <= GOOD_MS ? "Schnell genug" : r.ms <= OK_MS ? "Knapp, aber machbar" : "Zu langsam";
-      m1 += `<div class="vt-res">
-        <div class="vt-pill ${cls}">${verdict}</div>
-        <div class="vt-row"><span>Rechnen für ${TEST_SEC} s Ton</span><b>${fmtS(r.ms)}</b></div>
-        <div class="vt-row vt-dim"><span>Erster Durchlauf</span><span>${fmtS(r.first)}</span></div>
-        <div class="vt-row vt-dim"><span>Modell laden (${r.src === "cache" ? "aus dem Zwischenspeicher" : "aus dem Netz"}, ${fmtN(r.mb, 1)} MB)</span><span>${fmtS(r.ms_load)}</span></div>
-        <div class="vt-row vt-dim"><span>Modell starten</span><span>${fmtS(r.ms_init)}</span></div>
-      </div>`;
-    }
-    const recState = this._recState || "";
-    const ppl = this._cfg.people.map(p => `<button class="vt-chip${p === this._wer ? " vt-sel" : ""}" data-act="wer" data-wer="${esc(p)}"${busy ? " disabled" : ""}>${esc(p)}</button>`).join("");
-    let recBox = "";
-    if (this._rec || recState) {
-      recBox = recState === "rechne" ? `<div class="vt-stat">Rechnet …</div>`
-        : `<div class="vt-stat vt-left">Mikrofon geht auf …</div><div class="vt-lvl"><i></i></div>`;
-    }
-    const recs = this._recs.slice().reverse().map(x => {
-      const cmp = x.cmp.length ? `<div class="vt-cmp">${x.cmp.map(c => {
-        const k = c.cos >= 0.5 ? "ähnlich" : c.cos < 0.35 ? "anders" : "unklar";
-        return `<span class="vt-c${c.cos >= 0.5 ? " vt-same" : ""}">zu #${c.nr} ${esc(c.wer)}: <b>${fmtN(c.cos, 2)}</b> · ${k}</span>`;
-      }).join("")}</div>` : "";
-      const leise = x.sec < 1 ? ` · <span class="vt-warn">zu wenig Sprache</span>` : "";
-      return `<div class="vt-rec"><div class="vt-row"><span><b>#${x.nr} ${esc(x.wer)}</b> · ${fmtN(x.sec, 1)} s Sprache${leise}</span><span class="vt-dim">${fmtS(x.ms)}</span></div>${cmp}</div>`;
+    if (this._rec) this._triedHold = true;
+    const esc = U.esc, busy = !!this._busy, cfg = this._cfg, wer = this._wer;
+    const P = (this._data && this._data.personen) || {};
+    const chips = cfg.people.map(p => {
+      const d = P[p], n = d && d.proben ? d.proben.length : 0;
+      const tag = d && d.profil ? "✓" : `${Math.min(n, cfg.target)}/${cfg.target}`;
+      return `<button class="vt-chip${p === wer ? " vt-sel" : ""}" data-act="wer" data-wer="${esc(p)}"${busy ? " disabled" : ""}>${esc(p)} <span class="vt-tag">${tag}</span></button>`;
     }).join("");
-    this.querySelector(".vt-body").innerHTML = `
-      <div class="vt-head"><span class="vt-t">${esc(this._cfg.title)}</span><span class="vt-badge">Test</span></div>
-      <p class="vt-sub">Hier lernt Pipo später, wer von euch spricht. Zuerst prüfen wir, ob dieses Gerät das schnell genug kann.</p>
-      <div class="vt-step">
-        <div class="vt-st"><span class="vt-n">1</span>Modell prüfen</div>
-        <p class="vt-d">Lädt das Stimmmodell (rund 29 MB, nur beim ersten Mal aus dem Netz) und rechnet ${TEST_SEC} Sekunden Testton durch.</p>
-        ${m1}
+    const tabs = [["ueben", "Üben"], ["test", "Wer bin ich?"], ["geraet", "Gerät"]].map(([k, t]) => `<button class="vt-tab${this._mode === k ? " vt-sel" : ""}" data-act="mode" data-mode="${k}"${busy ? " disabled" : ""}>${t}</button>`).join("");
+    const st = this._st;
+    const loadLine = st.m === "lade" ? `<div class="vt-stat vt-prog">Lädt das Stimmmodell …</div>` : "";
+    const recLine = this._rec || this._recState
+      ? (this._recState === "rechne" ? `<div class="vt-stat">Wertet aus …</div>` : `<div class="vt-stat vt-live">Mikrofon geht auf …</div><div class="vt-lvl"><i></i></div>`)
+      : "";
+    let body = "";
+    if (this._mode === "ueben") {
+      const d = P[wer], n = d && d.proben ? d.proben.length : 0, idx = this._nextIdx(wer);
+      const satz = SAETZE[idx % SAETZE.length];
+      const done = n >= cfg.target;
+      const last = this._last && this._last.kind === "probe" && this._last.wer === wer ? this._last : null;
+      let res = "";
+      if (last) {
+        const wkTxt = last.wake === null ? "Weckwort: kein Wert (Pipo-Karte ab v23 nötig)"
+          : `Weckwort ${fmtN(last.wake, 2)} · ${last.wake >= (cfg.wake ? cfg.wake.threshold : 0.8) ? "Pipo hätte reagiert" : "Pipo hätte nicht reagiert"}`;
+        const st1 = last.cosEigen === null ? "Erste Probe, noch kein Vergleich" : `Stimme passt zu deinen Proben: ${fmtN(last.cosEigen, 2)}`;
+        const st2 = last.andere.length ? last.andere.map(x => ` · zu ${esc(x.wer)}: ${fmtN(x.cos, 2)}`).join("") : "";
+        res = `<div class="vt-res"><div class="vt-row"><b>Probe ${last.nr}</b><button class="vt-link" data-act="drop"${busy ? " disabled" : ""}>Verwerfen</button></div>
+          <div class="vt-row vt-dim">${wkTxt}</div><div class="vt-row vt-dim">${st1}${st2}</div></div>`;
+      }
+      body = `
+        <div class="vt-chips">${chips}</div>
+        <div class="vt-count">${done ? `Fertig: ${n} Proben${d && d.profil ? ", Stimmprofil steht" : ""}. Mehr Proben schaden nicht.` : `Probe ${n + 1} von ${cfg.target}`}</div>
+        <div class="vt-satz">„${esc(satz)}“</div>
+        <div class="vt-hint">${esc(hint(idx))}</div>
+        ${loadLine}${recLine}
+        <button class="vt-btn" data-act="rec"${busy || !this._data ? " disabled" : ""}>Aufnehmen</button>
+        ${this._dataErr ? `<div class="vt-stat vt-bad">${esc(this._dataErr)}</div>` : ""}
+        ${res}
+        ${this._pipoNote()}`;
+    } else if (this._mode === "test") {
+      const pr = this._profiles();
+      const last = this._last && this._last.kind === "test" ? this._last : null;
+      let res = "";
+      if (last) {
+        const ok = last.erkannt === last.wer;
+        res = `<div class="vt-res"><div class="vt-pill ${last.erkannt === "unbekannt" ? "vt-y" : ok ? "vt-g" : "vt-r"}">${last.erkannt === "unbekannt" ? "Unklar" : `Klingt nach ${esc(last.erkannt)}`}</div>
+          <div class="vt-row vt-dim">${last.werte.map(x => `${esc(x.wer)} ${fmtN(x.cos, 2)}`).join(" · ")}</div></div>`;
+      }
+      body = pr.length
+        ? `<p class="vt-d">Wer spricht gerade? Dann aufnehmen und einen Satz mit „Hey Pipo“ sagen, zum Beispiel: „Hey Pipo, wie wird das Wetter morgen?“ Das Ergebnis zählt nicht als Probe.</p>
+          <div class="vt-chips">${chips}</div>${loadLine}${recLine}
+          <button class="vt-btn" data-act="test"${busy ? " disabled" : ""}>Testen</button>${res}${this._pipoNote()}`
+        : `<p class="vt-d">Zuerst unter „Üben“ mindestens ${MIN_PROFILE} Proben aufnehmen, dann gibt es hier etwas zu erkennen.</p>`;
+    } else {
+      const r = st.res;
+      let m1 = "";
+      if (st.m === "rechne") m1 = `<div class="vt-stat">Rechnet …</div>`;
+      else if (st.m === "fehler") m1 = `<div class="vt-stat vt-bad">${esc(st.err)}</div>`;
+      if (r && st.m !== "lade" && st.m !== "rechne") {
+        const cls = r.ms <= GOOD_MS ? "vt-g" : r.ms <= OK_MS ? "vt-y" : "vt-r";
+        m1 += `<div class="vt-res"><div class="vt-pill ${cls}">${r.ms <= GOOD_MS ? "Schnell genug" : r.ms <= OK_MS ? "Knapp, aber machbar" : "Zu langsam"}</div>
+          <div class="vt-row"><span>Rechnen für ${TEST_SEC} s Ton</span><b>${fmtS(r.ms)}</b></div>
+          <div class="vt-row vt-dim"><span>Modell laden (${r.src === "cache" ? "aus dem Zwischenspeicher" : "aus dem Netz"}, ${fmtN(r.mb, 1)} MB)</span><span>${fmtS(r.ms_load)}</span></div>
+          <div class="vt-row vt-dim"><span>Modell starten</span><span>${fmtS(r.ms_init)}</span></div></div>`;
+      }
+      const d = P[wer], n = d && d.proben ? d.proben.length : 0;
+      body = `
+        <p class="vt-d">Prüft, wie schnell dieses Gerät den Stimmabdruck rechnet (3 Sekunden Testton).</p>${loadLine}${m1}
         <button class="vt-btn" data-act="check"${busy ? " disabled" : ""}>${r ? "Noch einmal prüfen" : "Prüfen"}</button>
-      </div>
-      <div class="vt-step">
-        <div class="vt-st"><span class="vt-n">2</span>Mikrofon prüfen</div>
-        <p class="vt-d">Wer spricht? Dann auf Aufnehmen tippen und ${REC_SEC} Sekunden lang einen ganzen Satz sagen, ohne „Pipo“, zum Beispiel: „Heute ist Sonntag und wir probieren das Stimmtraining aus.“</p>
-        <div class="vt-chips">${ppl}</div>
-        ${recBox}
-        <button class="vt-btn" data-act="rec"${busy ? " disabled" : ""}>Aufnehmen</button>
-        ${recs ? `<div class="vt-recs">${recs}</div><p class="vt-d">Gut wäre: jeder zweimal. Zwei Aufnahmen derselben Person sollten deutlich höher liegen als zwei verschiedene Personen. „ähnlich“ und „anders“ sind nur eine grobe Richtung, die echten Grenzen kommen mit dem Einlernen.</p><button class="vt-link" data-act="clear"${busy ? " disabled" : ""}>Aufnahmen verwerfen</button>` : ""}
-      </div>
-      <p class="vt-foot">Der Ton bleibt auf diesem Gerät. An Home Assistant gehen nur Messwerte.</p>`;
+        <div class="vt-sep"></div>
+        <div class="vt-chips">${chips}</div>
+        <p class="vt-d">${esc(wer)}: ${n} Proben gespeichert${d && d.profil ? `, Profil aus ${d.genutzt || n} Proben` : ""}.</p>
+        ${n ? `<button class="vt-link" data-act="dropall"${busy ? " disabled" : ""}>${this._confirm === wer ? `Wirklich alle Proben von ${esc(wer)} löschen?` : `Alle Proben von ${esc(wer)} löschen`}</button>` : ""}`;
+    }
+    const konto = (this._hass && this._hass.user && this._hass.user.name) || "dieses";
+    this.querySelector(".vt-body").innerHTML = `
+      <div class="vt-head"><span class="vt-t">${esc(cfg.title)}</span><span class="vt-badge">Test</span></div>
+      <p class="vt-sub">Pipo lernt hier euer „Hey Pipo“ und eure Stimmen. Pro Person rund ${cfg.target} kurze Sätze, etwa 3 Minuten.</p>
+      <div class="vt-tabs">${tabs}</div>
+      <div class="vt-step">${body}</div>
+      <p class="vt-foot">Je Probe geht ein kurzer Ausschnitt mit „Hey Pipo“ (rund 2 Sekunden) an Home Assistant, um Pipo nachzutrainieren. Die Stimmabdrücke liegen beim Konto „${esc(konto)}“ in Home Assistant, der übrige Ton bleibt auf diesem Gerät.</p>`;
     this._renderProg();
     this._renderLvl();
   }
@@ -14731,41 +15014,42 @@ class FpVoiceTrainCard extends HTMLElement {
     .vt-t{font-size:1.15rem;font-weight:700;color:var(--primary-text-color);}
     .vt-badge{padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:700;letter-spacing:.04em;color:var(--fp-accent,var(--primary-color));background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 14%,transparent);}
     .vt-sub{margin:6px 0 12px;font-size:.92rem;color:var(--secondary-text-color);line-height:1.4;}
+    .vt-tabs{display:flex;gap:6px;margin-bottom:10px;}
+    .vt-tab{flex:1 1 0;min-height:38px;padding:6px 10px;border:none;border-radius:999px;background:var(--fp-surface,var(--secondary-background-color));color:var(--primary-text-color);font-size:.88rem;font-weight:600;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .vt-tab.vt-sel{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));}
     .vt-step{padding:12px;margin-bottom:10px;border-radius:var(--fp-radius-sm,12px);background:var(--fp-surface,var(--secondary-background-color));}
-    .vt-st{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--primary-text-color);}
-    .vt-n{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:.8rem;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));}
-    .vt-d{margin:6px 0 10px;font-size:.88rem;color:var(--secondary-text-color);line-height:1.4;}
-    .vt-btn{min-height:44px;padding:10px 18px;border:none;border-radius:999px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-size:.95rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-    .vt-btn:disabled,.vt-chip:disabled,.vt-link:disabled{opacity:.5;cursor:default;}
-    .vt-link{margin-top:8px;padding:6px 0;border:none;background:none;color:var(--secondary-text-color);font-size:.85rem;text-decoration:underline;cursor:pointer;}
-    .vt-chips{display:flex;gap:8px;margin-bottom:10px;}
-    .vt-chip{min-height:38px;padding:6px 16px;border:none;border-radius:999px;background:var(--card-background-color);color:var(--primary-text-color);font-size:.9rem;font-weight:600;cursor:pointer;box-shadow:inset 0 0 0 1px var(--divider-color);}
+    .vt-d{margin:2px 0 10px;font-size:.88rem;color:var(--secondary-text-color);line-height:1.4;}
+    .vt-chips{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+    .vt-chip{min-height:38px;padding:6px 14px;border:none;border-radius:999px;background:var(--card-background-color);color:var(--primary-text-color);font-size:.9rem;font-weight:600;cursor:pointer;box-shadow:inset 0 0 0 1px var(--divider-color);}
     .vt-chip.vt-sel{background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));box-shadow:none;}
-    .vt-stat{margin-bottom:10px;font-size:.92rem;color:var(--primary-text-color);}
-    .vt-bad{color:var(--error-color,#db4437);}
+    .vt-tag{font-weight:500;opacity:.8;margin-left:4px;font-size:.8rem;}
+    .vt-count{font-size:.82rem;color:var(--secondary-text-color);margin-bottom:4px;}
+    .vt-satz{font-size:1.35rem;font-weight:700;line-height:1.3;color:var(--primary-text-color);margin-bottom:4px;}
+    .vt-hint{font-size:.88rem;color:var(--secondary-text-color);margin-bottom:12px;}
+    .vt-btn{min-height:48px;padding:10px 22px;border:none;border-radius:999px;background:var(--fp-accent,var(--primary-color));color:var(--fp-accent-fg,var(--text-primary-color,#fff));font-size:1rem;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+    .vt-btn:disabled,.vt-chip:disabled,.vt-link:disabled,.vt-tab:disabled{opacity:.5;cursor:default;}
+    .vt-link{padding:4px 0;border:none;background:none;color:var(--secondary-text-color);font-size:.85rem;text-decoration:underline;cursor:pointer;}
+    .vt-stat{margin-bottom:10px;font-size:.95rem;font-weight:600;color:var(--primary-text-color);}
+    .vt-bad{color:var(--error-color,#db4437);font-weight:500;}
     .vt-lvl{height:8px;margin:-4px 0 12px;border-radius:999px;overflow:hidden;background:var(--divider-color);}
     .vt-lvl>i{display:block;height:100%;width:0;background:var(--fp-accent,var(--primary-color));transition:width .08s linear;}
-    .vt-res,.vt-recs{margin-bottom:10px;}
-    .vt-row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:.9rem;color:var(--primary-text-color);}
-    .vt-dim,.vt-row.vt-dim{color:var(--secondary-text-color);font-size:.85rem;}
-    .vt-pill{display:inline-block;margin-bottom:6px;padding:3px 10px;border-radius:999px;font-size:.82rem;font-weight:700;}
+    .vt-res{margin-top:12px;padding-top:10px;border-top:1px solid var(--divider-color);}
+    .vt-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:2px 0;font-size:.9rem;color:var(--primary-text-color);}
+    .vt-dim{color:var(--secondary-text-color);font-size:.86rem;}
+    .vt-pill{display:inline-block;margin-bottom:6px;padding:3px 10px;border-radius:999px;font-size:.85rem;font-weight:700;}
     .vt-g{color:var(--success-color,#43a047);background:color-mix(in srgb,var(--success-color,#43a047) 14%,transparent);}
     .vt-y{color:var(--warning-color,#ffa600);background:color-mix(in srgb,var(--warning-color,#ffa600) 16%,transparent);}
     .vt-r{color:var(--error-color,#db4437);background:color-mix(in srgb,var(--error-color,#db4437) 14%,transparent);}
-    .vt-rec{padding:8px 0;border-top:1px solid var(--divider-color);}
-    .vt-rec:first-child{border-top:none;}
-    .vt-cmp{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
-    .vt-c{padding:2px 8px;border-radius:999px;font-size:.8rem;color:var(--primary-text-color);box-shadow:inset 0 0 0 1px var(--divider-color);}
-    .vt-c.vt-same{box-shadow:none;background:color-mix(in srgb,var(--fp-accent,var(--primary-color)) 16%,transparent);}
-    .vt-warn{color:var(--warning-color,#ffa600);}
-    .vt-foot{margin:4px 0 0;font-size:.8rem;color:var(--secondary-text-color);}
-    .vt-btn:focus-visible,.vt-chip:focus-visible{outline:2px solid var(--fp-accent,var(--primary-color));outline-offset:2px;}
+    .vt-note{margin-top:10px;padding:8px 10px;border-radius:10px;font-size:.84rem;line-height:1.4;color:var(--primary-text-color);background:color-mix(in srgb,var(--warning-color,#ffa600) 14%,transparent);}
+    .vt-sep{height:1px;margin:14px 0;background:var(--divider-color);}
+    .vt-foot{margin:4px 0 0;font-size:.8rem;color:var(--secondary-text-color);line-height:1.4;}
+    .vt-btn:focus-visible,.vt-chip:focus-visible,.vt-tab:focus-visible{outline:2px solid var(--fp-accent,var(--primary-color));outline-offset:2px;}
     `;
   }
 }
 if (!customElements.get("fp-voice-train-card-beta")) {
   customElements.define("fp-voice-train-card-beta", FpVoiceTrainCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: "fp-voice-train-card-beta", name: "FP Stimmtraining (Pipo)", description: "Eigene Karte fürs Stimmtraining von Pipo; Schritt 0: prüft am Gerät, ob das Stimmmodell schnell genug läuft, und vergleicht Probe-Aufnahmen", preview: false });
+  window.customCards.push({ type: "fp-voice-train-card-beta", name: "FP Stimmtraining (Pipo)", description: "Eigene Karte fürs Stimmtraining von Pipo: übt „Hey Pipo“ und die Stimmen je Person gemeinsam (Weckwort-Ausschnitte fürs Nachtraining, Stimmprofile beim Konto), dazu ein Test „Wer bin ich?“ und die Prüfung der Rechenzeit", preview: false });
 }
 })();
