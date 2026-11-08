@@ -1,4 +1,4 @@
-/* Family Planner custom cards v3.8.8 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
+/* Family Planner custom cards v3.8.9 - meal-grid-card + family-calendar-card + kids-routine-card + shopping-fav-card + nav-card + fp-todo-card + fp-glance-card + fp-cookbook-card + dobby-clock-card + fp-feeding-card + fp-weight-card + fp-diaper-card + fp-milestone-card + fp-baby-overview-card + fp-assistant-card */
 
 /* ===== shared utils (einmal global, von allen Karten genutzt; lightbox: Dialoge als nativer Dialog in der obersten Ebene; Hinweise erscheinen bei offenem Dialog auch im Dialog) ===== */
 // Achtung: Auf dem Beta-Dashboard sind Prod- und Beta-Datei gleichzeitig geladen.
@@ -1216,7 +1216,7 @@ if (!customElements.get("meal-grid-card")) {
 }
 })();
 
-/* ===== family-calendar-card v2.14 (Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
+/* ===== family-calendar-card v2.15 (Wischen nach links/rechts blättert in Woche, Monat und Tag, auch am Tablet; der Inhalt geht mit dem Finger mit und gleitet herein; davor: Lightboxen öffnen als nativer Dialog in der obersten Ebene, immer mittig im Bildschirm; davor: Uhrzeit-Eingaben in der doppelten Stunde (Ende der Sommerzeit) eindeutig; davor: Zeiten gehen mit Zeitzone an Home Assistant (Zeitumstellung); davor: Woche füllt die volle Breite, Tagesansicht ebenso, fill_height lässt die Karte bis zum Bildschirmrand reichen, Vorgaben day_start/day_end wieder wirksam; davor: schlichter Kopf statt Leiste: Titel, Ansichten als Segment, Datum als Pille, ＋ Termin in Akzent; Personenfilter als Chips mit Punkt; feste Farben durch Theme ersetzt; davor: Tagesansicht day mit Datumsleiste, am Tablet eine Spalte je Person mit Avatar, am Handy eine Zeitliste mit Personenfilter und Wischen zum Tageswechsel; Personenfilter mit Alle, Tippen auf freie Fläche legt an; Woche mit großen Terminkacheln, am Tablet eine Spalte je Tag, am Handy die Tage untereinander, Stundenraster mit week_grid; Datums- und Uhrzeitfelder passen aufs iPhone; durchlaufende Tage in der Ganztagszeile, mehrtägige Termine mit ab/bis je Tag, Termine mit Beginn- und Enddatum auch über Mitternacht; Mehrtagesansicht agenda mit days/hide_header/hide_legend; Farben über Theme-Variablen) ===== */
 (() => {
 const U = window.__fpUtils;
 const CP = U.cp;
@@ -1966,17 +1966,14 @@ class FamilyCalendarCard extends HTMLElement {
       if (!n) this._filter.clear(); else if (this._filter.has(n)) this._filter.delete(n); else this._filter.add(n);
       this._render();
     }));
-    const mob = this.querySelector(".fcc-dy-mob");
-    if (mob) {
-      // Wischen nach links/rechts wechselt den Tag
-      let x0 = null, y0 = 0;
-      mob.addEventListener("touchstart", e => { if (e.target.closest(".fcc-dy-strip,.fcc-flt")) { x0 = null; return; } x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
-      mob.addEventListener("touchend", e => {
-        if (x0 === null) return;
-        const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0; x0 = null;
-        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { this._offset += dx < 0 ? 1 : -1; this._go(); }
-      }, { passive: true });
+    // Wischen nach links/rechts blaettert: Woche, Monat, Tag (Mehrtagesansicht nur mit Kopf)
+    const pane = this.config.hide_header ? null : this.querySelector("ha-card.fcc-card > :last-child");
+    if (pane) {
+      pane.classList.add("fcc-swipe");
+      this._bindSwipe(pane);
+      if (this._swipeIn && !this._reduced()) pane.classList.add(this._swipeIn > 0 ? "fcc-in-r" : "fcc-in-l");
     }
+    this._swipeIn = 0;
     this.querySelectorAll(".fcc-ev,.fcc-ad-ev,.fcc-m-ev,.fcc-ag-ev,.fcc-dy-ev,.fcc-dy-chip").forEach(el => el.addEventListener("click", e => {
       e.stopPropagation();
       const k = el.dataset.key;
@@ -1989,9 +1986,57 @@ class FamilyCalendarCard extends HTMLElement {
     if (this._view === "week") { const sc = this.querySelector(".fcc-scroll"); if (sc) { const nd = new Date(); const nf = nd.getHours() + nd.getMinutes() / 60; const tgt = (this._offset === 0 && nf > this.config.day_start + 1) ? (nf - this.config.day_start - 1) : (8 - this.config.day_start); sc.scrollTop = Math.max(0, tgt * 46); } }
   }
 
+  _reduced() { try { return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) { return false; } }
+  // Liegt der Finger auf einer waagrecht scrollbaren Flaeche, gehoert das Wischen ihr
+  _horizScroll(el, stop) {
+    for (; el && el !== stop.parentNode; el = el.parentElement) {
+      if (el.scrollWidth > el.clientWidth + 1 && /^(auto|scroll)$/.test(getComputedStyle(el).overflowX)) return true;
+    }
+    return false;
+  }
+  // Waagrechtes Wischen ueber dem Inhalt: der Inhalt geht mit dem Finger mit, ab 60 px
+  // blaettert es weiter (nach links vor, nach rechts zurueck), sonst federt er zurueck
+  _bindSwipe(pane) {
+    const SKIP = ".fcc-dy-strip,.fcc-flt,input,select,textarea";
+    const still = this._reduced();
+    let x0 = null, y0 = 0, lock = 0; // lock: 1 waagrecht, -1 senkrecht, 0 noch offen
+    const zurueck = () => { pane.style.transition = "transform .2s ease, opacity .2s ease"; pane.style.transform = ""; pane.style.opacity = ""; };
+    pane.addEventListener("touchstart", e => {
+      if (e.touches.length !== 1 || e.target.closest(SKIP) || this._horizScroll(e.target, pane)) { x0 = null; return; }
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; lock = 0; pane.style.transition = "none";
+    }, { passive: true });
+    pane.addEventListener("touchmove", e => {
+      if (x0 === null) return;
+      if (e.touches.length !== 1) { x0 = null; zurueck(); return; }
+      const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
+      if (!lock && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) lock = Math.abs(dx) > Math.abs(dy) * 1.2 ? 1 : -1;
+      if (lock === 1 && !still) { const t = Math.max(-120, Math.min(120, dx * 0.5)); pane.style.transform = `translateX(${t}px)`; pane.style.opacity = String(1 - Math.abs(t) / 400); }
+    }, { passive: true });
+    const ende = e => {
+      if (x0 === null) return;
+      const t = e.changedTouches && e.changedTouches[0];
+      const dx = t ? t.clientX - x0 : 0, dy = t ? t.clientY - y0 : 0, war = lock; x0 = null;
+      if (e.type === "touchend" && war === 1 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        const dir = dx < 0 ? 1 : -1;
+        if (!still) { pane.style.transition = "transform .15s ease, opacity .15s ease"; pane.style.transform = `translateX(${-dir * 80}px)`; pane.style.opacity = ".35"; }
+        this._swipeIn = dir; this._offset += dir; this._go();
+      } else if (war === 1) zurueck();
+      else pane.style.transition = "";
+    };
+    pane.addEventListener("touchend", ende, { passive: true });
+    pane.addEventListener("touchcancel", ende, { passive: true });
+  }
+
   _css() {
     return `
     .fcc-card{overflow:hidden;padding-bottom:6px;}
+    /* Wischen: senkrecht scrollt der Browser, waagrecht blaettert die Karte; neuer Inhalt gleitet kurz herein */
+    .fcc-swipe{touch-action:pan-y pinch-zoom;}
+    .fcc-in-r{animation:fcc-in-r .22s ease-out;}
+    .fcc-in-l{animation:fcc-in-l .22s ease-out;}
+    @keyframes fcc-in-r{from{transform:translateX(60px);opacity:.35;}to{transform:none;opacity:1;}}
+    @keyframes fcc-in-l{from{transform:translateX(-60px);opacity:.35;}to{transform:none;opacity:1;}}
+    @media (prefers-reduced-motion: reduce){.fcc-in-r,.fcc-in-l{animation:none;}}
     /* Schlichter Kopf wie beim Essensplan: Titel, Ansichten als Segment, Datum als Pille, Heute, ＋ Termin rechts; bricht um */
     .fcc-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:14px 14px 6px;background:transparent;color:var(--primary-text-color);}
     .fcc-bar .fcc-title{flex:0 1 auto;min-width:0;margin-right:2px;font-size:1.05rem;font-weight:900;letter-spacing:-.01em;line-height:1.2;overflow-wrap:anywhere;}
